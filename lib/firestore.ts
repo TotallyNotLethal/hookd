@@ -13,9 +13,6 @@ const storage = getStorage(app, "gs://hookd-b7ae6.firebasestorage.app");
 // 🔥 Now you can safely log it
 if (storage) {
   const testRef = ref(storage, "/");
-  console.log("🔥 Firestore.ts Storage bound to:", testRef.root.bucket);
-} else {
-  console.warn("⚠️ Storage not initialized (SSR context)");
 }
 
 /** ---------- Types ---------- */
@@ -90,15 +87,12 @@ export async function createCatch(input: CatchInput) {
   const path = `catches/${input.uid}/${crypto.randomUUID()}`;
   const storageRef = ref(storage, path);
 
-  console.log("🔥 Uploading to bucket:", storageRef.root.bucket);
 
   // ✅ Wait for the upload to finish
   const uploadResult = await uploadBytes(storageRef, input.file);
-  console.log("✅ Upload complete:", uploadResult.metadata.fullPath);
 
   // ✅ Fetch download URL AFTER upload completes
   const imageUrl = await getDownloadURL(storageRef);
-  console.log("✅ Download URL:", imageUrl);
 
   // ✅ Save Firestore document with image URL
   const cRef = await addDoc(collection(db, 'catches'), {
