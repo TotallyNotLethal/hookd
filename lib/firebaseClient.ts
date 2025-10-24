@@ -29,7 +29,6 @@ export const db = getFirestore(app);
 export let storage: FirebaseStorage | null = null;
 if (typeof window !== 'undefined') {
   storage = getStorage(app, 'gs://hookd-b7ae6.firebasestorage.app');
-  console.log('✅ Firebase Storage bound to:', storage.bucket);
 }
 
 // --- Export app for utilities
