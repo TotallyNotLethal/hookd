@@ -1,9 +1,8 @@
 'use client';
 import { app } from '@/lib/firebaseClient';
-import { ensureUserProfile, updateUserProfile } from '@/lib/firestore';
 import { getAuth, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
-import { subscribeToUser, subscribeToUserCatches, updateUserProfile } from '@/lib/firestore';
+import { ensureUserProfile, subscribeToUser, subscribeToUserCatches, updateUserProfile } from '@/lib/firestore';
 
 
 export default function Page() {
