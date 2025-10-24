@@ -20,7 +20,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [uploading, setUploading] = useState(false);
   const [user] = useAuthState(auth);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!user) return alert('Sign in first!');
     if (!file) return alert('Upload an image');
