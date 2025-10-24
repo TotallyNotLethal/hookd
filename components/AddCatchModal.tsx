@@ -60,7 +60,15 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     <div className="modal">
       <form onSubmit={handleSubmit} className="modal-content glass p-6 rounded-xl w-[400px]">
         <h2 className="text-lg font-semibold mb-4">Add Catch</h2>
-        <input type="file" onChange={(e) => setFile(e.target.files[0])} required />
+        <input
+  type="file"
+  onChange={(e) => {
+    const files = e.target.files;
+    if (files && files[0]) setFile(files[0]);
+  }}
+  required
+/>
+
         <input className="input" placeholder="Species" value={species} onChange={(e) => setSpecies(e.target.value)} required />
         <input className="input" placeholder="Weight" value={weight} onChange={(e) => setWeight(e.target.value)} required />
         <input className="input" placeholder="Location" value={location} onChange={(e) => setLocation(e.target.value)} required />
