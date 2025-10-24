@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { db, auth } from '../firebaseClient';
+import { db, auth } from '@/lib/firebaseClient';
 import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { Heart, MessageSquare, Trash2 } from 'lucide-react';
 import { useAuthState } from 'react-firebase-hooks/auth';
