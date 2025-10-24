@@ -1,7 +1,7 @@
 //THIS IS IN components folder
 'use client';
 import { useState } from 'react';
-import { db, storage, auth } from '../firebaseClient';
+import { db, storage, auth } from '@/lib/firebaseClient';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuthState } from 'react-firebase-hooks/auth';
