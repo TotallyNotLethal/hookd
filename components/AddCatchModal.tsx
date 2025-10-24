@@ -6,7 +6,11 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { useAuthState } from 'react-firebase-hooks/auth';
 
-export default function AddCatchModal({ onClose }) {
+interface AddCatchModalProps {
+  onClose: () => void;
+}
+
+export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [file, setFile] = useState(null);
   const [species, setSpecies] = useState('');
   const [weight, setWeight] = useState('');
