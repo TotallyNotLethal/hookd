@@ -27,7 +27,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
 
     setUploading(true);
     try {
-      const storageRef = ref(storage, `catches/${user.uid}-${Date.now()}`);
+      const storageRef = ref(storage!, `catches/${user.uid}-${Date.now()}`);
 	  console.log('Uploading to bucket:', storage.bucket);
 
       await uploadBytes(storageRef, file);
