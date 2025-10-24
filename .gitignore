@@ -1,0 +1,55 @@
+# =======================================
+# 🚀 Hook'd – Next.js + Firebase Project
+# =======================================
+
+# Node modules and build output
+node_modules/
+.next/
+out/
+dist/
+
+# Logs and debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.tmp
+.idea/
+.vscode/
+*.log
+
+# Env files (Firebase / API keys)
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.firebase/
+
+# Firebase related files
+.firebaserc
+firebase-debug.log
+firebase-debug.*
+firebase-export-*
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Testing
+coverage/
+jest.config.js
+
+# Misc
+*.bak
+*.old
+*.orig
+*.rej
+
+# Vercel
+.vercel

@@ -1,0 +1,106 @@
+'use client';
+import { useState, useEffect } from 'react';
+import { useAuthState } from 'react-firebase-hooks/auth';
+import { auth } from '@/lib/firebaseClient';
+import { toggleLike, subscribeToUserLike, subscribeToLikesCount, deleteCatch } from '@/lib/firestore';
+import { Heart, MessageSquare, Trash2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+
+
+export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any) => void }) {
+  const [user] = useAuthState(auth);
+  const [liked, setLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState<number>(post.likesCount || 0);
+  const router = useRouter();
+
+
+  useEffect(() => {
+    if (!user) return;
+    const u1 = subscribeToUserLike(post.id, user.uid, setLiked);
+    const u2 = subscribeToLikesCount(post.id, setLikesCount);
+    return () => {
+      u1();
+      u2();
+    };
+  }, [user, post.id]);
+
+  const handleLike = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // prevent modal from opening
+    if (!user) return alert('Sign in to like posts!');
+    await toggleLike(post.id, user.uid);
+  };
+
+  const handleDelete = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // prevent modal from opening
+    if (!user || user.uid !== post.uid) return;
+    if (confirm('Delete this catch?')) await deleteCatch(post.id);
+  };
+
+  return (
+    <div
+      onClick={() => onOpen?.(post)}
+      className="cursor-pointer card p-4 hover:bg-white/5 transition"
+    >
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          {post.userPhoto && <img src={post.userPhoto} className="w-8 h-8 rounded-full" alt="" />}
+          <div>
+            <p className="font-semibold">{post.displayName}</p>
+            {post.location && <p className="text-xs opacity-70">{post.location}</p>}
+          </div>
+        </div>
+        {user?.uid === post.uid && (
+          <button
+            onClick={handleDelete}
+            className="text-red-400 hover:text-red-300"
+            title="Delete"
+          >
+            <Trash2 size={18} />
+          </button>
+        )}
+      </div>
+
+      {post.imageUrl && (
+        <img
+          src={post.imageUrl}
+          alt={post.species}
+          className="w-full rounded-xl mb-3"
+        />
+      )}
+	  
+	  <p className="mt-2 text-sm opacity-80">
+  Posted by{" "}
+  <span
+    className="font-medium text-blue-400 hover:underline cursor-pointer"
+    onClick={(e) => {
+      e.stopPropagation();
+      router.push(`/profile/${post.uid}`);
+    }}
+  >
+    {post.displayName || post.user.name}
+  </span>
+</p>
+
+
+      <p className="font-medium">{post.species}</p>
+      {post.caption && <p className="opacity-80 text-sm">{post.caption}</p>}
+
+      <div className="flex items-center justify-between mt-3">
+        <button
+          onClick={handleLike}
+          className={`flex items-center gap-1 transition-colors ${
+            liked ? 'text-red-500' : 'opacity-60 hover:opacity-100'
+          }`}
+        >
+          <Heart className={`w-5 h-5 ${liked ? 'fill-red-500 stroke-red-500' : ''}`} />
+          <span>{likesCount}</span>
+        </button>
+
+        <div className="flex items-center gap-1 opacity-60">
+          <MessageSquare size={16} />
+          <span>{post.commentsCount || 0}</span>
+        </div>
+      </div>
+    </div>
+  );
+}

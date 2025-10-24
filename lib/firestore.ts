@@ -1,0 +1,179 @@
+'use client';
+import { app, db, storage } from "./firebaseClient";
+import {
+  doc, setDoc, getDoc, updateDoc, serverTimestamp,
+  addDoc, collection, onSnapshot, orderBy, query, where,
+  deleteDoc, increment, runTransaction
+} from "firebase/firestore";
+import { getStorage, getDownloadURL, ref, uploadBytes } from "firebase/storage";
+
+// ✅ Define storage first
+const storage = getStorage(app, "gs://hookd-b7ae6.firebasestorage.app");
+
+// 🔥 Now you can safely log it
+if (storage) {
+  const testRef = ref(storage, "/");
+  console.log("🔥 Firestore.ts Storage bound to:", testRef.root.bucket);
+} else {
+  console.warn("⚠️ Storage not initialized (SSR context)");
+}
+
+/** ---------- Types ---------- */
+export type HookdUser = {
+  uid: string;
+  displayName: string;
+  photoURL?: string;
+  bio?: string;
+  trophies?: string[];
+  followers?: string[];
+  following?: string[];
+  createdAt?: any;
+  updatedAt?: any;
+};
+
+export type CatchInput = {
+  uid: string;
+  displayName: string;
+  userPhoto?: string;
+  species: string;
+  weight?: string;
+  location?: string;
+  caption?: string;
+  trophy?: boolean;
+  file: File;
+};
+
+/** ---------- Users ---------- */
+export async function ensureUserProfile(user: { uid: string; displayName: string | null; photoURL?: string | null; }) {
+  const refUser = doc(db, 'users', user.uid);
+  const snap = await getDoc(refUser);
+  if (!snap.exists()) {
+    const payload: HookdUser = {
+      uid: user.uid,
+      displayName: user.displayName || 'Angler',
+      photoURL: user.photoURL || undefined,
+      bio: '',
+      trophies: [], followers: [], following: [],
+      createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+    };
+    await setDoc(refUser, payload);
+  } else {
+    await updateDoc(refUser, {
+      displayName: user.displayName || 'Angler',
+      photoURL: user.photoURL || null,
+      updatedAt: serverTimestamp(),
+    });
+  }
+}
+
+export async function updateUserProfile(uid: string, data: { displayName?: string; bio?: string }) {
+  const refUser = doc(db, 'users', uid);
+  await updateDoc(refUser, { ...data, updatedAt: serverTimestamp() });
+}
+
+export function subscribeToUser(uid: string, cb: (u: any|null)=>void) {
+  const refUser = doc(db, 'users', uid);
+  return onSnapshot(refUser, (snap) => cb(snap.exists() ? { uid, ...snap.data() } : null));
+}
+
+export function subscribeToUserCatches(uid: string, cb: (arr: any[]) => void) {
+  const q = query(collection(db, 'catches'), where('uid', '==', uid), orderBy('createdAt', 'desc'));
+  return onSnapshot(q, (snap) => {
+    const arr: any[] = [];
+    snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
+    cb(arr);
+  });
+}
+
+/** ---------- Catches ---------- */
+export async function createCatch(input: CatchInput) {
+  const path = `catches/${input.uid}/${crypto.randomUUID()}`;
+  const storageRef = ref(storage, path);
+
+  console.log("🔥 Uploading to bucket:", storageRef.root.bucket);
+
+  // ✅ Wait for the upload to finish
+  const uploadResult = await uploadBytes(storageRef, input.file);
+  console.log("✅ Upload complete:", uploadResult.metadata.fullPath);
+
+  // ✅ Fetch download URL AFTER upload completes
+  const imageUrl = await getDownloadURL(storageRef);
+  console.log("✅ Download URL:", imageUrl);
+
+  // ✅ Save Firestore document with image URL
+  const cRef = await addDoc(collection(db, 'catches'), {
+    uid: input.uid,
+	userId: input.uid,
+    displayName: input.displayName,
+    userPhoto: input.userPhoto || null,
+    species: input.species,
+    weight: input.weight || '',
+    location: input.location || '',
+    caption: input.caption || '',
+    imageUrl,
+    trophy: !!input.trophy,
+    likesCount: 0,
+    commentsCount: 0,
+    createdAt: serverTimestamp(),
+  });
+
+  return cRef.id;
+}
+
+
+export function subscribeToFeedCatches(cb: (arr:any[]) => void) {
+  const q = query(collection(db, 'catches'), orderBy('createdAt', 'desc'));
+  return onSnapshot(q, (snap) => {
+    const arr:any[] = [];
+    snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
+    cb(arr);
+  });
+}
+
+/** ---------- Likes (subcollection + counter) ---------- */
+export async function toggleLike(catchId: string, uid: string) {
+  const likeRef = doc(db, 'catches', catchId, 'likes', uid);
+  const postRef = doc(db, 'catches', catchId);
+  await runTransaction(db, async (tx) => {
+    const likeSnap = await tx.get(likeRef);
+    if (likeSnap.exists()) {
+      tx.delete(likeRef);
+      tx.update(postRef, { likesCount: increment(-1) });
+    } else {
+      tx.set(likeRef, { uid, createdAt: serverTimestamp() });
+      tx.update(postRef, { likesCount: increment(1) });
+    }
+  });
+}
+
+export function subscribeToUserLike(catchId: string, uid: string, cb: (liked: boolean)=>void) {
+  const likeRef = doc(db, 'catches', catchId, 'likes', uid);
+  return onSnapshot(likeRef, (snap) => cb(snap.exists()));
+}
+
+export function subscribeToLikesCount(catchId: string, cb: (count:number)=>void) {
+  const postRef = doc(db, 'catches', catchId);
+  return onSnapshot(postRef, (snap) => { if (snap.exists()) cb(snap.data().likesCount || 0); });
+}
+
+/** ---------- Comments ---------- */
+export async function addComment(catchId: string, data: { uid: string; displayName: string; photoURL?: string; text: string; }) {
+  const commentsCol = collection(db, 'catches', catchId, 'comments');
+  await addDoc(commentsCol, { ...data, createdAt: serverTimestamp() });
+  const postRef = doc(db, 'catches', catchId);
+  await updateDoc(postRef, { commentsCount: increment(1) });
+}
+
+export function subscribeToComments(catchId: string, cb: (arr:any[]) => void) {
+  const q = query(collection(db, 'catches', catchId, 'comments'), orderBy('createdAt','desc'));
+  return onSnapshot(q, (snap) => {
+    const arr:any[] = [];
+    snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
+    cb(arr);
+  });
+}
+
+/** ---------- Delete Catch ---------- */
+export async function deleteCatch(catchId: string) {
+  await deleteDoc(doc(db, 'catches', catchId));
+}
