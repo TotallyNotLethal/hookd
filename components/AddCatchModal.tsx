@@ -11,7 +11,7 @@ interface AddCatchModalProps {
 }
 
 export default function AddCatchModal({ onClose }: AddCatchModalProps) {
-  const [file, setFile] = useState(null);
+  const [file, setFile] = useState<File | null>(null);
   const [species, setSpecies] = useState('');
   const [weight, setWeight] = useState('');
   const [location, setLocation] = useState('');
