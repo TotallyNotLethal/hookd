@@ -1,5 +1,5 @@
 'use client';
-import { app, db, storage } from "./firebaseClient";
+import { app, db } from "./firebaseClient";
 import {
   doc, setDoc, getDoc, updateDoc, serverTimestamp,
   addDoc, collection, onSnapshot, orderBy, query, where,
