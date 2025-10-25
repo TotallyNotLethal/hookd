@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import PostCard from "@/components/PostCard";
 import ConditionsWidget from "@/components/ConditionsWidget";
+import TrendingExplorer from "@/components/TrendingExplorer";
 import {
   getChallengeCatches,
   subscribeToChallengeCatches,
@@ -118,11 +119,11 @@ export default function Page() {
         <div className="absolute inset-0 -z-10">
           <Image
             src="/sample/catches/bass1.jpg"
-            alt="Hero"
+            alt="Angler proudly holding a largemouth bass at sunset"
             fill
-            className="object-cover opacity-20"
+            className="object-cover opacity-30 brightness-110"
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[var(--bg)]" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[rgba(8,26,45,0.6)] via-[rgba(11,19,33,0.8)] to-[var(--bg)]" />
         </div>
 
         <div className="container grid lg:grid-cols-2 gap-10 items-center py-16">
@@ -130,21 +131,30 @@ export default function Page() {
             <h1 className="text-4xl md:text-6xl font-semibold leading-tight">
               Join the <span className="text-brand-300">Hook&apos;d</span> community
             </h1>
-            <p className="text-white/80 text-lg max-w-xl">
+            <p className="text-white/90 text-lg max-w-xl">
               Share your catches, discover new spots, and level up your fishing game with real-time reports and leaderboards.
             </p>
-            <div className="flex items-center gap-4">
-              <Link href="/feed" className="btn-primary">
+            <div className="flex flex-wrap items-center gap-4">
+              <Link
+                href="/feed"
+                className="btn-primary px-6 py-3 text-base md:text-lg shadow-glow focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+              >
                 Explore Feed
               </Link>
               <Link
+                href="/map"
+                className="px-6 py-3 text-base md:text-lg rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+              >
+                View Fishing Map
+              </Link>
+              <Link
                 href="/login"
-                className="px-5 py-2.5 rounded-xl border border-white/15 hover:bg-white/5"
+                className="px-6 py-3 text-base md:text-lg rounded-xl border border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
               >
                 Sign In
               </Link>
             </div>
-            <p className="text-white/60 text-sm">
+            <p className="text-white/70 text-sm">
               Installable PWA • Mobile-first design • Free to start
             </p>
           </div>
@@ -195,12 +205,9 @@ export default function Page() {
         </div>
 
         {recentCatches.length > 0 ? (
-          <div className="flex gap-6 overflow-x-auto pb-4 snap-x">
+          <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
             {recentCatches.map((post) => (
-              <div
-                key={post.id}
-                className="min-w-[260px] sm:min-w-[320px] snap-start"
-              >
+              <div key={post.id} className="flex">
                 <PostCard post={post} onOpen={setActive} />
               </div>
             ))}
@@ -214,6 +221,8 @@ export default function Page() {
           </div>
         )}
       </section>
+
+      <TrendingExplorer />
 
       {/* --- WEEKLY CHALLENGE GALLERY --- */}
       <section className="container py-16">
