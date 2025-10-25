@@ -16,9 +16,16 @@ export default function Page() {
 
 
   useEffect(() => {
+  // 🔥 Force Firebase/Firestore to initialize immediately,
+  // even if the Feed page hasn’t been opened yet
+  import("@/lib/firebaseClient").then(({ db }) => {
+    console.log("Firestore initialized on homepage:", db);
+  });
+
   const unsub = subscribeToChallengeCatches(setChallengePosts);
   return () => unsub();
 }, []);
+
 
 
   return (
