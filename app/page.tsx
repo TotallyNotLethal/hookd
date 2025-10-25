@@ -5,6 +5,8 @@ import Link from "next/link";
 import PostCard from "@/components/PostCard";
 import { subscribeToChallengeCatches  } from "@/lib/firestore";
 import { useEffect, useState } from "react";
+import PostDetailModal from "@/app/feed/PostDetailModal";
+
 
 
 export default function Page() {
@@ -96,7 +98,7 @@ export default function Page() {
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {challengePosts.length > 0 ? (
             challengePosts.map((p) => (
-              <PostCard key={p.id} post={p} />
+              <PostCard key={p.id} post={p} onOpen={setActive} />
             ))
           ) : (
             <p className="text-white/60">
