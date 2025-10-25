@@ -234,11 +234,23 @@ export async function deleteCatch(catchId: string) {
 export async function getChallengeCatches() {
   const q = query(
     collection(db, "catches"),
-    where("hashtags", "array-contains", "#HookdChallenge")
+    where("hashtags", "array-contains", "#HookdChallenge"),
+    orderBy("createdAt", "desc"),
+    limit(6)
   );
+
   const snap = await getDocs(q);
-  return snap.docs
-    .map((doc) => ({ id: doc.id, ...doc.data() }))
-    .sort((a, b) => timestampToMillis(b.createdAt) - timestampToMillis(a.createdAt))
+  const docs = snap.docs.map((doc) => {
+    const data = doc.data() as { createdAt?: any };
+    return { id: doc.id, ...data };
+  });
+
+  return docs
+    .sort((a, b) => {
+      const aTime = a.createdAt?.seconds || 0;
+      const bTime = b.createdAt?.seconds || 0;
+      return bTime - aTime;
+    })
     .slice(0, 6);
 }
+
