@@ -19,6 +19,7 @@ if (storage) {
 export type HookdUser = {
   uid: string;
   displayName: string;
+  username: string;
   photoURL?: string;
   bio?: string;
   trophies?: string[];
@@ -26,6 +27,7 @@ export type HookdUser = {
   following?: string[];
   createdAt?: any;
   updatedAt?: any;
+  isTester: false;
 };
 
 export type CatchInput = {
