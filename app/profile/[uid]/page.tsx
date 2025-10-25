@@ -1,112 +1,85 @@
 'use client';
+
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { doc, getDoc, getDocs, collection, query, where, orderBy } from 'firebase/firestore';
-import { db } from '@/lib/firebaseClient';
-import PostCard from '@/components/PostCard';
-import PostDetailModal from '@/app/feed/PostDetailModal';
+import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
+
+import NavBar from '@/components/NavBar';
+import ProfileView from '@/components/ProfileView';
+import { app } from '@/lib/firebaseClient';
+import { subscribeToUser, subscribeToUserCatches } from '@/lib/firestore';
+
+type ProfileData = {
+  uid: string;
+  displayName?: string;
+  username?: string;
+  bio?: string;
+  photoURL?: string;
+  header?: string;
+  followers?: any[];
+  following?: any[];
+  isTester?: boolean;
+};
+
+type CatchData = {
+  id: string;
+  imageUrl: string;
+  species?: string;
+  weight?: string;
+  trophy?: boolean;
+};
 
 export default function ProfilePage() {
-  const { uid } = useParams();
-  const [user, setUser] = useState<any>(null);
-  const [catches, setCatches] = useState<any[]>([]);
-  const [selectedPost, setSelectedPost] = useState<any | null>(null);
+  const params = useParams<{ uid: string }>();
+  const userId = params?.uid;
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [catches, setCatches] = useState<CatchData[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Load user info
   useEffect(() => {
-    if (!uid) return;
-    const loadUser = async () => {
-      const snap = await getDoc(doc(db, 'users', uid as string));
-      if (snap.exists()) setUser(snap.data());
-    };
-    loadUser();
-  }, [uid]);
+    const auth = getAuth(app);
+    const unsubscribe = onAuthStateChanged(auth, (user) => setAuthUser(user));
+    return () => unsubscribe();
+  }, []);
 
-  // Fetch all user catches
   useEffect(() => {
-    if (!uid) return;
-    const loadCatches = async () => {
-      const q = query(collection(db, 'catches'), where('uid', '==', uid), orderBy('createdAt', 'desc'));
-      const snap = await getDocs(q);
-      const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setCatches(arr);
-    };
-    loadCatches();
-  }, [uid]);
+    if (!userId) return;
 
-  if (!user)
-    return (
-      <div className="flex justify-center items-center h-screen text-white/70">
-        Loading profile...
-      </div>
-    );
+    setLoading(true);
+    setProfile(null);
+    setCatches([]);
+
+    const unsubscribeProfile = subscribeToUser(userId, (data) => {
+      setProfile(data);
+      setLoading(false);
+    });
+    const unsubscribeCatches = subscribeToUserCatches(userId, (data) => setCatches(data));
+
+    return () => {
+      unsubscribeProfile();
+      unsubscribeCatches();
+    };
+  }, [userId]);
+
+  const isOwner = authUser?.uid === userId;
 
   return (
-    <div className="p-6 text-white">
-      {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
-        {user.photoURL ? (
-          <img
-            src={user.photoURL}
-            alt={user.displayName}
-            className="w-20 h-20 rounded-full object-cover border border-white/10"
-          />
+    <main>
+      <NavBar />
+      <section className="container pt-28 pb-10">
+        {loading ? (
+          <div className="card p-6">
+            <p className="text-white/70">Loading profile…</p>
+          </div>
+        ) : profile ? (
+          <ProfileView profile={profile} catches={catches} isOwner={isOwner} />
         ) : (
-          <div className="w-20 h-20 rounded-full bg-white/10 flex items-center justify-center text-3xl font-semibold">
-            {user.displayName?.[0]?.toUpperCase() || '?'}
+          <div className="card p-6">
+            <p className="text-white/70">Profile not found.</p>
           </div>
         )}
-
-        <div>
-          <h1 className="text-2xl font-bold flex flex-col sm:flex-row sm:items-center sm:gap-2">
-            {/* Display Name */}
-            <span>{user.displayName}</span>
-
-            {/* Username */}
-            {user.username && (
-              <span
-                className={`text-sm font-normal ${
-                  user.isTester ? 'text-brand-300' : 'text-white/60'
-                }`}
-              >
-                @{user.isTester ? `hookd_${user.username}` : user.username}
-                {user.isTester && (
-                  <span className="text-blue-400 ml-1" title="Tester">
-                    ✔
-                  </span>
-                )}
-              </span>
-            )}
-          </h1>
-
-          {/* Bio */}
-          {user.bio && <p className="opacity-80 mt-1">{user.bio}</p>}
-
-          {/* Followers/Following */}
-          <div className="text-sm opacity-60 mt-1">
-            {user.followers?.length || 0} followers · {user.following?.length || 0} following
-          </div>
-        </div>
-      </div>
-
-      {/* All catches */}
-      <div>
-        <h2 className="text-lg font-semibold mb-3">🎣 All Catches</h2>
-        {catches.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {catches.map((post) => (
-              <PostCard key={post.id} post={post} onOpen={setSelectedPost} />
-            ))}
-          </div>
-        ) : (
-          <p className="text-white/60 text-sm">No catches yet.</p>
-        )}
-      </div>
-
-      {/* Modal */}
-      {selectedPost && (
-        <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} />
-      )}
-    </div>
+      </section>
+    </main>
   );
 }
