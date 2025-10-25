@@ -93,7 +93,7 @@ export default function Page() {
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {challengePosts.length > 0 ? (
             challengePosts.map((p) => (
-              <PostCard key={p.id} post={p} onOpen={openDetail} />
+              <PostCard key={p.id} post={p} />
             ))
           ) : (
             <p className="text-white/60">
