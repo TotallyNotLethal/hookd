@@ -94,6 +94,12 @@ export async function createCatch(input: CatchInput) {
   // ✅ Fetch download URL AFTER upload completes
   const imageUrl = await getDownloadURL(storageRef);
 
+// Extract hashtags from the caption
+const hashtags = input.caption
+  ? Array.from(input.caption.matchAll(/#[A-Za-z0-9_]+/g)).map((m) => m[0])
+  : [];
+
+	
   // ✅ Save Firestore document with image URL
   const cRef = await addDoc(collection(db, 'catches'), {
     uid: input.uid,
@@ -104,6 +110,7 @@ export async function createCatch(input: CatchInput) {
     weight: input.weight || '',
     location: input.location || '',
     caption: input.caption || '',
+	hashtags,
     imageUrl,
     trophy: !!input.trophy,
     likesCount: 0,
