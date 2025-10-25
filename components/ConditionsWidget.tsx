@@ -2,13 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-interface Location {
-  name: string;
-  latitude: number;
-  longitude: number;
-  timezone?: string;
-}
-
 interface ConditionsData {
   temperature: number | null;
   windSpeed: number | null;
@@ -18,7 +11,12 @@ interface ConditionsData {
 }
 
 interface ConditionsWidgetProps {
-  location: Location;
+  fallbackLocation: {
+    name: string;
+    latitude: number;
+    longitude: number;
+    timezone?: string;
+  };
   className?: string;
 }
 
@@ -35,17 +33,103 @@ const formatTime = (value: string | null) => {
 };
 
 export default function ConditionsWidget({
-  location,
+  fallbackLocation,
   className = "",
 }: ConditionsWidgetProps) {
   const [conditions, setConditions] = useState<ConditionsData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [location, setLocation] = useState(fallbackLocation);
+  const [usingFallback, setUsingFallback] = useState<boolean>(true);
+  const [isLocating, setIsLocating] = useState<boolean>(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function resolveLocation(latitude: number, longitude: number) {
+      let locationName = fallbackLocation.name;
+      try {
+        const params = new URLSearchParams({
+          latitude: latitude.toString(),
+          longitude: longitude.toString(),
+          language: "en",
+          count: "1",
+        });
+        const response = await fetch(
+          `https://geocoding-api.open-meteo.com/v1/reverse?${params.toString()}`,
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const result = data.results?.[0];
+          if (result?.name) {
+            const admin = [result.admin1, result.admin2, result.country_code]
+              .filter(Boolean)
+              .join(", ");
+            locationName = admin ? `${result.name}, ${admin}` : result.name;
+          }
+        }
+      } catch (err) {
+        console.warn("Unable to reverse geocode location", err);
+      }
+
+      if (!isMounted) return;
+
+      setLocation({
+        name: locationName,
+        latitude,
+        longitude,
+        timezone:
+          Intl.DateTimeFormat().resolvedOptions().timeZone ||
+          fallbackLocation.timezone,
+      });
+      setUsingFallback(false);
+      setIsLocating(false);
+    }
+
+    setLocation(fallbackLocation);
+    setUsingFallback(true);
+    setIsLocating(true);
+
+    if (typeof window === "undefined" || !navigator.geolocation) {
+      setLocation(fallbackLocation);
+      setUsingFallback(true);
+      setIsLocating(false);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        if (!isMounted) return;
+        resolveLocation(position.coords.latitude, position.coords.longitude);
+      },
+      (geoError) => {
+        console.warn("Geolocation unavailable", geoError);
+        if (!isMounted) return;
+        setLocation(fallbackLocation);
+        setUsingFallback(true);
+        setIsLocating(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 8000,
+      },
+    );
+
+    return () => {
+      isMounted = false;
+    };
+  }, [fallbackLocation]);
 
   useEffect(() => {
     let isMounted = true;
 
     async function fetchForecast() {
+      if (!location?.latitude || !location?.longitude) {
+        return;
+      }
       setIsLoading(true);
       setError(null);
       try {
@@ -116,12 +200,19 @@ export default function ConditionsWidget({
     return `${start} – ${end}`;
   }, [conditions?.sunrise]);
 
+  const locationStatus = isLocating
+    ? "Detecting your location…"
+    : usingFallback
+      ? "Using default spot (enable location for local updates)"
+      : "Based on your current location";
+
   return (
     <div className={`card p-4 flex flex-col gap-4 ${className}`}>
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs uppercase tracking-wide text-white/50">Conditions</p>
           <h3 className="font-semibold text-lg text-white">{location.name}</h3>
+          <p className="text-[11px] text-white/40 mt-1">{locationStatus}</p>
         </div>
         {!isLoading && !error && (
           <p className="text-xs text-white/40">
