@@ -16,15 +16,24 @@ export default function Page() {
 
 
   useEffect(() => {
-  // 🔥 Force Firebase/Firestore to initialize immediately,
-  // even if the Feed page hasn’t been opened yet
-  import("@/lib/firebaseClient").then(({ db }) => {
-    console.log("Firestore initialized on homepage:", db);
-  });
+  let unsub: (() => void) | null = null;
 
-  const unsub = subscribeToChallengeCatches(setChallengePosts);
-  return () => unsub();
+  async function initAndSubscribe() {
+    // Make sure Firebase app and db are loaded before attaching listener
+    const { app, db } = await import("@/lib/firebaseClient");
+    console.log("Firebase initialized:", app.name);
+
+    const { subscribeToChallengeCatches } = await import("@/lib/firestore");
+    unsub = subscribeToChallengeCatches(setChallengePosts);
+  }
+
+  initAndSubscribe();
+
+  return () => {
+    if (unsub) unsub();
+  };
 }, []);
+
 
 
 
