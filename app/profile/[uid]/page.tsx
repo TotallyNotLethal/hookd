@@ -22,7 +22,7 @@ export default function ProfilePage() {
     loadUser();
   }, [uid]);
 
-  // Fetch all user catches (includes IDs)
+  // Fetch all user catches
   useEffect(() => {
     if (!uid) return;
     const loadCatches = async () => {
@@ -58,24 +58,31 @@ export default function ProfilePage() {
         )}
 
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            {user.displayName}
+          <h1 className="text-2xl font-bold flex flex-col sm:flex-row sm:items-center sm:gap-2">
+            {/* Display Name */}
+            <span>{user.displayName}</span>
+
+            {/* Username */}
             {user.username && (
-              <span className="text-sm text-white/60 font-normal">
-                @{user.isTester ? (
-                  <>
-                    <span className="text-brand-300">hookd_{user.username}</span>
-                    <span className="text-blue-400 ml-1" title="Tester">✔</span>
-                  </>
-                ) : (
-                  user.username
+              <span
+                className={`text-sm font-normal ${
+                  user.isTester ? 'text-brand-300' : 'text-white/60'
+                }`}
+              >
+                @{user.isTester ? `hookd_${user.username}` : user.username}
+                {user.isTester && (
+                  <span className="text-blue-400 ml-1" title="Tester">
+                    ✔
+                  </span>
                 )}
               </span>
             )}
           </h1>
 
+          {/* Bio */}
           {user.bio && <p className="opacity-80 mt-1">{user.bio}</p>}
 
+          {/* Followers/Following */}
           <div className="text-sm opacity-60 mt-1">
             {user.followers?.length || 0} followers · {user.following?.length || 0} following
           </div>
@@ -98,10 +105,7 @@ export default function ProfilePage() {
 
       {/* Modal */}
       {selectedPost && (
-        <PostDetailModal
-          post={selectedPost}
-          onClose={() => setSelectedPost(null)}
-        />
+        <PostDetailModal post={selectedPost} onClose={() => setSelectedPost(null)} />
       )}
     </div>
   );
