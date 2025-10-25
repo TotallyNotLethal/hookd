@@ -47,11 +47,13 @@ export default function ConditionsWidget({
     let isMounted = true;
 
     async function resolveLocation(latitude: number, longitude: number) {
+      const normalizedLongitude =
+        ((longitude + 180) % 360 + 360) % 360 - 180;
       let locationName = fallbackLocation.name;
       try {
         const params = new URLSearchParams({
           latitude: latitude.toString(),
-          longitude: longitude.toString(),
+          longitude: normalizedLongitude.toString(),
           language: "en",
           count: "1",
         });
@@ -78,7 +80,7 @@ export default function ConditionsWidget({
       setLocation({
         name: locationName,
         latitude,
-        longitude,
+        longitude: normalizedLongitude,
         timezone:
           Intl.DateTimeFormat().resolvedOptions().timeZone ||
           fallbackLocation.timezone,

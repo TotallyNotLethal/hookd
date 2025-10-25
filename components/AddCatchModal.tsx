@@ -11,6 +11,9 @@ import { collection, addDoc, serverTimestamp, GeoPoint, Timestamp } from 'fireba
 
 const DEFAULT_CENTER = { lat: 39.8283, lng: -98.5795 };
 
+const normalizeLongitude = (longitude: number) =>
+  ((longitude + 180) % 360 + 360) % 360 - 180;
+
 const markerIcon = L.icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -73,10 +76,11 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   }, [coordinates]);
 
   const lookupLocationName = useCallback(async (lat: number, lng: number) => {
+    const normalizedLng = normalizeLongitude(lng);
     try {
       const params = new URLSearchParams({
         latitude: lat.toString(),
-        longitude: lng.toString(),
+        longitude: normalizedLng.toString(),
         language: 'en',
         count: '1',
       });
@@ -116,7 +120,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
 
         if (metadata?.latitude && metadata?.longitude) {
           const lat = metadata.latitude;
-          const lng = metadata.longitude;
+          const lng = normalizeLongitude(metadata.longitude);
           setCoordinates({ lat, lng });
           await lookupLocationName(lat, lng);
         }
@@ -141,8 +145,12 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
 
   const handleCoordinatesChange = useCallback(
     (latLng: Coordinates) => {
-      setCoordinates(latLng);
-      lookupLocationName(latLng.lat, latLng.lng);
+      const nextCoordinates = {
+        lat: latLng.lat,
+        lng: normalizeLongitude(latLng.lng),
+      };
+      setCoordinates(nextCoordinates);
+      lookupLocationName(nextCoordinates.lat, nextCoordinates.lng);
     },
     [lookupLocationName],
   );
