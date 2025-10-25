@@ -6,7 +6,7 @@ import Link from "next/link";
 import PostCard from "@/components/PostCard";
 import ConditionsWidget from "@/components/ConditionsWidget";
 import { subscribeToChallengeCatches, subscribeToFeedCatches } from "@/lib/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import PostDetailModal from "@/app/feed/PostDetailModal";
 
 
@@ -15,6 +15,47 @@ export default function Page() {
   const [challengePosts, setChallengePosts] = useState<any[]>([]);
   const [recentCatches, setRecentCatches] = useState<any[]>([]);
   const [active, setActive] = useState<any | null>(null);
+
+  const leaderboard = useMemo(() => {
+    const scores = new Map<
+      string,
+      {
+        uid: string;
+        displayName: string;
+        likes: number;
+        comments: number;
+      }
+    >();
+
+    challengePosts.forEach((post) => {
+      const uid = post.uid || post.userId;
+      if (!uid) return;
+
+      const entry = scores.get(uid) || {
+        uid,
+        displayName: post.displayName || "Angler",
+        likes: 0,
+        comments: 0,
+      };
+
+      entry.likes += typeof post.likesCount === "number" ? post.likesCount : 0;
+      entry.comments +=
+        typeof post.commentsCount === "number" ? post.commentsCount : 0;
+
+      scores.set(uid, entry);
+    });
+
+    return Array.from(scores.values())
+      .map((entry) => ({
+        ...entry,
+        score: entry.likes > 0 ? entry.likes : entry.comments,
+      }))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        if (b.likes !== a.likes) return b.likes - a.likes;
+        return b.comments - a.comments;
+      });
+  }, [challengePosts]);
 
 
   useEffect(() => {
@@ -150,25 +191,65 @@ export default function Page() {
 
       {/* --- WEEKLY CHALLENGE GALLERY --- */}
       <section className="container py-16">
-        <h2 className="text-2xl font-semibold mb-6 text-brand-300">
-          🎣 Featured #HookdChallenge Catches
-        </h2>
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {challengePosts.length > 0 ? (
-            challengePosts.map((p) => (
-              <PostCard key={p.id} post={p} onOpen={setActive} />
-            ))
-          ) : (
-            <p className="text-white/60">
-              No challenge posts yet — be the first to tag your catch with{" "}
-              <span className="text-brand-300">#HookdChallenge</span>!
-            </p>
-          )}
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div>
+            <h2 className="text-2xl font-semibold mb-6 text-brand-300">
+              🎣 Featured #HookdChallenge Catches
+            </h2>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {challengePosts.length > 0 ? (
+                challengePosts.map((p) => (
+                  <PostCard key={p.id} post={p} onOpen={setActive} />
+                ))
+              ) : (
+                <p className="text-white/60">
+                  No challenge posts yet — be the first to tag your catch with{" "}
+                  <span className="text-brand-300">#HookdChallenge</span>!
+                </p>
+              )}
+            </div>
+          </div>
+          <aside className="glass rounded-3xl border border-white/10 p-6 self-start">
+            <h3 className="text-lg font-semibold text-brand-200 mb-4">
+              Challenge Leaderboard
+            </h3>
+            {leaderboard.length > 0 ? (
+              <ol className="space-y-3">
+                {leaderboard.slice(0, 3).map((angler, index) => {
+                  const label = angler.likes > 0 ? "likes" : "comments";
+                  const score = angler.likes > 0 ? angler.likes : angler.comments;
+                  return (
+                    <li key={angler.uid} className="card p-4 flex items-center gap-4">
+                      <span className="text-2xl font-semibold text-brand-300 w-6">
+                        {index + 1}.
+                      </span>
+                      <div className="flex-1">
+                        <Link
+                          href={`/profile/${angler.uid}`}
+                          className="font-medium hover:text-brand-200 transition"
+                        >
+                          {angler.displayName}
+                        </Link>
+                        <p className="text-sm text-white/70">
+                          {score} {label}
+                        </p>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            ) : (
+              <div className="card p-4 text-white/70 text-sm">
+                Be the first to land a challenge catch and claim the top spot on the
+                leaderboard!
+              </div>
+            )}
+          </aside>
         </div>
       </section>
       {active && (
-  <PostDetailModal post={active} onClose={() => setActive(null)} />
-)}
+        <PostDetailModal post={active} onClose={() => setActive(null)} />
+      )}
     </main>
   );
 }
