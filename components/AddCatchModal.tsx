@@ -5,9 +5,8 @@ import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-lea
 import L from 'leaflet';
 import { parse } from 'exifr';
 import { useAuthState } from 'react-firebase-hooks/auth';
-import { db, storage, auth } from '@/lib/firebaseClient';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, addDoc, serverTimestamp, GeoPoint, Timestamp } from 'firebase/firestore';
+import { auth } from '@/lib/firebaseClient';
+import { createCatch } from '@/lib/firestore';
 
 const DEFAULT_CENTER = { lat: 39.8283, lng: -98.5795 };
 
@@ -60,7 +59,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [species, setSpecies] = useState('');
   const [weight, setWeight] = useState('');
   const [location, setLocation] = useState('');
-  const [notes, setNotes] = useState('');
+  const [caption, setCaption] = useState('');
   const [isTrophy, setIsTrophy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [captureDate, setCaptureDate] = useState('');
@@ -162,10 +161,6 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
 
     setUploading(true);
     try {
-      const storageRef = ref(storage!, `catches/${user.uid}-${Date.now()}`);
-      await uploadBytes(storageRef, file);
-      const imageUrl = await getDownloadURL(storageRef);
-
       let capturedAt: Date | null = null;
       if (captureDate) {
         const timestampString = captureTime ? `${captureDate}T${captureTime}` : `${captureDate}T00:00`;
@@ -173,30 +168,28 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         capturedAt = Number.isNaN(parsed.getTime()) ? null : parsed;
       }
 
-      await addDoc(collection(db, 'catches'), {
-        userId: user.uid,
-        userName: user.displayName,
+      await createCatch({
+        uid: user.uid,
+        displayName: user.displayName || 'Angler',
+        userPhoto: user.photoURL || undefined,
         species,
         weight,
         location,
-        notes,
-        isTrophy,
-        imageUrl,
-        likes: [],
-        commentsCount: 0,
-        createdAt: serverTimestamp(),
-        capturedAt: capturedAt ? Timestamp.fromDate(capturedAt) : null,
+        caption,
+        trophy: isTrophy,
+        file,
         captureDate: captureDate || null,
         captureTime: captureTime || null,
-        coordinates: coordinates ? new GeoPoint(coordinates.lat, coordinates.lng) : null,
+        capturedAt,
+        coordinates,
       });
 
       alert('Catch uploaded!');
-      setUploading(false);
       onClose();
     } catch (err) {
       console.error(err);
       alert('Error uploading catch');
+    } finally {
       setUploading(false);
     }
   };
@@ -314,9 +307,9 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
 
           <textarea
             className="input"
-            placeholder="Notes"
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
+            placeholder="Caption or notes"
+            value={caption}
+            onChange={(event) => setCaption(event.target.value)}
             rows={3}
           />
         </div>
