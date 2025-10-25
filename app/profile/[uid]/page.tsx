@@ -59,16 +59,23 @@ export default function ProfilePage() {
 
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-  {user.isTester ? (
-    <>
-      <span className="text-brand-300">hookd_{user.username || user.displayName}</span>
-      <span className="text-blue-400" title="Tester">✔</span>
-    </>
-  ) : (
-    <>{user.username || user.displayName}</>
-  )}
-</h1>
+            {user.displayName}
+            {user.username && (
+              <span className="text-sm text-white/60 font-normal">
+                @{user.isTester ? (
+                  <>
+                    <span className="text-brand-300">hookd_{user.username}</span>
+                    <span className="text-blue-400 ml-1" title="Tester">✔</span>
+                  </>
+                ) : (
+                  user.username
+                )}
+              </span>
+            )}
+          </h1>
+
           {user.bio && <p className="opacity-80 mt-1">{user.bio}</p>}
+
           <div className="text-sm opacity-60 mt-1">
             {user.followers?.length || 0} followers · {user.following?.length || 0} following
           </div>
