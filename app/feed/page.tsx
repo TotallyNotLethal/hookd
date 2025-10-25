@@ -3,7 +3,7 @@ import NavBar from "@/components/NavBar";
 import PostCard from "@/components/PostCard";
 import { subscribeToFeedCatches } from "@/lib/firestore";
 import { Suspense, useEffect, useState } from "react";
-import AddCatchModal from "./AddCatchModal";
+import AddCatchModal from "@/components/AddCatchModal";
 import { useRouter, useSearchParams } from "next/navigation";
 import PostDetailModal from "./PostDetailModal";
 

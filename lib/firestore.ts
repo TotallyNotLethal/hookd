@@ -3,7 +3,8 @@ import { app, db } from "./firebaseClient";
 import {
   doc, setDoc, getDoc, updateDoc, serverTimestamp,
   addDoc, collection, onSnapshot, orderBy, query, where,
-  deleteDoc, increment, runTransaction, getDocs, limit 
+  deleteDoc, increment, runTransaction, getDocs, limit,
+  GeoPoint, Timestamp,
 } from "firebase/firestore";
 import { getStorage, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 
@@ -40,6 +41,10 @@ export type CatchInput = {
   caption?: string;
   trophy?: boolean;
   file: File;
+  captureDate?: string | null;
+  captureTime?: string | null;
+  capturedAt?: Date | null;
+  coordinates?: { lat: number; lng: number } | null;
 };
 
 /** ---------- Users ---------- */
@@ -111,7 +116,7 @@ export async function createCatch(input: CatchInput) {
   const storageRef = ref(storage, path);
 
   // ✅ Wait for the upload to finish
-  const uploadResult = await uploadBytes(storageRef, input.file);
+  await uploadBytes(storageRef, input.file);
 
   // ✅ Fetch download URL AFTER upload completes
   const imageUrl = await getDownloadURL(storageRef);
@@ -137,6 +142,15 @@ export async function createCatch(input: CatchInput) {
     likesCount: 0,
     commentsCount: 0,
     createdAt: serverTimestamp(),
+    captureDate: input.captureDate || null,
+    captureTime: input.captureTime || null,
+    capturedAt: input.capturedAt ? Timestamp.fromDate(input.capturedAt) : null,
+    coordinates:
+      input.coordinates &&
+      Number.isFinite(input.coordinates.lat) &&
+      Number.isFinite(input.coordinates.lng)
+        ? new GeoPoint(input.coordinates.lat, input.coordinates.lng)
+        : null,
   });
 
   return cRef.id;
