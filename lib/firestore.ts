@@ -46,14 +46,20 @@ export type CatchInput = {
 export async function ensureUserProfile(user: { uid: string; displayName: string | null; photoURL?: string | null; }) {
   const refUser = doc(db, 'users', user.uid);
   const snap = await getDoc(refUser);
+
   if (!snap.exists()) {
     const payload: HookdUser = {
       uid: user.uid,
       displayName: user.displayName || 'Angler',
+      username: '',                // ✅ default username
       photoURL: user.photoURL || undefined,
       bio: '',
-      trophies: [], followers: [], following: [],
-      createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+      trophies: [],
+      followers: [],
+      following: [],
+      isTester: false,             // ✅ default tester flag
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
     };
     await setDoc(refUser, payload);
   } else {
@@ -85,7 +91,7 @@ export async function updateUserProfile(uid: string, data: { displayName?: strin
   await updateDoc(refUser, { ...data, updatedAt: serverTimestamp() });
 }
 
-export function subscribeToUser(uid: string, cb: (u: any|null)=>void) {
+export function subscribeToUser(uid: string, cb: (u: any | null) => void) {
   const refUser = doc(db, 'users', uid);
   return onSnapshot(refUser, (snap) => cb(snap.exists() ? { uid, ...snap.data() } : null));
 }
@@ -104,30 +110,28 @@ export async function createCatch(input: CatchInput) {
   const path = `catches/${input.uid}/${crypto.randomUUID()}`;
   const storageRef = ref(storage, path);
 
-
   // ✅ Wait for the upload to finish
   const uploadResult = await uploadBytes(storageRef, input.file);
 
   // ✅ Fetch download URL AFTER upload completes
   const imageUrl = await getDownloadURL(storageRef);
 
-// Extract hashtags from the caption
-const hashtags = input.caption
-  ? Array.from(input.caption.matchAll(/#[A-Za-z0-9_]+/g)).map((m) => m[0])
-  : [];
+  // Extract hashtags from the caption
+  const hashtags = input.caption
+    ? Array.from(input.caption.matchAll(/#[A-Za-z0-9_]+/g)).map((m) => m[0])
+    : [];
 
-	
   // ✅ Save Firestore document with image URL
   const cRef = await addDoc(collection(db, 'catches'), {
     uid: input.uid,
-	userId: input.uid,
+    userId: input.uid,
     displayName: input.displayName,
     userPhoto: input.userPhoto || null,
     species: input.species,
     weight: input.weight || '',
     location: input.location || '',
     caption: input.caption || '',
-	hashtags,
+    hashtags,
     imageUrl,
     trophy: !!input.trophy,
     likesCount: 0,
@@ -138,11 +142,10 @@ const hashtags = input.caption
   return cRef.id;
 }
 
-
-export function subscribeToFeedCatches(cb: (arr:any[]) => void) {
+export function subscribeToFeedCatches(cb: (arr: any[]) => void) {
   const q = query(collection(db, 'catches'), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snap) => {
-    const arr:any[] = [];
+    const arr: any[] = [];
     snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
     cb(arr);
   });
@@ -164,16 +167,17 @@ export async function toggleLike(catchId: string, uid: string) {
   });
 }
 
-export function subscribeToUserLike(catchId: string, uid: string, cb: (liked: boolean)=>void) {
+export function subscribeToUserLike(catchId: string, uid: string, cb: (liked: boolean) => void) {
   const likeRef = doc(db, 'catches', catchId, 'likes', uid);
   return onSnapshot(likeRef, (snap) => cb(snap.exists()));
 }
 
-export function subscribeToLikesCount(catchId: string, cb: (count:number)=>void) {
+export function subscribeToLikesCount(catchId: string, cb: (count: number) => void) {
   const postRef = doc(db, 'catches', catchId);
   return onSnapshot(postRef, (snap) => { if (snap.exists()) cb(snap.data().likesCount || 0); });
 }
 
+/** ---------- Challenge Catches ---------- */
 export function subscribeToChallengeCatches(cb: (arr: any[]) => void) {
   const q = query(
     collection(db, "catches"),
@@ -188,7 +192,6 @@ export function subscribeToChallengeCatches(cb: (arr: any[]) => void) {
   });
 }
 
-
 /** ---------- Comments ---------- */
 export async function addComment(catchId: string, data: { uid: string; displayName: string; photoURL?: string; text: string; }) {
   const commentsCol = collection(db, 'catches', catchId, 'comments');
@@ -197,10 +200,10 @@ export async function addComment(catchId: string, data: { uid: string; displayNa
   await updateDoc(postRef, { commentsCount: increment(1) });
 }
 
-export function subscribeToComments(catchId: string, cb: (arr:any[]) => void) {
-  const q = query(collection(db, 'catches', catchId, 'comments'), orderBy('createdAt','desc'));
+export function subscribeToComments(catchId: string, cb: (arr: any[]) => void) {
+  const q = query(collection(db, 'catches', catchId, 'comments'), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snap) => {
-    const arr:any[] = [];
+    const arr: any[] = [];
     snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
     cb(arr);
   });
@@ -211,7 +214,6 @@ export async function deleteCatch(catchId: string) {
   await deleteDoc(doc(db, 'catches', catchId));
 }
 
-
 export async function getChallengeCatches() {
   const q = query(
     collection(db, "catches"),
@@ -219,7 +221,6 @@ export async function getChallengeCatches() {
     orderBy("createdAt", "desc"),
     limit(6)
   );
-
   const snap = await getDocs(q);
   return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 }
