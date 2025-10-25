@@ -1,4 +1,5 @@
 'use client';
+import "@/lib/firebaseClient";
 import NavBar from "@/components/NavBar";
 import Image from "next/image";
 import Link from "next/link";
