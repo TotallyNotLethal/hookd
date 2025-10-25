@@ -1,3 +1,5 @@
+"use client";
+
 import dynamic from "next/dynamic";
 import NavBar from "@/components/NavBar";
 import TrendingExplorer from "@/components/TrendingExplorer";
