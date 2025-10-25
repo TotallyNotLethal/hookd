@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getAuth, onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { app } from '@/lib/firebaseClient';
-import { Home, PlusCircle, UserRound, LogIn, LogOut } from 'lucide-react';
+import { Home, PlusCircle, UserRound, LogIn, LogOut, Map as MapIcon, NotebookPen, Fish } from 'lucide-react';
 
 export default function NavBar() {
   const pathname = usePathname();
@@ -17,8 +17,10 @@ export default function NavBar() {
   }, []);
 
   const tabs = [
-    { href: '/feed', icon: Home, label: 'Home' },
-    { href: '/feed?compose=1', icon: PlusCircle, label: 'Add' },
+    { href: '/', icon: Home, label: 'Home' },
+    { href: '/map', icon: MapIcon, label: 'Map' },
+    { href: '/feed?compose=1', icon: PlusCircle, label: 'Add Catch' },
+    { href: '/logbook', icon: NotebookPen, label: 'Logbook' },
     { href: '/profile', icon: UserRound, label: 'Profile' },
   ];
 
@@ -34,24 +36,27 @@ export default function NavBar() {
 
           {/* Desktop actions */}
           <div className="hidden sm:flex items-center gap-3">
+            <Link href="/map" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Map</Link>
+            <Link href="/logbook" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Logbook</Link>
+            <Link href="/tools/fish-identifier" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Fish ID</Link>
             {!user ? (
               <>
-                <Link href="/login" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5">Log in</Link>
+                <Link href="/login" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Log in</Link>
                 <Link href="/login" className="btn-primary">Sign up</Link>
               </>
             ) : (
               <>
-                <Link href="/feed" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5">Feed</Link>
-                <Link href="/profile" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5">Profile</Link>
+                <Link href="/feed" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Feed</Link>
+                <Link href="/profile" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Profile</Link>
                 <button
                   onClick={() => signOut(getAuth(app))}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5"
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
                 >
                   <LogOut className="w-4 h-4" /> Logout
                 </button>
                 <Image
                   src={user.photoURL || '/logo.svg'}
-                  alt="avatar"
+                  alt="Account avatar"
                   width={32}
                   height={32}
                   className="rounded-full"
@@ -65,7 +70,8 @@ export default function NavBar() {
         <nav className="sm:hidden mt-4 w-full">
           <ul className="flex w-full items-center justify-between gap-2 rounded-2xl bg-slate-900/60 px-3 py-2 border border-white/10 backdrop-blur">
             {tabs.map((t) => {
-              const active = pathname.startsWith(t.href.split('?')[0]);
+              const baseHref = t.href.split('?')[0];
+              const active = baseHref === '/' ? pathname === '/' : pathname.startsWith(baseHref);
               const Icon = t.icon;
               return (
                 <li key={t.href}>
@@ -81,6 +87,12 @@ export default function NavBar() {
                 </li>
               );
             })}
+            <li>
+              <Link href="/tools/fish-identifier" className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/10">
+                <Fish className="w-5 h-5" />
+                <span className="text-sm">Fish ID</span>
+              </Link>
+            </li>
             {!user ? (
               <li>
                 <Link href="/login" className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/10">
