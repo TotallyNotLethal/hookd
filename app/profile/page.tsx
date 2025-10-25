@@ -6,34 +6,70 @@ import { onAuthStateChanged, getAuth } from "firebase/auth";
 import { useEffect, useMemo, useState } from "react";
 import { subscribeToUser, subscribeToUserCatches, updateUserProfile } from "@/lib/firestore";
 
-function EditProfileModal({ user, onClose }: { user: any; onClose: ()=>void }) {
-  const [displayName, setDisplayName] = useState(user?.displayName || '');
-  const [bio, setBio] = useState(user?.bio || '');
+function EditProfileModal({ user, onClose }: { user: any; onClose: () => void }) {
+  const [displayName, setDisplayName] = useState(user?.displayName || "");
+  const [bio, setBio] = useState(user?.bio || "");
+  const [username, setUserName] = useState(user?.username || "");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   async function save() {
-    setSaving(true);
-    await updateUserProfile(user.uid, { displayName, bio });
-    setSaving(false);
-    onClose();
+    try {
+      setSaving(true);
+      setError("");
+      // Update display name & bio
+      await updateUserProfile(user.uid, { displayName, bio });
+      // Update username if changed
+      if (username && username !== user.username) {
+        const { setUsername } = await import("@/lib/firestore");
+        await setUsername(user.uid, username);
+      }
+      onClose();
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
-      <div className="card w-full max-w-lg p-6" onClick={(e)=>e.stopPropagation()}>
+      <div className="card w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-xl font-semibold mb-4">Edit Profile</h3>
         <div className="space-y-3">
-          <input className="input" value={displayName} onChange={(e)=>setDisplayName(e.target.value)} placeholder="Display name"/>
-          <textarea className="input min-h-[80px]" value={bio} onChange={(e)=>setBio(e.target.value)} placeholder="Short bio"/>
+          <input
+            className="input"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="Display name"
+          />
+          <input
+            className="input"
+            value={username}
+            onChange={(e) => setUserName(e.target.value)}
+            placeholder="Username (unique)"
+          />
+          <textarea
+            className="input min-h-[80px]"
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+            placeholder="Short bio"
+          />
+          {error && <p className="text-red-400 text-sm">{error}</p>}
           <div className="flex justify-end gap-3 pt-2">
-            <button className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5" onClick={onClose}>Cancel</button>
-            <button className="btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+            <button className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5" onClick={onClose}>
+              Cancel
+            </button>
+            <button className="btn-primary" onClick={save} disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </button>
           </div>
         </div>
       </div>
     </div>
   );
 }
+
 
 export default function Page() {
   const [authUser, setAuthUser] = useState<any>(null);
@@ -79,7 +115,17 @@ export default function Page() {
             <div className="flex items-center gap-4">
               <Image src={authUser.photoURL || '/logo.svg'} alt="me" width={80} height={80} className="rounded-2xl -mt-12 border-4 border-[var(--card)]" />
               <div>
-                <h1 className="text-2xl font-semibold">{profile?.displayName || authUser.displayName || 'Angler'}</h1>
+                <h1 className="text-2xl font-semibold flex items-center gap-2">
+  {profile?.isTester ? (
+    <>
+      <span className="text-brand-300">hookd_{profile?.username || profile?.displayName}</span>
+      <span className="text-blue-400" title="Tester">✔</span>
+    </>
+  ) : (
+    <>{profile?.username || profile?.displayName || "Angler"}</>
+  )}
+</h1>
+
                 <p className="text-white/60">{authUser.email}</p>
                 <p className="text-white/70 text-sm mt-1">
                   <span className="font-medium">{(profile?.followers || []).length}</span> followers •{" "}
