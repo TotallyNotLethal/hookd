@@ -3,7 +3,7 @@ import { app, db } from "./firebaseClient";
 import {
   doc, setDoc, getDoc, updateDoc, serverTimestamp,
   addDoc, collection, onSnapshot, orderBy, query, where,
-  deleteDoc, increment, runTransaction, limit, getDocs
+  deleteDoc, increment, runTransaction, getDocs
 } from "firebase/firestore";
 import { getStorage, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 
@@ -178,17 +178,34 @@ export function subscribeToLikesCount(catchId: string, cb: (count: number) => vo
 }
 
 /** ---------- Challenge Catches ---------- */
+const timestampToMillis = (value: any): number => {
+  if (!value) return 0;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  if (typeof value === 'object') {
+    if (typeof (value as any).toMillis === 'function') return (value as any).toMillis();
+    if (value instanceof Date) return value.getTime();
+    if ('seconds' in (value as any)) {
+      const { seconds, nanoseconds = 0 } = value as { seconds: number; nanoseconds?: number };
+      return seconds * 1000 + nanoseconds / 1e6;
+    }
+  }
+  return 0;
+};
+
 export function subscribeToChallengeCatches(cb: (arr: any[]) => void) {
   const q = query(
     collection(db, "catches"),
-    where("hashtags", "array-contains", "#HookdChallenge"),
-    orderBy("createdAt", "desc"),
-    limit(6)
+    where("hashtags", "array-contains", "#HookdChallenge")
   );
   return onSnapshot(q, (snap) => {
     const arr: any[] = [];
     snap.forEach((d) => arr.push({ id: d.id, ...d.data() }));
-    cb(arr);
+    arr.sort((a, b) => timestampToMillis(b.createdAt) - timestampToMillis(a.createdAt));
+    cb(arr.slice(0, 6));
   });
 }
 
@@ -217,10 +234,11 @@ export async function deleteCatch(catchId: string) {
 export async function getChallengeCatches() {
   const q = query(
     collection(db, "catches"),
-    where("hashtags", "array-contains", "#HookdChallenge"),
-    orderBy("createdAt", "desc"),
-    limit(6)
+    where("hashtags", "array-contains", "#HookdChallenge")
   );
   const snap = await getDocs(q);
-  return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+  return snap.docs
+    .map((doc) => ({ id: doc.id, ...doc.data() }))
+    .sort((a, b) => timestampToMillis(b.createdAt) - timestampToMillis(a.createdAt))
+    .slice(0, 6);
 }
