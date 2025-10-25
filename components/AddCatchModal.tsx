@@ -195,6 +195,11 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   };
 
   return (
+  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <form
+      onSubmit={handleSubmit}
+      className="glass p-6 rounded-xl w-full max-w-xl space-y-4 relative"
+    >
     <div className="modal">
       <form onSubmit={handleSubmit} className="modal-content glass p-6 rounded-xl w-full max-w-xl space-y-4">
         <div className="flex items-start justify-between">
