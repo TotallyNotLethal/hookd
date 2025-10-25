@@ -20,16 +20,25 @@ let app: FirebaseApp;
 if (!getApps().length) app = initializeApp(firebaseConfig);
 else app = getApp();
 
-// --- Export DB/Auth immediately (safe on both server + client)
+// --- Always safe exports (SSR-compatible)
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 export const db = getFirestore(app);
 
-// --- Defer Storage creation until we’re in the browser
-export let storage: FirebaseStorage | null = null;
-if (typeof window !== 'undefined') {
-  storage = getStorage(app, 'gs://hookd-b7ae6.firebasestorage.app');
-}
+// --- Guard storage behind a browser check
+let _storage: FirebaseStorage | null = null;
+export const getStorageSafe = (): FirebaseStorage | null => {
+  if (typeof window === 'undefined') return null;
+  if (!_storage) {
+    _storage = getStorage(app, 'gs://hookd-b7ae6.firebasestorage.app');
+  }
+  return _storage;
+};
+
+// For convenience, still export `storage` (lazy initialized)
+export const storage = typeof window !== 'undefined'
+  ? getStorage(app, 'gs://hookd-b7ae6.firebasestorage.app')
+  : null;
 
 // --- Export app for utilities
 export { app };
