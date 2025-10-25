@@ -3,7 +3,7 @@ import { app, db } from "./firebaseClient";
 import {
   doc, setDoc, getDoc, updateDoc, serverTimestamp,
   addDoc, collection, onSnapshot, orderBy, query, where,
-  deleteDoc, increment, runTransaction, getDocs
+  deleteDoc, increment, runTransaction, getDocs, limit 
 } from "firebase/firestore";
 import { getStorage, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 
