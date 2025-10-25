@@ -63,6 +63,21 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
   }
 }
 
+export async function setUsername(uid: string, username: string) {
+  // Normalize username (no spaces, lowercase)
+  const clean = username.trim().toLowerCase();
+
+  // Check if already taken
+  const q = query(collection(db, "users"), where("username", "==", clean));
+  const snap = await getDocs(q);
+  if (!snap.empty) throw new Error("Username already taken");
+
+  // Update user doc
+  const ref = doc(db, "users", uid);
+  await updateDoc(ref, { username: clean, updatedAt: serverTimestamp() });
+  return clean;
+}
+
 export async function updateUserProfile(uid: string, data: { displayName?: string; bio?: string }) {
   const refUser = doc(db, 'users', uid);
   await updateDoc(refUser, { ...data, updatedAt: serverTimestamp() });
