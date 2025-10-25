@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import PostCard from "@/components/PostCard";
 import ConditionsWidget from "@/components/ConditionsWidget";
-import { subscribeToChallengeCatches  } from "@/lib/firestore";
+import { subscribeToChallengeCatches, subscribeToFeedCatches } from "@/lib/firestore";
 import { useEffect, useState } from "react";
 import PostDetailModal from "@/app/feed/PostDetailModal";
 
@@ -13,27 +13,26 @@ import PostDetailModal from "@/app/feed/PostDetailModal";
 
 export default function Page() {
   const [challengePosts, setChallengePosts] = useState<any[]>([]);
+  const [recentCatches, setRecentCatches] = useState<any[]>([]);
   const [active, setActive] = useState<any | null>(null);
 
 
   useEffect(() => {
-  let unsub: (() => void) | null = null;
+    const unsubscribe = subscribeToChallengeCatches(setChallengePosts);
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
 
-  async function initAndSubscribe() {
-    // Make sure Firebase app and db are loaded before attaching listener
-    const { app, db } = await import("@/lib/firebaseClient");
-    console.log("Firebase initialized:", app.name);
+  useEffect(() => {
+    const unsubscribe = subscribeToFeedCatches((posts) => {
+      setRecentCatches(posts.slice(0, 4));
+    });
 
-    const { subscribeToChallengeCatches } = await import("@/lib/firestore");
-    unsub = subscribeToChallengeCatches(setChallengePosts);
-  }
-
-  initAndSubscribe();
-
-  return () => {
-    if (unsub) unsub();
-  };
-}, []);
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
 
 
 
@@ -115,6 +114,38 @@ export default function Page() {
             </div>
           </div>
         </div>
+      </section>
+
+      <section className="container py-16">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-6">
+          <div>
+            <p className="text-sm uppercase tracking-[0.3em] text-white/60">Best of the feed</p>
+            <h2 className="text-2xl font-semibold text-white">Fresh catches from the community</h2>
+          </div>
+          <Link href="/feed" className="text-brand-300 hover:text-brand-200 text-sm md:text-base">
+            View full feed →
+          </Link>
+        </div>
+
+        {recentCatches.length > 0 ? (
+          <div className="flex gap-6 overflow-x-auto pb-4 snap-x">
+            {recentCatches.map((post) => (
+              <div
+                key={post.id}
+                className="min-w-[260px] sm:min-w-[320px] snap-start"
+              >
+                <PostCard post={post} onOpen={setActive} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center gap-4 rounded-3xl border border-white/10 p-10 text-center text-white/70">
+            <p>No catches yet — check out the feed to see the latest action.</p>
+            <Link href="/feed" className="btn-primary">
+              Explore the feed
+            </Link>
+          </div>
+        )}
       </section>
 
       {/* --- WEEKLY CHALLENGE GALLERY --- */}
