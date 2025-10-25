@@ -27,7 +27,7 @@ export type HookdUser = {
   following?: string[];
   createdAt?: any;
   updatedAt?: any;
-  isTester: false;
+  isTester: boolean;
 };
 
 export type CatchInput = {
