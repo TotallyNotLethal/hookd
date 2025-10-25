@@ -108,10 +108,22 @@ export default function PostDetailModal({ post, onClose }: { post: any; onClose:
                     className="text-sm text-blue-400 hover:underline cursor-pointer font-medium"
                     onClick={() => router.push(`/profile/${post.uid}`)}
                   >
-                    {post.displayName}
+                    {post.displayName || post.user.name}
                   </div>
                   {postTime && <span className="text-xs opacity-60">{postTime}</span>}
                 </div>
+
+                {post.caption && (
+  <p className="text-sm opacity-80 mb-2 whitespace-pre-line">{post.caption}</p>
+)}
+
+{(post.weight || post.location) && (
+  <p className="text-xs opacity-60 mb-2">
+    {post.weight && <>Weight: {post.weight}</>}{" "}
+    {post.location && <span>• {post.location}</span>}
+  </p>
+)}
+
 
                 <div className="flex items-center gap-3 mb-2">
                   <button
