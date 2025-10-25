@@ -50,7 +50,6 @@ function LocationClickHandler({ onSelect }: { onSelect: (coordinates: Coordinate
       onSelect({ lat: event.latlng.lat, lng: event.latlng.lng });
     },
   });
-
   return null;
 }
 
@@ -161,13 +160,6 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
 
     setUploading(true);
     try {
-      let capturedAt: Date | null = null;
-      if (captureDate) {
-        const timestampString = captureTime ? `${captureDate}T${captureTime}` : `${captureDate}T00:00`;
-        const parsed = new Date(timestampString);
-        capturedAt = Number.isNaN(parsed.getTime()) ? null : parsed;
-      }
-
       await createCatch({
         uid: user.uid,
         displayName: user.displayName || 'Angler',
@@ -178,10 +170,6 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         caption,
         trophy: isTrophy,
         file,
-        captureDate: captureDate || null,
-        captureTime: captureTime || null,
-        capturedAt,
-        coordinates,
       });
 
       alert('Catch uploaded!');
@@ -195,21 +183,20 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   };
 
   return (
-  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-    <form
-      onSubmit={handleSubmit}
-      className="glass p-6 rounded-xl w-full max-w-xl space-y-4 relative"
-    >
-    <div className="modal">
-      <form onSubmit={handleSubmit} className="modal-content glass p-6 rounded-xl w-full max-w-xl space-y-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <form
+        onSubmit={handleSubmit}
+        className="glass p-6 rounded-xl w-full max-w-xl space-y-4 relative border border-white/10"
+      >
         <div className="flex items-start justify-between">
           <h2 className="text-lg font-semibold">Add Catch</h2>
           <button type="button" onClick={onClose} className="text-sm text-white/60 hover:text-white">
-            Close
+            ✕
           </button>
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-4 overflow-y-auto max-h-[75vh] pr-1">
+          {/* Photo */}
           <div className="space-y-1">
             <label className="text-sm text-white/70" htmlFor="catch-file">
               Catch photo
@@ -225,50 +212,13 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
             {readingMetadata && <p className="text-xs text-white/50">Reading photo metadata…</p>}
           </div>
 
+          {/* Inputs */}
           <div className="grid gap-3 sm:grid-cols-2">
-            <input
-              className="input"
-              placeholder="Species"
-              value={species}
-              onChange={(event) => setSpecies(event.target.value)}
-              required
-            />
-            <input
-              className="input"
-              placeholder="Weight"
-              value={weight}
-              onChange={(event) => setWeight(event.target.value)}
-              required
-            />
+            <input className="input" placeholder="Species" value={species} onChange={(e) => setSpecies(e.target.value)} required />
+            <input className="input" placeholder="Weight" value={weight} onChange={(e) => setWeight(e.target.value)} required />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1">
-              <label className="text-sm text-white/70" htmlFor="capture-date">
-                Catch date
-              </label>
-              <input
-                id="capture-date"
-                type="date"
-                className="input"
-                value={captureDate}
-                onChange={(event) => setCaptureDate(event.target.value)}
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm text-white/70" htmlFor="capture-time">
-                Catch time
-              </label>
-              <input
-                id="capture-time"
-                type="time"
-                className="input"
-                value={captureTime}
-                onChange={(event) => setCaptureTime(event.target.value)}
-              />
-            </div>
-          </div>
-
+          {/* Map + Location */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-sm text-white/70" htmlFor="location-name">
@@ -285,7 +235,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
               className="input"
               placeholder="Where did you catch it?"
               value={location}
-              onChange={(event) => setLocation(event.target.value)}
+              onChange={(e) => setLocation(e.target.value)}
               required
             />
             <div className="h-56 w-full overflow-hidden rounded-xl border border-white/10">
@@ -298,33 +248,31 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
               >
                 <TileLayer
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                 />
                 <LocationUpdater coordinates={coordinates} />
-                {coordinates && <Marker position={[coordinates.lat, coordinates.lng]} icon={markerIcon} />} 
+                {coordinates && <Marker position={[coordinates.lat, coordinates.lng]} icon={markerIcon} />}
                 <LocationClickHandler onSelect={handleCoordinatesChange} />
               </MapContainer>
             </div>
-            <p className="text-xs text-white/60">
-              Tap the map to adjust the pin. We&apos;ll use your photo metadata when available.
-            </p>
           </div>
 
+          {/* Caption */}
           <textarea
             className="input"
             placeholder="Caption or notes"
             value={caption}
-            onChange={(event) => setCaption(event.target.value)}
+            onChange={(e) => setCaption(e.target.value)}
             rows={3}
           />
         </div>
 
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={isTrophy} onChange={(event) => setIsTrophy(event.target.checked)} />
+        <label className="flex items-center gap-2 text-sm pt-2">
+          <input type="checkbox" checked={isTrophy} onChange={(e) => setIsTrophy(e.target.checked)} />
           Mark as Trophy Catch
         </label>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+        <div className="flex flex-col gap-3 sm:flex-row sm:justify-end pt-3">
           <button type="button" onClick={onClose} className="btn-secondary w-full sm:w-auto">
             Cancel
           </button>
