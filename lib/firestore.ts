@@ -3,7 +3,7 @@ import { app, db } from "./firebaseClient";
 import {
   doc, setDoc, getDoc, updateDoc, serverTimestamp,
   addDoc, collection, onSnapshot, orderBy, query, where,
-  deleteDoc, increment, runTransaction
+  deleteDoc, increment, runTransaction, limit, getDocs
 } from "firebase/firestore";
 import { getStorage, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 
@@ -170,4 +170,17 @@ export function subscribeToComments(catchId: string, cb: (arr:any[]) => void) {
 /** ---------- Delete Catch ---------- */
 export async function deleteCatch(catchId: string) {
   await deleteDoc(doc(db, 'catches', catchId));
+}
+
+
+export async function getChallengeCatches() {
+  const q = query(
+    collection(db, "catches"),
+    where("hashtags", "array-contains", "#HookdChallenge"),
+    orderBy("createdAt", "desc"),
+    limit(6)
+  );
+
+  const snap = await getDocs(q);
+  return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 }
