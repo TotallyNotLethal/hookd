@@ -3,18 +3,17 @@ import NavBar from "@/components/NavBar";
 import Image from "next/image";
 import Link from "next/link";
 import PostCard from "@/components/PostCard";
-import { getChallengeCatches } from "@/lib/firestore";
+import { subscribeToChallengeCatches  } from "@/lib/firestore";
 import { useEffect, useState } from "react";
 
 export default function Page() {
   const [challengePosts, setChallengePosts] = useState<any[]>([]);
 
   useEffect(() => {
-    (async () => {
-      const data = await getChallengeCatches();
-      setChallengePosts(data);
-    })();
-  }, []);
+  const unsub = subscribeToChallengeCatches(setChallengePosts);
+  return () => unsub();
+}, []);
+
 
   return (
     <main>
