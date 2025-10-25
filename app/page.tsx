@@ -4,6 +4,7 @@ import NavBar from "@/components/NavBar";
 import Image from "next/image";
 import Link from "next/link";
 import PostCard from "@/components/PostCard";
+import ConditionsWidget from "@/components/ConditionsWidget";
 import { subscribeToChallengeCatches  } from "@/lib/firestore";
 import { useEffect, useState } from "react";
 import PostDetailModal from "@/app/feed/PostDetailModal";
@@ -78,7 +79,16 @@ export default function Page() {
           </div>
 
           <div className="glass rounded-3xl p-6 border-white/10">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <ConditionsWidget
+                className="sm:col-span-2"
+                location={{
+                  name: "Canton, OH",
+                  latitude: 40.7989,
+                  longitude: -81.3784,
+                  timezone: "America/New_York",
+                }}
+              />
               <div className="card p-4">
                 <h3 className="font-medium mb-2">Trending Lakes</h3>
                 <ul className="text-sm text-white/70 space-y-2">
@@ -95,7 +105,7 @@ export default function Page() {
                   <li>Bowfin</li>
                 </ul>
               </div>
-              <div className="col-span-2 card p-4">
+              <div className="card p-4 sm:col-span-2">
                 <h3 className="font-medium mb-2">This Week&apos;s Challenge</h3>
                 <p className="text-white/80 text-sm">
                   Catch a bass over 3lb using paddle tails. Share with
