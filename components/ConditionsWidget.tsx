@@ -56,7 +56,7 @@ export default function ConditionsWidget({
           count: "1",
         });
         const response = await fetch(
-          `https://geocoding-api.open-meteo.com/v1/reverse?${params.toString()}`,
+          `/api/open-meteo/reverse?${params.toString()}`,
         );
 
         if (response.ok) {
