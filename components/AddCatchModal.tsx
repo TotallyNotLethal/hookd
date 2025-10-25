@@ -80,7 +80,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         language: 'en',
         count: '1',
       });
-      const response = await fetch(`https://geocoding-api.open-meteo.com/v1/reverse?${params.toString()}`);
+      const response = await fetch(`/api/open-meteo/reverse?${params.toString()}`);
       if (!response.ok) return;
       const data = await response.json();
       const result = data.results?.[0];
