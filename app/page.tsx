@@ -19,6 +19,15 @@ export default function Page() {
   const [challengePosts, setChallengePosts] = useState<any[]>([]);
   const [recentCatches, setRecentCatches] = useState<any[]>([]);
   const [active, setActive] = useState<any | null>(null);
+  const fallbackConditionsLocation = useMemo(
+    () => ({
+      name: "Canton, OH",
+      latitude: 40.7989,
+      longitude: -81.3784,
+      timezone: "America/New_York",
+    }),
+    [],
+  );
 
   const leaderboard = useMemo(() => {
     const scores = new Map<
@@ -144,12 +153,7 @@ export default function Page() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <ConditionsWidget
                 className="sm:col-span-2"
-                location={{
-                  name: "Canton, OH",
-                  latitude: 40.7989,
-                  longitude: -81.3784,
-                  timezone: "America/New_York",
-                }}
+                fallbackLocation={fallbackConditionsLocation}
               />
               <div className="card p-4">
                 <h3 className="font-medium mb-2">Trending Lakes</h3>
