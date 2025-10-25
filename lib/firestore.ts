@@ -157,6 +157,21 @@ export function subscribeToLikesCount(catchId: string, cb: (count:number)=>void)
   return onSnapshot(postRef, (snap) => { if (snap.exists()) cb(snap.data().likesCount || 0); });
 }
 
+export function subscribeToChallengeCatches(cb: (arr: any[]) => void) {
+  const q = query(
+    collection(db, "catches"),
+    where("hashtags", "array-contains", "#HookdChallenge"),
+    orderBy("createdAt", "desc"),
+    limit(6)
+  );
+  return onSnapshot(q, (snap) => {
+    const arr: any[] = [];
+    snap.forEach((d) => arr.push({ id: d.id, ...d.data() }));
+    cb(arr);
+  });
+}
+
+
 /** ---------- Comments ---------- */
 export async function addComment(catchId: string, data: { uid: string; displayName: string; photoURL?: string; text: string; }) {
   const commentsCol = collection(db, 'catches', catchId, 'comments');
