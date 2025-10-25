@@ -5,7 +5,11 @@ import Image from "next/image";
 import Link from "next/link";
 import PostCard from "@/components/PostCard";
 import ConditionsWidget from "@/components/ConditionsWidget";
-import { subscribeToChallengeCatches, subscribeToFeedCatches } from "@/lib/firestore";
+import {
+  getChallengeCatches,
+  subscribeToChallengeCatches,
+  subscribeToFeedCatches,
+} from "@/lib/firestore";
 import { useEffect, useMemo, useState } from "react";
 import PostDetailModal from "@/app/feed/PostDetailModal";
 
@@ -59,8 +63,26 @@ export default function Page() {
 
 
   useEffect(() => {
-    const unsubscribe = subscribeToChallengeCatches(setChallengePosts);
+    let isMounted = true;
+
+    (async () => {
+      try {
+        const initialPosts = await getChallengeCatches();
+        if (!isMounted) return;
+        setChallengePosts(initialPosts);
+      } catch (error) {
+        console.error("Failed to load challenge catches", error);
+      }
+    })();
+
+    const unsubscribe = subscribeToChallengeCatches((posts) => {
+      if (isMounted) {
+        setChallengePosts(posts);
+      }
+    });
+
     return () => {
+      isMounted = false;
       if (unsubscribe) unsubscribe();
     };
   }, []);
