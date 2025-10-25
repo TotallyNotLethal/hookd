@@ -3,9 +3,15 @@ import NavBar from "@/components/NavBar";
 import PostCard from "@/components/PostCard";
 import { subscribeToFeedCatches } from "@/lib/firestore";
 import { Suspense, useEffect, useState } from "react";
-import AddCatchModal from "@/components/AddCatchModal";
+import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import PostDetailModal from "./PostDetailModal";
+
+const AddCatchModal = dynamic(() => import("@/components/AddCatchModal"), {
+  ssr: false,
+  loading: () => <div className="p-6 text-white/60">Loading map…</div>,
+});
+
 
 function FeedContent() {
   const [items, setItems] = useState<any[]>([]);
