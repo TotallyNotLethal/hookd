@@ -93,21 +93,7 @@ export default function Page() {
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {challengePosts.length > 0 ? (
             challengePosts.map((p) => (
-              <PostCard
-                key={p.id}
-                post={{
-                  id: p.id,
-                  user: { name: p.displayName, avatar: p.userPhoto || undefined },
-                  imageUrl: p.imageUrl,
-                  location: p.location,
-                  species: p.species,
-                  weight: p.weight,
-                  likesCount: p.likesCount,
-                  commentsCount: p.commentsCount,
-                  createdAt: p.createdAt,
-                  uid: p.uid,
-                }}
-              />
+              <PostCard key={p.id} post={p} onOpen={openDetail} />
             ))
           ) : (
             <p className="text-white/60">
