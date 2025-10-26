@@ -13,6 +13,46 @@ const DEFAULT_CENTER = { lat: 39.8283, lng: -98.5795 };
 const normalizeLongitude = (longitude: number) =>
   ((longitude + 180) % 360 + 360) % 360 - 180;
 
+const toNumber = (value: unknown): number | null => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (
+    value &&
+    typeof value === 'object' &&
+    'numerator' in value &&
+    'denominator' in value &&
+    typeof (value as { numerator: unknown }).numerator === 'number' &&
+    typeof (value as { denominator: unknown }).denominator === 'number'
+  ) {
+    const { numerator, denominator } = value as { numerator: number; denominator: number };
+    return denominator ? numerator / denominator : null;
+  }
+
+  return null;
+};
+
+const toDecimalDegrees = (value: unknown): number | null => {
+  const directNumber = toNumber(value);
+  if (directNumber !== null) {
+    return directNumber;
+  }
+
+  if (Array.isArray(value)) {
+    const [degrees, minutes = 0, seconds = 0] = value;
+    const deg = toNumber(degrees);
+    const min = toNumber(minutes);
+    const sec = toNumber(seconds);
+
+    if (deg !== null && min !== null && sec !== null) {
+      return deg + min / 60 + sec / 3600;
+    }
+  }
+
+  return null;
+};
+
 const markerIcon = L.icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -120,8 +160,22 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       setLocation('');
       try {
         const metadata = (await parse(selectedFile, {
-          pick: ['DateTimeOriginal', 'latitude', 'longitude'],
-        })) as { DateTimeOriginal?: string | Date; latitude?: number; longitude?: number } | undefined;
+          pick: [
+            'DateTimeOriginal',
+            'GPSLatitude',
+            'GPSLatitudeRef',
+            'GPSLongitude',
+            'GPSLongitudeRef',
+          ],
+        })) as
+          | {
+              DateTimeOriginal?: string | Date;
+              GPSLatitude?: unknown;
+              GPSLatitudeRef?: 'N' | 'S';
+              GPSLongitude?: unknown;
+              GPSLongitudeRef?: 'E' | 'W';
+            }
+          | undefined;
 
         const capturedAt = parseExifDateTime(metadata?.DateTimeOriginal);
         if (capturedAt) {
@@ -134,9 +188,15 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
           setCaptureTime(iso.slice(11, 16));
         }
 
-        if (metadata?.latitude && metadata?.longitude) {
-          const lat = metadata.latitude;
-          const lng = normalizeLongitude(metadata.longitude);
+        const rawLat = toDecimalDegrees(metadata?.GPSLatitude);
+        const rawLng = toDecimalDegrees(metadata?.GPSLongitude);
+        const latRef = metadata?.GPSLatitudeRef;
+        const lngRef = metadata?.GPSLongitudeRef;
+
+        if (rawLat !== null && rawLng !== null) {
+          const lat = latRef === 'S' ? -Math.abs(rawLat) : Math.abs(rawLat);
+          const lngValue = lngRef === 'W' ? -Math.abs(rawLng) : Math.abs(rawLng);
+          const lng = normalizeLongitude(lngValue);
           setCoordinates({ lat, lng });
           await lookupLocationName(lat, lng);
         }
