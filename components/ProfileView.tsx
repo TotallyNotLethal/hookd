@@ -1,7 +1,7 @@
 'use client';
 
 import Image from 'next/image';
-import { useMemo } from 'react';
+import { type KeyboardEvent, useMemo } from 'react';
 
 type Profile = {
   uid?: string;
@@ -22,6 +22,7 @@ type Catch = {
   species?: string;
   weight?: string;
   trophy?: boolean;
+  [key: string]: any;
 };
 
 type ProfileViewProps = {
@@ -32,6 +33,7 @@ type ProfileViewProps = {
   isFollowing?: boolean;
   onToggleFollow?: () => void;
   followPending?: boolean;
+  onCatchSelect?: (catchItem: Catch) => void;
 };
 
 export default function ProfileView({
@@ -42,6 +44,7 @@ export default function ProfileView({
   isFollowing = false,
   onToggleFollow,
   followPending = false,
+  onCatchSelect,
 }: ProfileViewProps) {
   const trophyCatches = useMemo(() => catches.filter((catchItem) => catchItem.trophy), [catches]);
   const standardCatches = useMemo(() => catches.filter((catchItem) => !catchItem.trophy), [catches]);
@@ -57,6 +60,14 @@ export default function ProfileView({
 
   const followerCount = profile?.followers?.length ?? 0;
   const followingCount = profile?.following?.length ?? 0;
+
+  const handleCatchKeyDown = (event: KeyboardEvent<HTMLDivElement>, catchItem: Catch) => {
+    if (!onCatchSelect) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onCatchSelect(catchItem);
+    }
+  };
 
   return (
     <>
@@ -128,7 +139,18 @@ export default function ProfileView({
             {trophyCatches.map((trophy) => (
               <div
                 key={trophy.id}
-                className="min-w-[260px] h-[180px] relative rounded-2xl overflow-hidden border border-white/10"
+                className={`min-w-[260px] h-[180px] relative rounded-2xl overflow-hidden border border-white/10 ${
+                  onCatchSelect
+                    ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400'
+                    : ''
+                }`}
+                role={onCatchSelect ? 'button' : undefined}
+                tabIndex={onCatchSelect ? 0 : undefined}
+                onClick={onCatchSelect ? () => onCatchSelect(trophy) : undefined}
+                onKeyDown={onCatchSelect ? (event) => handleCatchKeyDown(event, trophy) : undefined}
+                aria-label={
+                  onCatchSelect ? `Open details for ${trophy.species || 'catch'}` : undefined
+                }
               >
                 <Image src={trophy.imageUrl} alt={trophy.species || 'trophy catch'} fill className="object-cover" />
                 <div className="absolute bottom-0 left-0 right-0 p-2 text-sm bg-gradient-to-t from-black/60 to-transparent">
@@ -150,7 +172,18 @@ export default function ProfileView({
             {standardCatches.map((catchItem) => (
               <div
                 key={catchItem.id}
-                className="relative aspect-square rounded-2xl overflow-hidden border border-white/10"
+                className={`relative aspect-square rounded-2xl overflow-hidden border border-white/10 ${
+                  onCatchSelect
+                    ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400'
+                    : ''
+                }`}
+                role={onCatchSelect ? 'button' : undefined}
+                tabIndex={onCatchSelect ? 0 : undefined}
+                onClick={onCatchSelect ? () => onCatchSelect(catchItem) : undefined}
+                onKeyDown={onCatchSelect ? (event) => handleCatchKeyDown(event, catchItem) : undefined}
+                aria-label={
+                  onCatchSelect ? `Open details for ${catchItem.species || 'catch'}` : undefined
+                }
               >
                 <Image src={catchItem.imageUrl} alt={catchItem.species || 'catch'} fill className="object-cover" />
               </div>

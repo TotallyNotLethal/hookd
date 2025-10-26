@@ -57,7 +57,7 @@ export default function PostDetailModal({ post, onClose }: { post: any; onClose:
     <AnimatePresence>
       {post && (
         <motion.div
-          className="fixed inset-0 z-50 flex items-center justify-center"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -74,16 +74,16 @@ export default function PostDetailModal({ post, onClose }: { post: any; onClose:
 
           {/* Modal container */}
           <motion.div
-            className="relative bg-[var(--card)] border border-white/10 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl"
+            className="relative bg-[var(--card)] border border-white/10 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto md:max-h-[85vh] md:overflow-hidden shadow-2xl"
             initial={{ y: 50, opacity: 0, scale: 0.95 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 50, opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.3, ease: 'easeOut' }}
           >
-            <div className="grid grid-cols-1 md:grid-cols-2">
+            <div className="flex flex-col md:grid md:grid-cols-2">
               {/* Image with zoom animation */}
               <motion.div
-                className="relative md:min-h-[480px] overflow-hidden"
+                className="relative h-64 sm:h-80 md:h-full md:min-h-[480px] overflow-hidden"
                 initial={{ scale: 1.05 }}
                 animate={{ scale: 1 }}
                 transition={{ duration: 0.4 }}
@@ -98,7 +98,7 @@ export default function PostDetailModal({ post, onClose }: { post: any; onClose:
               </motion.div>
 
               {/* Right side (content) */}
-              <div className="p-4 pb-20 relative flex flex-col h-full">
+              <div className="p-4 pb-20 relative flex flex-col md:h-full">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-semibold">{post.species}</h3>
                   <button onClick={onClose} className="opacity-70 hover:opacity-100 text-lg">

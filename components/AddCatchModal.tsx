@@ -225,6 +225,10 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [isSearchingLocation, setIsSearchingLocation] = useState(false);
   const [isConfirmingLocation, setIsConfirmingLocation] = useState(false);
   const [geolocationStatus, setGeolocationStatus] = useState<string | null>(null);
+  const [geolocationSupported, setGeolocationSupported] = useState(false);
+  const [geolocationPending, setGeolocationPending] = useState(false);
+  const isMountedRef = useRef(true);
+  const initialGeolocationRequestRef = useRef(false);
   const searchRequestId = useRef(0);
   const [user] = useAuthState(auth);
   const formattedWeight = useMemo(() => formatWeight(weight), [weight]);
@@ -304,23 +308,22 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     [searchRequestId],
   );
 
-  useEffect(() => {
-    let isActive = true;
-
+  const requestGeolocation = useCallback(() => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      if (!isMountedRef.current) return;
       setGeolocationStatus('Location services are not available in this browser.');
+      setGeolocationPending(false);
       updateMapZoom(4);
       userAdjustedZoomRef.current = false;
-      return () => {
-        isActive = false;
-      };
+      return;
     }
 
+    setGeolocationPending(true);
     setGeolocationStatus('Detecting your location…');
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        if (!isActive) return;
+        if (!isMountedRef.current) return;
         const lat = position.coords.latitude;
         const lng = normalizeLongitude(position.coords.longitude);
         const nextCoordinates = { lat, lng };
@@ -328,22 +331,42 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         updateMapZoom(12);
         userAdjustedZoomRef.current = false;
         setGeolocationStatus(null);
+        setGeolocationPending(false);
         void lookupLocationName(lat, lng);
       },
       (error) => {
-        if (!isActive) return;
+        if (!isMountedRef.current) return;
         console.warn('Unable to access geolocation', error);
         setCoordinates(null);
         updateMapZoom(4);
         userAdjustedZoomRef.current = false;
         setGeolocationStatus('Unable to access GPS. Please select a location manually.');
+        setGeolocationPending(false);
       },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
     );
+  }, [lookupLocationName, updateMapZoom]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    const supported = typeof navigator !== 'undefined' && Boolean(navigator.geolocation);
+    setGeolocationSupported(supported);
+
+    if (!initialGeolocationRequestRef.current) {
+      initialGeolocationRequestRef.current = true;
+      if (supported) {
+        requestGeolocation();
+      } else {
+        setGeolocationStatus('Location services are not available in this browser.');
+        updateMapZoom(4);
+        userAdjustedZoomRef.current = false;
+      }
+    }
 
     return () => {
-      isActive = false;
+      isMountedRef.current = false;
     };
-  }, [lookupLocationName, updateMapZoom]);
+  }, [requestGeolocation, updateMapZoom]);
 
   const handleFileSelection = useCallback(
     async (selectedFile: File) => {
@@ -711,11 +734,25 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
                 {isSearchingLocation ? 'Searching for location…' : 'Confirming location…'}
               </p>
             )}
-          {geolocationStatus && (
-            <p className="text-xs text-white/50">{geolocationStatus}</p>
-          )}
-          {locationError && <p className="text-xs text-red-400">{locationError}</p>}
-          <div className="h-56 w-full overflow-hidden rounded-xl border border-white/10">
+              {(geolocationStatus || geolocationSupported) && (
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  {geolocationStatus && <span className="text-white/50">{geolocationStatus}</span>}
+                  {geolocationSupported && (
+                    <button
+                      type="button"
+                      onClick={requestGeolocation}
+                      className="rounded-full border border-white/20 px-3 py-1 text-white/70 transition hover:border-white/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={geolocationPending}
+                    >
+                      {geolocationPending ? 'Locating…' : 'Use my location'}
+                    </button>
+                  )}
+                </div>
+              )}
+              {locationError && (
+                <p className="text-xs text-red-400">{locationError}</p>
+              )}
+              <div className="h-56 w-full overflow-hidden rounded-xl border border-white/10">
             <MapContainer
               center={coordinates ? [coordinates.lat, coordinates.lng] : [DEFAULT_CENTER.lat, DEFAULT_CENTER.lng]}
               zoom={mapZoom}
