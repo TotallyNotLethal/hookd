@@ -116,7 +116,8 @@ function ZoomTracker({
 
   useMapEvents({
     zoomend(event: LeafletEvent) {
-      onZoomChange(map.getZoom(), Boolean(event?.originalEvent));
+      const isUserInteraction = 'originalEvent' in event && Boolean(event.originalEvent);
+      onZoomChange(map.getZoom(), isUserInteraction);
     },
   });
 
