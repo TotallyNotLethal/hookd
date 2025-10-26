@@ -3,6 +3,7 @@
 import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
+import type { LeafletEvent } from 'leaflet';
 import { parse } from 'exifr';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth } from '@/lib/firebaseClient';
@@ -102,6 +103,26 @@ function LocationClickHandler({ onSelect }: { onSelect: (coordinates: Coordinate
   return null;
 }
 
+function ZoomTracker({
+  onZoomChange,
+}: {
+  onZoomChange: (zoom: number, isUserInteraction: boolean) => void;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    onZoomChange(map.getZoom(), false);
+  }, [map, onZoomChange]);
+
+  useMapEvents({
+    zoomend(event: LeafletEvent) {
+      onZoomChange(map.getZoom(), Boolean(event?.originalEvent));
+    },
+  });
+
+  return null;
+}
+
 function parseExifDateTime(value: string | Date | undefined) {
   if (!value) return null;
   if (value instanceof Date) {
@@ -144,7 +165,9 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [captureDate, setCaptureDate] = useState('');
   const [captureTime, setCaptureTime] = useState('');
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
-  const [mapZoom, setMapZoom] = useState(4);
+  const [mapZoom, setMapZoomState] = useState(4);
+  const mapZoomRef = useRef(mapZoom);
+  const userAdjustedZoomRef = useRef(false);
   const [readingMetadata, setReadingMetadata] = useState(false);
   const [locationDirty, setLocationDirty] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -156,11 +179,30 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const formattedWeight = useMemo(() => formatWeight(weight), [weight]);
   const handleWeightChange = useCallback((next: WeightValue) => setWeight(next), []);
 
-  const mapKey = useMemo(() => {
-    const lat = coordinates?.lat ?? DEFAULT_CENTER.lat;
-    const lng = coordinates?.lng ?? DEFAULT_CENTER.lng;
-    return `${lat.toFixed(4)}-${lng.toFixed(4)}-${mapZoom}`;
-  }, [coordinates, mapZoom]);
+  const updateMapZoom = useCallback(
+    (value: number | ((previous: number) => number)) => {
+      setMapZoomState((previous) => {
+        const next =
+          typeof value === 'function' ? (value as (prev: number) => number)(previous) : value;
+        mapZoomRef.current = next;
+        return next;
+      });
+    },
+    [],
+  );
+
+  const handleZoomChange = useCallback(
+    (nextZoom: number, isUserInteraction: boolean) => {
+      if (isUserInteraction) {
+        userAdjustedZoomRef.current = true;
+      }
+      if (mapZoomRef.current === nextZoom) {
+        return;
+      }
+      updateMapZoom(nextZoom);
+    },
+    [updateMapZoom],
+  );
 
   const lookupLocationName = useCallback(
     async (lat: number, lng: number, options?: { requestId?: number }) => {
@@ -215,7 +257,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
 
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
       setGeolocationStatus('Location services are not available in this browser.');
-      setMapZoom(4);
+      updateMapZoom(4);
+      userAdjustedZoomRef.current = false;
       return () => {
         isActive = false;
       };
@@ -230,7 +273,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         const lng = normalizeLongitude(position.coords.longitude);
         const nextCoordinates = { lat, lng };
         setCoordinates(nextCoordinates);
-        setMapZoom(12);
+        updateMapZoom(12);
+        userAdjustedZoomRef.current = false;
         setGeolocationStatus(null);
         void lookupLocationName(lat, lng);
       },
@@ -238,7 +282,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         if (!isActive) return;
         console.warn('Unable to access geolocation', error);
         setCoordinates(null);
-        setMapZoom(4);
+        updateMapZoom(4);
+        userAdjustedZoomRef.current = false;
         setGeolocationStatus('Unable to access GPS. Please select a location manually.');
       },
     );
@@ -246,7 +291,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     return () => {
       isActive = false;
     };
-  }, [lookupLocationName]);
+  }, [lookupLocationName, updateMapZoom]);
 
   const handleFileSelection = useCallback(
     async (selectedFile: File) => {
@@ -255,7 +300,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       setCaptureDate('');
       setCaptureTime('');
       setCoordinates(null);
-      setMapZoom(4);
+      updateMapZoom(4);
+      userAdjustedZoomRef.current = false;
       setLocation('');
       setLocationDirty(false);
       setLocationError(null);
@@ -299,7 +345,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
           const lngValue = lngRef === 'W' ? -Math.abs(rawLng) : Math.abs(rawLng);
           const lng = normalizeLongitude(lngValue);
           setCoordinates({ lat, lng });
-          setMapZoom(12);
+          updateMapZoom(12);
+          userAdjustedZoomRef.current = false;
           await lookupLocationName(lat, lng);
         }
       } catch (err) {
@@ -308,7 +355,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         setReadingMetadata(false);
       }
     },
-    [lookupLocationName],
+    [lookupLocationName, updateMapZoom],
   );
 
   const handleFileChange = useCallback(
@@ -328,12 +375,27 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         lng: normalizeLongitude(latLng.lng),
       };
       setCoordinates(nextCoordinates);
-      setMapZoom((previous) => (Number.isFinite(previous) ? Math.max(previous, 12) : 12));
+      updateMapZoom((previous) => {
+        if (!Number.isFinite(previous)) {
+          userAdjustedZoomRef.current = false;
+          return 12;
+        }
+
+        if (userAdjustedZoomRef.current) {
+          return previous;
+        }
+
+        const next = Math.max(previous, 12);
+        if (next !== previous) {
+          userAdjustedZoomRef.current = false;
+        }
+        return next;
+      });
       setLocationError(null);
       setLocationDirty(false);
       lookupLocationName(nextCoordinates.lat, nextCoordinates.lng);
     },
-    [lookupLocationName],
+    [lookupLocationName, updateMapZoom],
   );
 
   useEffect(() => {
@@ -345,7 +407,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
 
     if (!trimmed) {
       setCoordinates(null);
-      setMapZoom(4);
+      updateMapZoom(4);
+      userAdjustedZoomRef.current = false;
       setLocationError(null);
       setLocationDirty(false);
       return;
@@ -378,14 +441,16 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
             const lat = Number(topResult.latitude);
             const lng = normalizeLongitude(Number(topResult.longitude));
             setCoordinates({ lat, lng });
-            setMapZoom(12);
+            updateMapZoom(12);
+            userAdjustedZoomRef.current = false;
             if (searchRequestId.current !== requestId) {
               return;
             }
             await lookupLocationName(lat, lng, { requestId });
           } else {
             setCoordinates(null);
-            setMapZoom(4);
+            updateMapZoom(4);
+            userAdjustedZoomRef.current = false;
             setLocationError('No matches found for that location.');
             if (searchRequestId.current === requestId) {
               setLocationDirty(false);
@@ -398,7 +463,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
           console.warn('Unable to search for location', error);
           if (searchRequestId.current === requestId) {
             setLocationError('Unable to find that location. Try a different search.');
-            setMapZoom(4);
+            updateMapZoom(4);
+            userAdjustedZoomRef.current = false;
             setLocationDirty(false);
           }
         } finally {
@@ -413,7 +479,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [location, locationDirty, lookupLocationName, searchRequestId]);
+  }, [location, locationDirty, lookupLocationName, searchRequestId, updateMapZoom]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -555,7 +621,6 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
             {locationError && <p className="text-xs text-red-400">{locationError}</p>}
             <div className="h-56 w-full overflow-hidden rounded-xl border border-white/10">
               <MapContainer
-                key={mapKey}
                 center={coordinates ? [coordinates.lat, coordinates.lng] : [DEFAULT_CENTER.lat, DEFAULT_CENTER.lng]}
                 zoom={mapZoom}
                 scrollWheelZoom
@@ -566,6 +631,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                 />
                 <LocationUpdater coordinates={coordinates} zoom={mapZoom} />
+                <ZoomTracker onZoomChange={handleZoomChange} />
                 {coordinates && <Marker position={[coordinates.lat, coordinates.lng]} icon={markerIcon} />}
                 <LocationClickHandler onSelect={handleCoordinatesChange} />
               </MapContainer>
