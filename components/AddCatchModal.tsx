@@ -209,6 +209,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [species, setSpecies] = useState('');
   const [weight, setWeight] = useState<WeightValue>({ pounds: 0, ounces: 0 });
   const [location, setLocation] = useState('');
+  const [isLocationPrivate, setIsLocationPrivate] = useState(false);
   const [caption, setCaption] = useState('');
   const [isTrophy, setIsTrophy] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -568,6 +569,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         species: trimmedSpecies,
         weight: formattedWeight,
         location,
+        locationPrivate: isLocationPrivate,
         caption,
         trophy: isTrophy,
         file,
@@ -683,28 +685,45 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
                 {isSearchingLocation ? 'Searching for location…' : 'Confirming location…'}
               </p>
             )}
-            {geolocationStatus && (
-              <p className="text-xs text-white/50">{geolocationStatus}</p>
-            )}
-            {locationError && <p className="text-xs text-red-400">{locationError}</p>}
-            <div className="h-56 w-full overflow-hidden rounded-xl border border-white/10">
-              <MapContainer
-                center={coordinates ? [coordinates.lat, coordinates.lng] : [DEFAULT_CENTER.lat, DEFAULT_CENTER.lng]}
-                zoom={mapZoom}
-                scrollWheelZoom
-                className="h-full w-full"
-              >
-                <TileLayer
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                />
-                <LocationUpdater coordinates={coordinates} zoom={mapZoom} />
-                <ZoomTracker onZoomChange={handleZoomChange} />
-                {coordinates && <Marker position={[coordinates.lat, coordinates.lng]} icon={markerIcon} />}
-                <LocationClickHandler onSelect={handleCoordinatesChange} />
-              </MapContainer>
+          {geolocationStatus && (
+            <p className="text-xs text-white/50">{geolocationStatus}</p>
+          )}
+          {locationError && <p className="text-xs text-red-400">{locationError}</p>}
+          <div className="h-56 w-full overflow-hidden rounded-xl border border-white/10">
+            <MapContainer
+              center={coordinates ? [coordinates.lat, coordinates.lng] : [DEFAULT_CENTER.lat, DEFAULT_CENTER.lng]}
+              zoom={mapZoom}
+              scrollWheelZoom
+              className="h-full w-full"
+            >
+              <TileLayer
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+              />
+              <LocationUpdater coordinates={coordinates} zoom={mapZoom} />
+              <ZoomTracker onZoomChange={handleZoomChange} />
+              {coordinates && <Marker position={[coordinates.lat, coordinates.lng]} icon={markerIcon} />}
+              <LocationClickHandler onSelect={handleCoordinatesChange} />
+            </MapContainer>
+          </div>
+          <div className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+            <input
+              id="location-private"
+              type="checkbox"
+              checked={isLocationPrivate}
+              onChange={(event) => setIsLocationPrivate(event.target.checked)}
+              className="mt-1"
+            />
+            <div>
+              <label htmlFor="location-private" className="text-sm font-semibold text-white">
+                Keep location private
+              </label>
+              <p className="text-xs text-white/60">
+                When enabled, your catch location stays visible only to you and will not appear on the public map.
+              </p>
             </div>
           </div>
+        </div>
 
           {/* Caption */}
           <textarea

@@ -12,6 +12,9 @@ export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any
   const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState<number>(post.likesCount || 0);
   const router = useRouter();
+  const locationIsPrivate = Boolean(post.locationPrivate);
+  const canShowLocation =
+    post.location && (!locationIsPrivate || (user && user.uid === post.uid));
 
 
   useEffect(() => {
@@ -46,7 +49,11 @@ export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any
           {post.userPhoto && <img src={post.userPhoto} className="w-8 h-8 rounded-full" alt="" />}
           <div>
             <p className="font-semibold">{post.displayName}</p>
-            {post.location && <p className="text-xs opacity-70">{post.location}</p>}
+            {canShowLocation ? (
+              <p className="text-xs opacity-70">{post.location}</p>
+            ) : locationIsPrivate ? (
+              <p className="text-xs italic opacity-60">Private location</p>
+            ) : null}
           </div>
         </div>
         {user?.uid === post.uid && (

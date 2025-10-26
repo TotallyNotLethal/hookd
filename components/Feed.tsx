@@ -35,31 +35,40 @@ export default function Feed() {
 
   return (
     <div className="space-y-6 mt-8">
-      {posts.map((post) => (
-        <div key={post.id} className="glass rounded-2xl p-4">
-          <img src={post.imageUrl} alt={post.species} className="w-full rounded-xl mb-3" />
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="font-semibold">{post.species}</h3>
-            {user?.uid === post.userId && (
-              <button onClick={() => deletePost(post.id)} className="text-red-400 hover:text-red-300">
-                <Trash2 size={18} />
+      {posts.map((post) => {
+        const locationIsPrivate = Boolean(post.locationPrivate);
+        const canShowLocation =
+          post.location && (!locationIsPrivate || user?.uid === post.userId);
+        return (
+          <div key={post.id} className="glass rounded-2xl p-4">
+            <img src={post.imageUrl} alt={post.species} className="w-full rounded-xl mb-3" />
+            <div className="flex justify-between items-center mb-2">
+              <h3 className="font-semibold">{post.species}</h3>
+              {user?.uid === post.userId && (
+                <button onClick={() => deletePost(post.id)} className="text-red-400 hover:text-red-300">
+                  <Trash2 size={18} />
+                </button>
+              )}
+            </div>
+            {canShowLocation ? (
+              <p className="text-sm opacity-80">{post.location}</p>
+            ) : locationIsPrivate && post.location ? (
+              <p className="text-sm italic opacity-60">Private location</p>
+            ) : null}
+            <div className="flex items-center justify-between mt-3">
+              <button
+                onClick={() => toggleLike(post.id, post.likes || [])}
+                className={`flex items-center gap-1 ${post.likes?.includes(user?.uid) ? 'text-red-500' : 'opacity-60 hover:opacity-100'}`}
+              >
+                <Heart size={16} /> {post.likes?.length || 0}
               </button>
-            )}
-          </div>
-          <p className="text-sm opacity-80">{post.location}</p>
-          <div className="flex items-center justify-between mt-3">
-            <button
-              onClick={() => toggleLike(post.id, post.likes || [])}
-              className={`flex items-center gap-1 ${post.likes?.includes(user?.uid) ? 'text-red-500' : 'opacity-60 hover:opacity-100'}`}
-            >
-              <Heart size={16} /> {post.likes?.length || 0}
-            </button>
-            <div className="flex items-center gap-1 opacity-60">
-              <MessageSquare size={16} /> {post.commentsCount || 0}
+              <div className="flex items-center gap-1 opacity-60">
+                <MessageSquare size={16} /> {post.commentsCount || 0}
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

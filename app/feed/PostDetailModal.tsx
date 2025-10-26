@@ -24,6 +24,9 @@ export default function PostDetailModal({ post, onClose }: { post: any; onClose:
   const [comments, setComments] = useState<any[]>([]);
   const [text, setText] = useState('');
   const [liked, setLiked] = useState(false);
+  const locationIsPrivate = Boolean(post?.locationPrivate);
+  const canShowLocation =
+    post?.location && (!locationIsPrivate || (user && user.uid === post.uid));
 
   useEffect(() => {
     if (!user?.uid || !post?.id) return;
@@ -114,15 +117,19 @@ export default function PostDetailModal({ post, onClose }: { post: any; onClose:
                 </div>
 
                 {post.caption && (
-  <p className="text-sm opacity-80 mb-2 whitespace-pre-line">{post.caption}</p>
-)}
+                  <p className="text-sm opacity-80 mb-2 whitespace-pre-line">{post.caption}</p>
+                )}
 
-{(post.weight || post.location) && (
-  <p className="text-xs opacity-60 mb-2">
-    {post.weight && <>Weight: {post.weight}</>}{" "}
-    {post.location && <span>• {post.location}</span>}
-  </p>
-)}
+                {(post.weight || post.location) && (
+                  <p className="text-xs opacity-60 mb-2">
+                    {post.weight && <>Weight: {post.weight}</>}{' '}
+                    {canShowLocation ? (
+                      <span>• {post.location}</span>
+                    ) : locationIsPrivate && post.location ? (
+                      <span>• Private location</span>
+                    ) : null}
+                  </p>
+                )}
 
 
                 <div className="flex items-center gap-3 mb-2">

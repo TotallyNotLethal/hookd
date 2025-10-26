@@ -38,6 +38,7 @@ export type CatchInput = {
   species: string;
   weight?: string;
   location?: string;
+  locationPrivate?: boolean;
   caption?: string;
   trophy?: boolean;
   file: File;
@@ -56,6 +57,7 @@ export type CatchWithCoordinates = {
   displayName?: string | null;
   userPhoto?: string | null;
   coordinates: { lat: number; lng: number };
+  locationPrivate?: boolean | null;
   createdAt?: Date | null;
   capturedAt?: Date | null;
   imageUrl?: string | null;
@@ -150,6 +152,7 @@ export async function createCatch(input: CatchInput) {
     weight: input.weight || '',
     location: input.location || '',
     caption: input.caption || '',
+    locationPrivate: !!input.locationPrivate,
     hashtags,
     imageUrl,
     trophy: !!input.trophy,
@@ -185,6 +188,9 @@ export function subscribeToCatchesWithCoordinates(cb: (arr: CatchWithCoordinates
     const arr: CatchWithCoordinates[] = [];
     snap.forEach((docSnap) => {
       const data = docSnap.data();
+      if (data.locationPrivate) {
+        return;
+      }
       const coords = data.coordinates;
       if (!(coords instanceof GeoPoint)) return;
 
@@ -200,6 +206,7 @@ export function subscribeToCatchesWithCoordinates(cb: (arr: CatchWithCoordinates
         displayName: data.displayName ?? null,
         userPhoto: data.userPhoto ?? null,
         coordinates: { lat: coords.latitude, lng: coords.longitude },
+        locationPrivate: data.locationPrivate ?? null,
         createdAt,
         capturedAt,
         imageUrl: data.imageUrl ?? null,
