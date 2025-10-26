@@ -244,6 +244,108 @@ export function subscribeToFeedCatches(cb: (arr: any[]) => void) {
   });
 }
 
+function computeDistanceMiles(
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+) {
+  const R = 3958.8; // Earth radius in miles
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLon = ((b.lng - a.lng) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+
+  const h =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
+  const c = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+  return R * c;
+}
+
+function valueToMillis(value: any): number {
+  if (!value) return 0;
+  if (value instanceof Timestamp) return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  if (typeof value === 'number') return value;
+  return 0;
+}
+
+export function subscribeToFollowingFeedCatches(
+  followingIds: string[],
+  cb: (arr: any[]) => void,
+) {
+  const cleaned = Array.from(
+    new Set(followingIds.filter((id) => typeof id === 'string' && id.trim().length > 0)),
+  );
+
+  if (cleaned.length === 0) {
+    cb([]);
+    return () => {};
+  }
+
+  const chunkSize = 10;
+  const chunkResults = new Map<number, Map<string, any>>();
+  const unsubscribers: (() => void)[] = [];
+
+  const emit = () => {
+    const merged: any[] = [];
+    chunkResults.forEach((map) => {
+      map.forEach((value) => merged.push(value));
+    });
+    merged.sort((a, b) => valueToMillis(b.createdAt) - valueToMillis(a.createdAt));
+    cb(merged);
+  };
+
+  for (let index = 0; index < cleaned.length; index += chunkSize) {
+    const slice = cleaned.slice(index, index + chunkSize);
+    const q = query(
+      collection(db, 'catches'),
+      where('uid', 'in', slice),
+      orderBy('createdAt', 'desc'),
+    );
+
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const map = new Map<string, any>();
+      snap.forEach((docSnap) => {
+        map.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+      });
+      chunkResults.set(index, map);
+      emit();
+    });
+
+    unsubscribers.push(unsubscribe);
+  }
+
+  return () => {
+    unsubscribers.forEach((fn) => fn());
+    chunkResults.clear();
+  };
+}
+
+export function subscribeToLocalFeedCatches(
+  center: { lat: number; lng: number },
+  radiusMiles: number,
+  cb: (arr: any[]) => void,
+) {
+  const q = query(collection(db, 'catches'), orderBy('createdAt', 'desc'));
+  return onSnapshot(q, (snap) => {
+    const results: any[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      const coords = data.coordinates;
+      if (!(coords instanceof GeoPoint)) return;
+      const distance = computeDistanceMiles(center, {
+        lat: coords.latitude,
+        lng: coords.longitude,
+      });
+      if (distance <= radiusMiles) {
+        results.push({ id: docSnap.id, ...data });
+      }
+    });
+    results.sort((a, b) => valueToMillis(b.createdAt) - valueToMillis(a.createdAt));
+    cb(results);
+  });
+}
+
 export function subscribeToCatchesWithCoordinates(cb: (arr: CatchWithCoordinates[]) => void) {
   const q = query(collection(db, "catches"));
   return onSnapshot(q, (snap) => {
