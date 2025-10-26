@@ -8,6 +8,7 @@ import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth } from '@/lib/firebaseClient';
 import { createCatch } from '@/lib/firestore';
 import FishSelector from './FishSelector';
+import WeightPicker, { type WeightValue } from './WeightPicker';
 
 const DEFAULT_CENTER = { lat: 39.8283, lng: -98.5795 };
 
@@ -109,10 +110,26 @@ function parseExifDateTime(value: string | Date | undefined) {
   return null;
 }
 
+const formatWeight = ({ pounds, ounces }: WeightValue) => {
+  if (!pounds && !ounces) {
+    return '0 lb';
+  }
+
+  const parts: string[] = [];
+  if (pounds) {
+    parts.push(`${pounds} lb`);
+  }
+  if (ounces) {
+    parts.push(`${ounces} oz`);
+  }
+
+  return parts.join(' ');
+};
+
 export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [species, setSpecies] = useState('');
-  const [weight, setWeight] = useState('');
+  const [weight, setWeight] = useState<WeightValue>({ pounds: 0, ounces: 0 });
   const [location, setLocation] = useState('');
   const [caption, setCaption] = useState('');
   const [isTrophy, setIsTrophy] = useState(false);
@@ -122,6 +139,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
   const [readingMetadata, setReadingMetadata] = useState(false);
   const [user] = useAuthState(auth);
+  const formattedWeight = useMemo(() => formatWeight(weight), [weight]);
+  const handleWeightChange = useCallback((next: WeightValue) => setWeight(next), []);
 
   const mapKey = useMemo(() => {
     const lat = coordinates?.lat ?? DEFAULT_CENTER.lat;
@@ -238,6 +257,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     if (!file) return alert('Upload an image');
     const trimmedSpecies = species.trim();
     if (!trimmedSpecies) return alert('Please choose a species or enter one manually.');
+    if (!weight.pounds && !weight.ounces) return alert('Please select a weight.');
 
     setUploading(true);
     try {
@@ -248,7 +268,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         displayName: user.displayName || 'Angler',
         userPhoto: user.photoURL || undefined,
         species: trimmedSpecies,
-        weight,
+        weight: formattedWeight,
         location,
         caption,
         trophy: isTrophy,
@@ -302,7 +322,11 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
           {/* Inputs */}
           <div className="grid gap-3 sm:grid-cols-2">
             <FishSelector value={species} onSelect={setSpecies} placeholder="Species" />
-            <input className="input" placeholder="Weight" value={weight} onChange={(e) => setWeight(e.target.value)} required />
+            <div className="space-y-2">
+              <span className="text-sm text-white/70">Weight</span>
+              <WeightPicker value={weight} onChange={handleWeightChange} />
+              <p className="text-xs text-white/60">Selected weight: {formattedWeight}</p>
+            </div>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
