@@ -2,7 +2,15 @@
 import { useState, useEffect } from 'react';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth } from '@/lib/firebaseClient';
-import { toggleLike, subscribeToUserLike, subscribeToLikesCount, deleteCatch } from '@/lib/firestore';
+import {
+  toggleLike,
+  subscribeToUserLike,
+  subscribeToLikesCount,
+  deleteCatch,
+  followUser,
+  unfollowUser,
+  subscribeToUser,
+} from '@/lib/firestore';
 import { Heart, MessageSquare, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
@@ -11,6 +19,8 @@ export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any
   const [user] = useAuthState(auth);
   const [liked, setLiked] = useState(false);
   const [likesCount, setLikesCount] = useState<number>(post.likesCount || 0);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followPending, setFollowPending] = useState(false);
   const router = useRouter();
   const locationIsPrivate = Boolean(post.locationPrivate);
   const canShowLocation =
@@ -27,16 +37,59 @@ export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any
     };
   }, [user, post.id]);
 
+  useEffect(() => {
+    if (!user || user.uid === post.uid) return;
+
+    const unsubscribe = subscribeToUser(post.uid, (data) => {
+      if (!data) {
+        setIsFollowing(false);
+        return;
+      }
+      const followers: string[] = Array.isArray(data.followers) ? data.followers : [];
+      setIsFollowing(followers.includes(user.uid));
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [user?.uid, post.uid]);
+
   const handleLike = async (e: React.MouseEvent) => {
     e.stopPropagation(); // prevent modal from opening
     if (!user) return alert('Sign in to like posts!');
     await toggleLike(post.id, user.uid);
   };
 
+  useEffect(() => {
+    if (!user || user.uid === post.uid) {
+      setIsFollowing(false);
+    }
+  }, [user?.uid, post.uid]);
+
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation(); // prevent modal from opening
     if (!user || user.uid !== post.uid) return;
     if (confirm('Delete this catch?')) await deleteCatch(post.id);
+  };
+
+  const handleFollowToggle = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!user) {
+      alert('Sign in to follow anglers!');
+      return;
+    }
+    if (user.uid === post.uid || followPending) return;
+
+    setFollowPending(true);
+    try {
+      if (isFollowing) {
+        await unfollowUser(user.uid, post.uid);
+      } else {
+        await followUser(user.uid, post.uid);
+      }
+    } finally {
+      setFollowPending(false);
+    }
   };
 
   return (
@@ -56,15 +109,30 @@ export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any
             ) : null}
           </div>
         </div>
-        {user?.uid === post.uid && (
-          <button
-            onClick={handleDelete}
-            className="text-red-400 hover:text-red-300"
-            title="Delete"
-          >
-            <Trash2 size={18} />
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {user?.uid !== post.uid && (
+            <button
+              onClick={handleFollowToggle}
+              className={`px-3 py-1 text-sm rounded-full border transition ${
+                isFollowing
+                  ? 'border-white/30 bg-white/10 text-white'
+                  : 'border-brand-400 text-brand-200 hover:bg-brand-400/10'
+              } ${followPending ? 'opacity-60 cursor-not-allowed' : 'hover:border-brand-300'}`}
+              disabled={followPending}
+            >
+              {isFollowing ? 'Unfollow' : 'Follow'}
+            </button>
+          )}
+          {user?.uid === post.uid && (
+            <button
+              onClick={handleDelete}
+              className="text-red-400 hover:text-red-300"
+              title="Delete"
+            >
+              <Trash2 size={18} />
+            </button>
+          )}
+        </div>
       </div>
 
       {post.imageUrl && (
