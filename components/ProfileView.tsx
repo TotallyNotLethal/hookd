@@ -39,6 +39,10 @@ export default function ProfileView({ profile, catches, isOwner = false, onEditP
   const headerSrc = profile?.header || avatarSrc;
   const displayName = profile?.displayName || profile?.username || 'Angler';
   const username = profile?.username;
+  const usernameDisplay = useMemo(() => {
+    if (!username) return null;
+    return profile?.isTester ? `hookd_${username}` : `@${username}`;
+  }, [profile?.isTester, username]);
 
   const followerCount = profile?.followers?.length ?? 0;
   const followingCount = profile?.following?.length ?? 0;
@@ -59,20 +63,20 @@ export default function ProfileView({ profile, catches, isOwner = false, onEditP
               className="rounded-2xl -mt-12 border-4 border-[var(--card)] object-cover"
             />
             <div className="flex-1">
-              <h1 className={`text-2xl font-semibold${profile?.isTester ? ' text-brand-300' : ''}`}>{displayName}</h1>
-              {(username || profile?.isTester) && (
+              <h1 className="text-2xl font-semibold">{displayName}</h1>
+              {usernameDisplay && (
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/70">
-                  {username && <span>@{username}</span>}
-                  {profile?.isTester && (
-                    <span
-                      className="flex items-center gap-1 rounded-full border border-blue-400/40 px-2 py-0.5 text-xs text-blue-300"
-                      title="Tester"
-                    >
-                      <span aria-hidden>🎣</span>
-                      <span aria-hidden>✔</span>
-                      <span className="sr-only">Tester</span>
-                    </span>
-                  )}
+                  <span
+                    className={`flex items-center gap-1 ${profile?.isTester ? 'text-brand-300 font-semibold' : ''}`}
+                  >
+                    {usernameDisplay}
+                    {profile?.isTester && (
+                      <span aria-hidden className="text-brand-300">
+                        🎣✔
+                      </span>
+                    )}
+                    {profile?.isTester && <span className="sr-only">Tester</span>}
+                  </span>
                 </div>
               )}
               {profile?.email && <p className="text-white/60 break-all">{profile.email}</p>}
