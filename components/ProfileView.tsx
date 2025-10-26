@@ -41,7 +41,7 @@ export default function ProfileView({ profile, catches, isOwner = false, onEditP
   const username = profile?.username;
   const usernameDisplay = useMemo(() => {
     if (!username) return null;
-    return profile?.isTester ? `hookd_${username}` : `@${username}`;
+    return profile?.isTester ? `@hookd_${username}` : `@${username}`;
   }, [profile?.isTester, username]);
 
   const followerCount = profile?.followers?.length ?? 0;
