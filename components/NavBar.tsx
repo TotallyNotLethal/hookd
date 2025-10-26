@@ -37,7 +37,7 @@ export default function NavBar() {
   ];
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-30 bg-slate-950/95 backdrop-blur border-b border-white/10">
+    <header className="fixed top-0 left-0 right-0 z-30 bg-slate-950/20 backdrop-blur border-b border-white/10">
       <div className="container py-4">
         <div className="flex items-center justify-between">
           {/* Logo */}
