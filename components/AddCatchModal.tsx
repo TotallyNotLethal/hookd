@@ -70,6 +70,55 @@ interface Coordinates {
   lng: number;
 }
 
+const parseGpsPositionString = (value: unknown): Coordinates | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const [latPart, lngPart] = value.split(',');
+  if (!latPart || !lngPart) {
+    return null;
+  }
+
+  const parsePart = (part: string): number | null => {
+    const trimmed = part.trim();
+    const match = trimmed.match(
+      /^(-?\d+(?:\.\d+)?)\s*deg(?:\s*(\d+(?:\.\d+)?))?(?:'\s*(\d+(?:\.\d+)?))?(?:"\s*)?([NSEW])$/i,
+    );
+
+    if (!match) {
+      return null;
+    }
+
+    const [, degreesRaw, minutesRaw, secondsRaw, directionRaw] = match;
+    const degrees = Number.parseFloat(degreesRaw);
+    const minutes = minutesRaw ? Number.parseFloat(minutesRaw) : 0;
+    const seconds = secondsRaw ? Number.parseFloat(secondsRaw) : 0;
+
+    if (Number.isNaN(degrees) || Number.isNaN(minutes) || Number.isNaN(seconds)) {
+      return null;
+    }
+
+    const decimal = degrees + minutes / 60 + seconds / 3600;
+    const direction = directionRaw.toUpperCase();
+    const sign = direction === 'S' || direction === 'W' ? -1 : 1;
+
+    return sign * Math.abs(decimal);
+  };
+
+  const lat = parsePart(latPart);
+  const lng = parsePart(lngPart);
+
+  if (lat === null || lng === null) {
+    return null;
+  }
+
+  return {
+    lat,
+    lng: normalizeLongitude(lng),
+  };
+};
+
 interface AddCatchModalProps {
   onClose: () => void;
 }
@@ -314,6 +363,9 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
             'GPSLatitudeRef',
             'GPSLongitude',
             'GPSLongitudeRef',
+            'gpsPosition',
+            'GPSPosition',
+            'gps_position',
           ],
         })) as
           | {
@@ -322,6 +374,9 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
               GPSLatitudeRef?: 'N' | 'S';
               GPSLongitude?: unknown;
               GPSLongitudeRef?: 'E' | 'W';
+              gpsPosition?: unknown;
+              GPSPosition?: unknown;
+              gps_position?: unknown;
             }
           | undefined;
 
@@ -349,6 +404,18 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
           updateMapZoom(12);
           userAdjustedZoomRef.current = false;
           await lookupLocationName(lat, lng);
+        } else {
+          const fallbackPosition =
+            parseGpsPositionString(metadata?.gpsPosition) ||
+            parseGpsPositionString(metadata?.GPSPosition) ||
+            parseGpsPositionString(metadata?.gps_position);
+
+          if (fallbackPosition) {
+            setCoordinates(fallbackPosition);
+            updateMapZoom(12);
+            userAdjustedZoomRef.current = false;
+            await lookupLocationName(fallbackPosition.lat, fallbackPosition.lng);
+          }
         }
       } catch (err) {
         console.warn('Unable to read photo metadata', err);
