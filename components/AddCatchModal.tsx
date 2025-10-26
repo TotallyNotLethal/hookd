@@ -277,22 +277,23 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         }
         const data = await response.json();
         if (!shouldApply()) {
-          return false;
+          return null;
         }
         const result = data.results?.[0];
         if (result?.name) {
           const admin = [result.admin1, result.admin2, result.country_code].filter(Boolean).join(', ');
-          setLocation(admin ? `${result.name}, ${admin}` : result.name);
-          return true;
+          const resolvedName = admin ? `${result.name}, ${admin}` : result.name;
+          setLocation(resolvedName);
+          return resolvedName;
         }
         setLocationError('Unable to confirm the selected location.');
-        return false;
+        return null;
       } catch (err) {
         console.warn('Unable to lookup location name', err);
         if (shouldApply()) {
           setLocationError('Unable to confirm the selected location.');
         }
-        return false;
+        return null;
       } finally {
         if (shouldApply()) {
           setIsConfirmingLocation(false);
@@ -483,6 +484,12 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       return;
     }
 
+    if (coordinates) {
+      setLocationError(null);
+      setLocationDirty(false);
+      return;
+    }
+
     const controller = new AbortController();
     const requestId = ++searchRequestId.current;
     const timeoutId = setTimeout(() => {
@@ -548,7 +555,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [location, locationDirty, lookupLocationName, searchRequestId, updateMapZoom]);
+  }, [coordinates, location, locationDirty, lookupLocationName, searchRequestId, updateMapZoom]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -557,6 +564,25 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     const trimmedSpecies = species.trim();
     if (!trimmedSpecies) return alert('Please choose a species or enter one manually.');
     if (!weight.pounds && !weight.ounces) return alert('Please select a weight.');
+
+    let finalLocation = location.trim();
+
+    if (!finalLocation && coordinates) {
+      const resolved = await lookupLocationName(coordinates.lat, coordinates.lng);
+      if (resolved) {
+        finalLocation = resolved;
+      }
+    }
+
+    if (isLocationPrivate && !finalLocation) {
+      finalLocation = 'Private Location';
+      setLocation('Private Location');
+    }
+
+    if (!finalLocation && !coordinates) {
+      alert('Please search for a location or drop a pin on the map.');
+      return;
+    }
 
     setUploading(true);
     try {
@@ -568,7 +594,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         userPhoto: user.photoURL || undefined,
         species: trimmedSpecies,
         weight: formattedWeight,
-        location,
+        location: finalLocation,
         locationPrivate: isLocationPrivate,
         caption,
         trophy: isTrophy,
@@ -678,7 +704,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
                 setLocationDirty(true);
                 setLocationError(null);
               }}
-              required
+              required={!isLocationPrivate && !coordinates}
             />
             {(isSearchingLocation || isConfirmingLocation) && (
               <p className="text-xs text-white/60">
