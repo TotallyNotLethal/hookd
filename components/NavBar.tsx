@@ -5,11 +5,23 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getAuth, onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { app } from '@/lib/firebaseClient';
-import { Home, PlusCircle, UserRound, LogIn, LogOut, Map as MapIcon, NotebookPen, Fish } from 'lucide-react';
+import {
+  Home,
+  PlusCircle,
+  UserRound,
+  LogIn,
+  LogOut,
+  Map as MapIcon,
+  NotebookPen,
+  Fish,
+  Menu,
+  X,
+} from 'lucide-react';
 
 export default function NavBar() {
   const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const auth = getAuth(app);
@@ -64,55 +76,109 @@ export default function NavBar() {
               </>
             )}
           </div>
+
+          {/* Mobile menu trigger */}
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="sm:hidden inline-flex items-center justify-center rounded-xl border border-white/15 p-2 text-white hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+            aria-label="Open navigation menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
         </div>
 
-        {/* Mobile actions */}
-        <nav className="sm:hidden mt-4 w-full">
-          <ul className="flex w-full items-center justify-between gap-2 rounded-2xl bg-slate-900/60 px-3 py-2 border border-white/10 backdrop-blur">
-            {tabs.map((t) => {
-              const baseHref = t.href.split('?')[0];
-              const active = baseHref === '/' ? pathname === '/' : pathname.startsWith(baseHref);
-              const Icon = t.icon;
-              return (
-                <li key={t.href}>
-                  <Link
-                    href={t.href}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-xl transition ${
-                      active ? 'bg-white/15 text-white' : 'hover:bg-white/10'
-                    }`}
-                  >
-                    <Icon className="w-5 h-5" />
-                    <span className="text-sm">{t.label}</span>
-                  </Link>
-                </li>
-              );
-            })}
-            <li>
-              <Link href="/tools/fish-identifier" className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/10">
-                <Fish className="w-5 h-5" />
-                <span className="text-sm">Fish ID</span>
+        {/* Mobile drawer menu */}
+        <div className="sm:hidden">
+          {/* Overlay */}
+          {isMobileMenuOpen ? (
+            <button
+              type="button"
+              aria-label="Close navigation menu"
+              onClick={() => setIsMobileMenuOpen(false)}
+              className="fixed inset-0 z-30 bg-black/40"
+            />
+          ) : null}
+
+          <nav
+            className={`fixed inset-y-0 left-0 z-40 w-72 max-w-full transform border-r border-white/10 bg-slate-950/95 px-6 py-6 transition-transform duration-300 ease-in-out backdrop-blur ${
+              isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+            }`}
+            aria-hidden={!isMobileMenuOpen}
+          >
+            <div className="flex items-center justify-between">
+              <Link href="/" className="flex items-center gap-3" onClick={() => setIsMobileMenuOpen(false)}>
+                <Image src="/logo.svg" alt="Hook'd" width={32} height={32} className="rounded-xl shadow-glow" />
+                <span className="text-lg font-semibold tracking-tight">Hook&apos;d</span>
               </Link>
-            </li>
-            {!user ? (
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="inline-flex items-center justify-center rounded-xl border border-white/15 p-2 text-white hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                aria-label="Close navigation menu"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <ul className="mt-6 flex flex-col gap-2">
+              {tabs.map((t) => {
+                const baseHref = t.href.split('?')[0];
+                const active = baseHref === '/' ? pathname === '/' : pathname.startsWith(baseHref);
+                const Icon = t.icon;
+                return (
+                  <li key={t.href}>
+                    <Link
+                      href={t.href}
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
+                        active ? 'bg-white/15 text-white' : 'hover:bg-white/10'
+                      }`}
+                    >
+                      <Icon className="h-5 w-5" />
+                      <span>{t.label}</span>
+                    </Link>
+                  </li>
+                );
+              })}
               <li>
-                <Link href="/login" className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/10">
-                  <LogIn className="w-5 h-5" />
-                  <span className="text-sm">Login</span>
+                <Link
+                  href="/tools/fish-identifier"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium hover:bg-white/10"
+                >
+                  <Fish className="h-5 w-5" />
+                  <span>Fish ID</span>
                 </Link>
               </li>
-            ) : (
-              <li>
-                <button
-                  onClick={() => signOut(getAuth(app))}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-white/10"
-                >
-                  <LogOut className="w-5 h-5" />
-                  <span className="text-sm">Logout</span>
-                </button>
-              </li>
-            )}
-          </ul>
-        </nav>
+              {!user ? (
+                <li>
+                  <Link
+                    href="/login"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium hover:bg-white/10"
+                  >
+                    <LogIn className="h-5 w-5" />
+                    <span>Login</span>
+                  </Link>
+                </li>
+              ) : (
+                <li>
+                  <button
+                    onClick={() => {
+                      signOut(getAuth(app));
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium hover:bg-white/10"
+                  >
+                    <LogOut className="h-5 w-5" />
+                    <span>Logout</span>
+                  </button>
+                </li>
+              )}
+            </ul>
+          </nav>
+        </div>
       </div>
     </header>
   );
