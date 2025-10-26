@@ -293,16 +293,16 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <form
         onSubmit={handleSubmit}
-        className="glass p-6 rounded-xl w-full max-w-xl space-y-4 relative border border-white/10"
+        className="glass p-6 rounded-xl w-full max-w-xl space-y-4 relative border border-white/10 max-h-[90vh] flex flex-col"
       >
-        <div className="flex items-start justify-between">
+        <div className="flex items-start justify-between flex-shrink-0">
           <h2 className="text-lg font-semibold">Add Catch</h2>
           <button type="button" onClick={onClose} className="text-sm text-white/60 hover:text-white">
             ✕
           </button>
         </div>
 
-        <div className="space-y-4 overflow-y-auto max-h-[75vh] pr-1">
+        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
           {/* Photo */}
           <div className="space-y-1">
             <label className="text-sm text-white/70" htmlFor="catch-file">
@@ -405,12 +405,12 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
           />
         </div>
 
-        <label className="flex items-center gap-2 text-sm pt-2">
+        <label className="flex items-center gap-2 text-sm pt-2 flex-shrink-0">
           <input type="checkbox" checked={isTrophy} onChange={(e) => setIsTrophy(e.target.checked)} />
           Mark as Trophy Catch
         </label>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:justify-end pt-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:justify-end pt-3 flex-shrink-0">
           <button type="button" onClick={onClose} className="btn-secondary w-full sm:w-auto">
             Cancel
           </button>
