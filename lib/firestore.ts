@@ -47,6 +47,20 @@ export type CatchInput = {
   coordinates?: { lat: number; lng: number } | null;
 };
 
+export type CatchWithCoordinates = {
+  id: string;
+  species: string;
+  weight?: string | null;
+  location?: string | null;
+  caption?: string | null;
+  displayName?: string | null;
+  userPhoto?: string | null;
+  coordinates: { lat: number; lng: number };
+  createdAt?: Date | null;
+  capturedAt?: Date | null;
+  imageUrl?: string | null;
+};
+
 /** ---------- Users ---------- */
 export async function ensureUserProfile(user: { uid: string; displayName: string | null; photoURL?: string | null; }) {
   const refUser = doc(db, 'users', user.uid);
@@ -161,6 +175,43 @@ export function subscribeToFeedCatches(cb: (arr: any[]) => void) {
   return onSnapshot(q, (snap) => {
     const arr: any[] = [];
     snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
+    cb(arr);
+  });
+}
+
+export function subscribeToCatchesWithCoordinates(cb: (arr: CatchWithCoordinates[]) => void) {
+  const q = query(collection(db, "catches"));
+  return onSnapshot(q, (snap) => {
+    const arr: CatchWithCoordinates[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+      const coords = data.coordinates;
+      if (!(coords instanceof GeoPoint)) return;
+
+      const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : null;
+      const capturedAt = data.capturedAt instanceof Timestamp ? data.capturedAt.toDate() : null;
+
+      arr.push({
+        id: docSnap.id,
+        species: data.species || "",
+        weight: data.weight ?? null,
+        location: data.location ?? null,
+        caption: data.caption ?? null,
+        displayName: data.displayName ?? null,
+        userPhoto: data.userPhoto ?? null,
+        coordinates: { lat: coords.latitude, lng: coords.longitude },
+        createdAt,
+        capturedAt,
+        imageUrl: data.imageUrl ?? null,
+      });
+    });
+
+    arr.sort((a, b) => {
+      const aTime = (a.capturedAt ?? a.createdAt)?.getTime() ?? 0;
+      const bTime = (b.capturedAt ?? b.createdAt)?.getTime() ?? 0;
+      return bTime - aTime;
+    });
+
     cb(arr);
   });
 }
