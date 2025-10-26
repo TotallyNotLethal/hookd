@@ -1,6 +1,6 @@
 'use client';
 
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { parse } from 'exifr';
@@ -138,6 +138,11 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [captureTime, setCaptureTime] = useState('');
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
   const [readingMetadata, setReadingMetadata] = useState(false);
+  const [locationDirty, setLocationDirty] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
+  const [isSearchingLocation, setIsSearchingLocation] = useState(false);
+  const [isConfirmingLocation, setIsConfirmingLocation] = useState(false);
+  const searchRequestId = useRef(0);
   const [user] = useAuthState(auth);
   const formattedWeight = useMemo(() => formatWeight(weight), [weight]);
   const handleWeightChange = useCallback((next: WeightValue) => setWeight(next), []);
@@ -148,27 +153,53 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     return `${lat.toFixed(4)}-${lng.toFixed(4)}`;
   }, [coordinates]);
 
-  const lookupLocationName = useCallback(async (lat: number, lng: number) => {
-    const normalizedLng = normalizeLongitude(lng);
-    try {
-      const params = new URLSearchParams({
-        latitude: lat.toString(),
-        longitude: normalizedLng.toString(),
-        language: 'en',
-        count: '1',
-      });
-      const response = await fetch(`/api/open-meteo/reverse?${params.toString()}`);
-      if (!response.ok) return;
-      const data = await response.json();
-      const result = data.results?.[0];
-      if (result?.name) {
-        const admin = [result.admin1, result.admin2, result.country_code].filter(Boolean).join(', ');
-        setLocation(admin ? `${result.name}, ${admin}` : result.name);
+  const lookupLocationName = useCallback(
+    async (lat: number, lng: number, options?: { requestId?: number }) => {
+      const normalizedLng = normalizeLongitude(lng);
+      const shouldApply = () =>
+        options?.requestId === undefined || options.requestId === searchRequestId.current;
+      if (shouldApply()) {
+        setIsConfirmingLocation(true);
+        setLocationError(null);
       }
-    } catch (err) {
-      console.warn('Unable to lookup location name', err);
-    }
-  }, []);
+      try {
+        const params = new URLSearchParams({
+          latitude: lat.toString(),
+          longitude: normalizedLng.toString(),
+          language: 'en',
+          count: '1',
+        });
+        const response = await fetch(`/api/open-meteo/reverse?${params.toString()}`);
+        if (!response.ok) {
+          throw new Error(`Reverse lookup failed with status ${response.status}`);
+        }
+        const data = await response.json();
+        if (!shouldApply()) {
+          return false;
+        }
+        const result = data.results?.[0];
+        if (result?.name) {
+          const admin = [result.admin1, result.admin2, result.country_code].filter(Boolean).join(', ');
+          setLocation(admin ? `${result.name}, ${admin}` : result.name);
+          return true;
+        }
+        setLocationError('Unable to confirm the selected location.');
+        return false;
+      } catch (err) {
+        console.warn('Unable to lookup location name', err);
+        if (shouldApply()) {
+          setLocationError('Unable to confirm the selected location.');
+        }
+        return false;
+      } finally {
+        if (shouldApply()) {
+          setIsConfirmingLocation(false);
+          setLocationDirty(false);
+        }
+      }
+    },
+    [searchRequestId],
+  );
 
   const handleFileSelection = useCallback(
     async (selectedFile: File) => {
@@ -178,6 +209,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       setCaptureTime('');
       setCoordinates(null);
       setLocation('');
+      setLocationDirty(false);
+      setLocationError(null);
       try {
         const metadata = (await parse(selectedFile, {
           pick: [
@@ -246,10 +279,87 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         lng: normalizeLongitude(latLng.lng),
       };
       setCoordinates(nextCoordinates);
+      setLocationError(null);
+      setLocationDirty(false);
       lookupLocationName(nextCoordinates.lat, nextCoordinates.lng);
     },
     [lookupLocationName],
   );
+
+  useEffect(() => {
+    if (!locationDirty) return;
+
+    setIsConfirmingLocation(false);
+
+    const trimmed = location.trim();
+
+    if (!trimmed) {
+      setCoordinates(null);
+      setLocationError(null);
+      setLocationDirty(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    const requestId = ++searchRequestId.current;
+    const timeoutId = setTimeout(() => {
+      (async () => {
+        setIsSearchingLocation(true);
+        setLocationError(null);
+        try {
+          const params = new URLSearchParams({
+            name: trimmed,
+            count: '1',
+            language: 'en',
+          });
+          const response = await fetch(`/api/open-meteo/search?${params.toString()}`, {
+            signal: controller.signal,
+          });
+          if (!response.ok) {
+            throw new Error(`Search failed with status ${response.status}`);
+          }
+          const data = await response.json();
+          if (searchRequestId.current !== requestId) {
+            return;
+          }
+          const topResult = data.results?.[0];
+          if (topResult?.latitude != null && topResult?.longitude != null) {
+            const lat = Number(topResult.latitude);
+            const lng = normalizeLongitude(Number(topResult.longitude));
+            setCoordinates({ lat, lng });
+            if (searchRequestId.current !== requestId) {
+              return;
+            }
+            await lookupLocationName(lat, lng, { requestId });
+          } else {
+            setCoordinates(null);
+            setLocationError('No matches found for that location.');
+            if (searchRequestId.current === requestId) {
+              setLocationDirty(false);
+            }
+          }
+        } catch (error) {
+          if ((error as { name?: string })?.name === 'AbortError') {
+            return;
+          }
+          console.warn('Unable to search for location', error);
+          if (searchRequestId.current === requestId) {
+            setLocationError('Unable to find that location. Try a different search.');
+            setLocationDirty(false);
+          }
+        } finally {
+          if (searchRequestId.current === requestId) {
+            setIsSearchingLocation(false);
+          }
+        }
+      })();
+    }, 500);
+
+    return () => {
+      clearTimeout(timeoutId);
+      controller.abort();
+    };
+  }, [location, locationDirty, lookupLocationName, searchRequestId]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -373,9 +483,19 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
               className="input"
               placeholder="Where did you catch it?"
               value={location}
-              onChange={(e) => setLocation(e.target.value)}
+              onChange={(e) => {
+                setLocation(e.target.value);
+                setLocationDirty(true);
+                setLocationError(null);
+              }}
               required
             />
+            {(isSearchingLocation || isConfirmingLocation) && (
+              <p className="text-xs text-white/60">
+                {isSearchingLocation ? 'Searching for location…' : 'Confirming location…'}
+              </p>
+            )}
+            {locationError && <p className="text-xs text-red-400">{locationError}</p>}
             <div className="h-56 w-full overflow-hidden rounded-xl border border-white/10">
               <MapContainer
                 key={mapKey}
