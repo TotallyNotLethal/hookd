@@ -8,6 +8,7 @@ import NavBar from '@/components/NavBar';
 import ProfileView from '@/components/ProfileView';
 import { app } from '@/lib/firebaseClient';
 import { followUser, subscribeToUser, subscribeToUserCatches, unfollowUser } from '@/lib/firestore';
+import PostDetailModal from '@/app/feed/PostDetailModal';
 
 type ProfileData = {
   uid: string;
@@ -27,6 +28,17 @@ type CatchData = {
   species?: string;
   weight?: string;
   trophy?: boolean;
+  caption?: string;
+  location?: string;
+  locationPrivate?: boolean;
+  displayName?: string;
+  createdAt?: any;
+  uid?: string;
+  user?: { name?: string };
+  userPhoto?: string;
+  likesCount?: number;
+  commentsCount?: number;
+  [key: string]: any;
 };
 
 export default function ProfilePage() {
@@ -37,6 +49,7 @@ export default function ProfilePage() {
   const [catches, setCatches] = useState<CatchData[]>([]);
   const [loading, setLoading] = useState(true);
   const [followPending, setFollowPending] = useState(false);
+  const [activeCatch, setActiveCatch] = useState<CatchData | null>(null);
 
   useEffect(() => {
     const auth = getAuth(app);
@@ -50,6 +63,7 @@ export default function ProfilePage() {
     setLoading(true);
     setProfile(null);
     setCatches([]);
+    setActiveCatch(null);
 
     const unsubscribeProfile = subscribeToUser(userId, (data) => {
       setProfile(data);
@@ -101,6 +115,7 @@ export default function ProfilePage() {
             isFollowing={isFollowing}
             onToggleFollow={!isOwner && authUser ? handleToggleFollow : undefined}
             followPending={followPending}
+            onCatchSelect={(catchItem) => setActiveCatch(catchItem)}
           />
         ) : (
           <div className="card p-6">
@@ -108,6 +123,9 @@ export default function ProfilePage() {
           </div>
         )}
       </section>
+      {activeCatch && (
+        <PostDetailModal post={activeCatch} onClose={() => setActiveCatch(null)} />
+      )}
     </main>
   );
 }
