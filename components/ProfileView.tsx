@@ -65,15 +65,17 @@ export default function ProfileView({ profile, catches, isOwner = false, onEditP
                   {username && (
                     <span className={profile?.isTester ? 'text-brand-300' : undefined}>@{username}</span>
                   )}
+              <h1 className={`text-2xl font-semibold${profile?.isTester ? ' text-brand-300' : ''}`}>{displayName}</h1>
+              {(username || profile?.isTester) && (
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/70">
+                  {username && <span>@{username}</span>}
                   {profile?.isTester && (
                     <span
-                      className={[
-                        'flex items-center gap-1 rounded-full border border-blue-400/40 px-2 py-0.5 text-xs',
-                        'text-blue-300',
-                      ].join(' ')}
+                      className="flex items-center gap-1 rounded-full border border-blue-400/40 px-2 py-0.5 text-xs text-blue-300"
                       title="Tester"
                     >
                       <span aria-hidden>🎣</span>
+                      <span aria-hidden>✔</span>
                       <span className="sr-only">Tester</span>
                     </span>
                   )}
