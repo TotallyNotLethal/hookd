@@ -1,11 +1,18 @@
 'use client';
 import NavBar from "@/components/NavBar";
 import PostCard from "@/components/PostCard";
-import { subscribeToFeedCatches } from "@/lib/firestore";
-import { Suspense, useEffect, useState } from "react";
+import {
+  subscribeToFeedCatches,
+  subscribeToFollowingFeedCatches,
+  subscribeToLocalFeedCatches,
+  subscribeToUser,
+} from "@/lib/firestore";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import PostDetailModal from "./PostDetailModal";
+import { useAuthState } from "react-firebase-hooks/auth";
+import { auth } from "@/lib/firebaseClient";
 
 const AddCatchModal = dynamic(() => import("@/components/AddCatchModal"), {
   ssr: false,
@@ -13,21 +20,124 @@ const AddCatchModal = dynamic(() => import("@/components/AddCatchModal"), {
 });
 
 
+type FeedFilter = "all" | "following" | "local";
+
+const FILTERS: { key: FeedFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "following", label: "Following" },
+  { key: "local", label: "Local (50 mi)" },
+];
+
 function FeedContent() {
   const [items, setItems] = useState<any[]>([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<any | null>(null);
+  const [filter, setFilter] = useState<FeedFilter>("all");
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState<string | null>(null);
+  const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [followingIds, setFollowingIds] = useState<string[]>([]);
   const sp = useSearchParams();
   const router = useRouter();
+  const [user] = useAuthState(auth);
 
   useEffect(() => {
-    const unsub = subscribeToFeedCatches(setItems);
-    return () => unsub();
-  }, []);
+    if (!user?.uid) {
+      setFollowingIds([]);
+      return;
+    }
+    const unsubscribe = subscribeToUser(user.uid, (data) => {
+      if (!data) {
+        setFollowingIds([]);
+        return;
+      }
+      const following = Array.isArray(data.following)
+        ? data.following.filter((id: unknown): id is string => typeof id === "string")
+        : [];
+      setFollowingIds(following);
+    });
+    return () => unsubscribe();
+  }, [user?.uid]);
+
+  useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+
+    if (filter === "all") {
+      unsubscribe = subscribeToFeedCatches(setItems);
+    } else if (filter === "following") {
+      if (!user?.uid || followingIds.length === 0) {
+        setItems([]);
+      } else {
+        unsubscribe = subscribeToFollowingFeedCatches(followingIds, setItems);
+      }
+    } else if (filter === "local") {
+      if (!location) {
+        setItems([]);
+      } else {
+        unsubscribe = subscribeToLocalFeedCatches(location, 50, setItems);
+      }
+    }
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, [filter, followingIds, location, user?.uid]);
 
   useEffect(() => {
     if (sp.get("compose") === "1") setOpen(true);
   }, [sp]);
+
+  const handleFilterSelect = useCallback(
+    (next: FeedFilter) => {
+      if (next === "local") {
+        setFilter("local");
+        if (!location) {
+          if (!navigator.geolocation) {
+            setGeoError("Location is not supported in this browser. Showing all catches instead.");
+            setFilter("all");
+            return;
+          }
+          setGeoLoading(true);
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+              setGeoLoading(false);
+              setGeoError(null);
+            },
+            () => {
+              setGeoLoading(false);
+              setGeoError("We couldn't access your location. Showing all catches instead.");
+              setFilter("all");
+            },
+            { enableHighAccuracy: false, timeout: 10000 },
+          );
+        }
+        return;
+      }
+
+      setFilter(next);
+    },
+    [location],
+  );
+
+  const statusMessage = useMemo(() => {
+    if (filter === "following" && !user) {
+      return "Sign in to see catches from anglers you follow.";
+    }
+    if (filter === "following" && followingIds.length === 0) {
+      return "Follow anglers to see their latest catches here.";
+    }
+    if (filter === "local" && geoLoading) {
+      return "Locating you…";
+    }
+    if (filter === "local" && !location) {
+      return "Share your location to find catches near you.";
+    }
+    if (items.length === 0) {
+      return "No catches yet. Be the first to share!";
+    }
+    return null;
+  }, [filter, followingIds.length, geoLoading, items.length, location, user]);
 
   const openDetail = (post: any) => {
     setActive(post);
@@ -43,15 +153,33 @@ function FeedContent() {
             + Add Catch
           </button>
         </div>
+        <div className="flex flex-wrap gap-2 mb-6">
+          {FILTERS.map((item) => (
+            <button
+              key={item.key}
+              onClick={() => handleFilterSelect(item.key)}
+              className={`rounded-full px-4 py-1.5 text-sm transition border ${
+                filter === item.key
+                  ? "border-brand-300 bg-brand-400/20 text-white"
+                  : "border-white/20 text-white/70 hover:text-white hover:border-white/40"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        {geoError && (
+          <div className="mb-4 text-sm text-amber-300/80">
+            {geoError}
+          </div>
+        )}
+        {statusMessage && (
+          <p className="text-white/60 mb-4">{statusMessage}</p>
+        )}
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
           {items.map((p) => (
             <PostCard key={p.id} post={p} onOpen={openDetail} />
           ))}
-          {items.length === 0 && (
-            <p className="text-white/60">
-              No catches yet. Be the first to share!
-            </p>
-          )}
         </div>
       </section>
 
