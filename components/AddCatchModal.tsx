@@ -7,6 +7,7 @@ import { parse } from 'exifr';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth } from '@/lib/firebaseClient';
 import { createCatch } from '@/lib/firestore';
+import FishSelector from './FishSelector';
 
 const DEFAULT_CENTER = { lat: 39.8283, lng: -98.5795 };
 
@@ -235,6 +236,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     event.preventDefault();
     if (!user) return alert('Sign in first!');
     if (!file) return alert('Upload an image');
+    const trimmedSpecies = species.trim();
+    if (!trimmedSpecies) return alert('Please choose a species or enter one manually.');
 
     setUploading(true);
     try {
@@ -244,7 +247,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         uid: user.uid,
         displayName: user.displayName || 'Angler',
         userPhoto: user.photoURL || undefined,
-        species,
+        species: trimmedSpecies,
         weight,
         location,
         caption,
@@ -298,7 +301,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
 
           {/* Inputs */}
           <div className="grid gap-3 sm:grid-cols-2">
-            <input className="input" placeholder="Species" value={species} onChange={(e) => setSpecies(e.target.value)} required />
+            <FishSelector value={species} onSelect={setSpecies} placeholder="Species" />
             <input className="input" placeholder="Weight" value={weight} onChange={(e) => setWeight(e.target.value)} required />
           </div>
 
