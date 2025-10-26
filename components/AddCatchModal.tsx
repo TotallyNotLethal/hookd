@@ -162,44 +162,6 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     return `${lat.toFixed(4)}-${lng.toFixed(4)}-${mapZoom}`;
   }, [coordinates, mapZoom]);
 
-  useEffect(() => {
-    let isActive = true;
-
-    if (typeof navigator === 'undefined' || !navigator.geolocation) {
-      setGeolocationStatus('Location services are not available in this browser.');
-      setMapZoom(4);
-      return () => {
-        isActive = false;
-      };
-    }
-
-    setGeolocationStatus('Detecting your location…');
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        if (!isActive) return;
-        const lat = position.coords.latitude;
-        const lng = normalizeLongitude(position.coords.longitude);
-        const nextCoordinates = { lat, lng };
-        setCoordinates(nextCoordinates);
-        setMapZoom(12);
-        setGeolocationStatus(null);
-        void lookupLocationName(lat, lng);
-      },
-      (error) => {
-        if (!isActive) return;
-        console.warn('Unable to access geolocation', error);
-        setCoordinates(null);
-        setMapZoom(4);
-        setGeolocationStatus('Unable to access GPS. Please select a location manually.');
-      },
-    );
-
-    return () => {
-      isActive = false;
-    };
-  }, [lookupLocationName]);
-
   const lookupLocationName = useCallback(
     async (lat: number, lng: number, options?: { requestId?: number }) => {
       const normalizedLng = normalizeLongitude(lng);
@@ -247,6 +209,44 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     },
     [searchRequestId],
   );
+
+  useEffect(() => {
+    let isActive = true;
+
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      setGeolocationStatus('Location services are not available in this browser.');
+      setMapZoom(4);
+      return () => {
+        isActive = false;
+      };
+    }
+
+    setGeolocationStatus('Detecting your location…');
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        if (!isActive) return;
+        const lat = position.coords.latitude;
+        const lng = normalizeLongitude(position.coords.longitude);
+        const nextCoordinates = { lat, lng };
+        setCoordinates(nextCoordinates);
+        setMapZoom(12);
+        setGeolocationStatus(null);
+        void lookupLocationName(lat, lng);
+      },
+      (error) => {
+        if (!isActive) return;
+        console.warn('Unable to access geolocation', error);
+        setCoordinates(null);
+        setMapZoom(4);
+        setGeolocationStatus('Unable to access GPS. Please select a location manually.');
+      },
+    );
+
+    return () => {
+      isActive = false;
+    };
+  }, [lookupLocationName]);
 
   const handleFileSelection = useCallback(
     async (selectedFile: File) => {
