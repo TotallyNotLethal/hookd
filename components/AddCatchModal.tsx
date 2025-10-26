@@ -53,6 +53,21 @@ function LocationClickHandler({ onSelect }: { onSelect: (coordinates: Coordinate
   return null;
 }
 
+function parseExifDateTime(value: string | Date | undefined) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value === 'string') {
+    const normalized = value
+      .replace(/^([0-9]{4}):([0-9]{2}):([0-9]{2})/, '$1-$2-$3')
+      .replace(' ', 'T');
+    const parsed = new Date(normalized);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+}
+
 export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [species, setSpecies] = useState('');
@@ -102,18 +117,21 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       setCaptureDate('');
       setCaptureTime('');
       setCoordinates(null);
+      setLocation('');
       try {
         const metadata = (await parse(selectedFile, {
           pick: ['DateTimeOriginal', 'latitude', 'longitude'],
         })) as { DateTimeOriginal?: string | Date; latitude?: number; longitude?: number } | undefined;
 
-        if (metadata?.DateTimeOriginal) {
-          const date = new Date(metadata.DateTimeOriginal);
-          if (!Number.isNaN(date.getTime())) {
-            const iso = date.toISOString();
-            setCaptureDate(iso.slice(0, 10));
-            setCaptureTime(iso.slice(11, 16));
-          }
+        const capturedAt = parseExifDateTime(metadata?.DateTimeOriginal);
+        if (capturedAt) {
+          const iso = new Date(
+            capturedAt.getTime() - capturedAt.getTimezoneOffset() * 60 * 1000,
+          )
+            .toISOString()
+            .slice(0, 16);
+          setCaptureDate(iso.slice(0, 10));
+          setCaptureTime(iso.slice(11, 16));
         }
 
         if (metadata?.latitude && metadata?.longitude) {
@@ -160,6 +178,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
 
     setUploading(true);
     try {
+      const hasCaptureDetails = captureDate && captureTime;
+      const capturedAt = hasCaptureDetails ? new Date(`${captureDate}T${captureTime}`) : null;
       await createCatch({
         uid: user.uid,
         displayName: user.displayName || 'Angler',
@@ -170,6 +190,10 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         caption,
         trophy: isTrophy,
         file,
+        captureDate: captureDate || null,
+        captureTime: captureTime || null,
+        capturedAt: capturedAt && !Number.isNaN(capturedAt.getTime()) ? capturedAt : null,
+        coordinates,
       });
 
       alert('Catch uploaded!');
@@ -216,6 +240,33 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
           <div className="grid gap-3 sm:grid-cols-2">
             <input className="input" placeholder="Species" value={species} onChange={(e) => setSpecies(e.target.value)} required />
             <input className="input" placeholder="Weight" value={weight} onChange={(e) => setWeight(e.target.value)} required />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-sm text-white/70" htmlFor="capture-date">
+                Capture date
+              </label>
+              <input
+                id="capture-date"
+                type="date"
+                className="input"
+                value={captureDate}
+                onChange={(event) => setCaptureDate(event.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm text-white/70" htmlFor="capture-time">
+                Capture time
+              </label>
+              <input
+                id="capture-time"
+                type="time"
+                className="input"
+                value={captureTime}
+                onChange={(event) => setCaptureTime(event.target.value)}
+              />
+            </div>
           </div>
 
           {/* Map + Location */}
