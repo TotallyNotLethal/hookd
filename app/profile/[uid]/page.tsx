@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 
 import NavBar from '@/components/NavBar';
 import ProfileView from '@/components/ProfileView';
 import { app } from '@/lib/firebaseClient';
-import { subscribeToUser, subscribeToUserCatches } from '@/lib/firestore';
+import { followUser, subscribeToUser, subscribeToUserCatches, unfollowUser } from '@/lib/firestore';
 
 type ProfileData = {
   uid: string;
@@ -36,6 +36,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [catches, setCatches] = useState<CatchData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [followPending, setFollowPending] = useState(false);
 
   useEffect(() => {
     const auth = getAuth(app);
@@ -63,6 +64,26 @@ export default function ProfilePage() {
   }, [userId]);
 
   const isOwner = authUser?.uid === userId;
+  const isFollowing = useMemo(() => {
+    if (!authUser || !profile) return false;
+    const followers = Array.isArray(profile.followers) ? profile.followers : [];
+    return followers.includes(authUser.uid);
+  }, [authUser, profile]);
+
+  const handleToggleFollow = useCallback(async () => {
+    if (!authUser || !profile?.uid || authUser.uid === profile.uid || followPending) return;
+
+    setFollowPending(true);
+    try {
+      if (isFollowing) {
+        await unfollowUser(authUser.uid, profile.uid);
+      } else {
+        await followUser(authUser.uid, profile.uid);
+      }
+    } finally {
+      setFollowPending(false);
+    }
+  }, [authUser, profile, isFollowing, followPending]);
 
   return (
     <main>
@@ -73,7 +94,14 @@ export default function ProfilePage() {
             <p className="text-white/70">Loading profile…</p>
           </div>
         ) : profile ? (
-          <ProfileView profile={profile} catches={catches} isOwner={isOwner} />
+          <ProfileView
+            profile={profile}
+            catches={catches}
+            isOwner={isOwner}
+            isFollowing={isFollowing}
+            onToggleFollow={!isOwner && authUser ? handleToggleFollow : undefined}
+            followPending={followPending}
+          />
         ) : (
           <div className="card p-6">
             <p className="text-white/70">Profile not found.</p>

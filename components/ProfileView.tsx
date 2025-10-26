@@ -29,9 +29,20 @@ type ProfileViewProps = {
   catches: Catch[];
   isOwner?: boolean;
   onEditProfile?: () => void;
+  isFollowing?: boolean;
+  onToggleFollow?: () => void;
+  followPending?: boolean;
 };
 
-export default function ProfileView({ profile, catches, isOwner = false, onEditProfile }: ProfileViewProps) {
+export default function ProfileView({
+  profile,
+  catches,
+  isOwner = false,
+  onEditProfile,
+  isFollowing = false,
+  onToggleFollow,
+  followPending = false,
+}: ProfileViewProps) {
   const trophyCatches = useMemo(() => catches.filter((catchItem) => catchItem.trophy), [catches]);
   const standardCatches = useMemo(() => catches.filter((catchItem) => !catchItem.trophy), [catches]);
 
@@ -85,13 +96,26 @@ export default function ProfileView({ profile, catches, isOwner = false, onEditP
                 <span className="font-medium">{followingCount}</span> following
               </p>
             </div>
-            {isOwner && onEditProfile && (
-              <div className="sm:ml-auto">
+            <div className="sm:ml-auto flex items-center gap-2">
+              {!isOwner && onToggleFollow && (
+                <button
+                  className={`px-4 py-2 rounded-xl border transition ${
+                    isFollowing
+                      ? 'border-white/30 bg-white/10 text-white'
+                      : 'border-brand-400 text-brand-100 hover:bg-brand-400/10'
+                  } ${followPending ? 'opacity-60 cursor-not-allowed' : 'hover:border-brand-300'}`}
+                  onClick={onToggleFollow}
+                  disabled={followPending}
+                >
+                  {isFollowing ? 'Unfollow' : 'Follow'}
+                </button>
+              )}
+              {isOwner && onEditProfile && (
                 <button className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5" onClick={onEditProfile}>
                   Edit Profile
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
           {profile?.bio && <p className="text-white/80 mt-4">{profile.bio}</p>}
         </div>

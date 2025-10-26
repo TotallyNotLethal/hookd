@@ -117,6 +117,68 @@ export function subscribeToUser(uid: string, cb: (u: any | null) => void) {
   return onSnapshot(refUser, (snap) => cb(snap.exists() ? { uid, ...snap.data() } : null));
 }
 
+export async function followUser(currentUid: string, targetUid: string) {
+  if (!currentUid || !targetUid || currentUid === targetUid) return;
+
+  const currentRef = doc(db, 'users', currentUid);
+  const targetRef = doc(db, 'users', targetUid);
+
+  await runTransaction(db, async (tx) => {
+    const targetSnap = await tx.get(targetRef);
+    const currentSnap = await tx.get(currentRef);
+
+    if (!targetSnap.exists()) throw new Error('Target user not found');
+    if (!currentSnap.exists()) throw new Error('Current user not found');
+
+    const targetData = targetSnap.data() || {};
+    const currentData = currentSnap.data() || {};
+
+    const targetFollowers = new Set<string>(Array.isArray(targetData.followers) ? targetData.followers : []);
+    const currentFollowing = new Set<string>(Array.isArray(currentData.following) ? currentData.following : []);
+
+    if (!targetFollowers.has(currentUid)) {
+      targetFollowers.add(currentUid);
+    }
+    if (!currentFollowing.has(targetUid)) {
+      currentFollowing.add(targetUid);
+    }
+
+    tx.update(targetRef, { followers: Array.from(targetFollowers) });
+    tx.update(currentRef, { following: Array.from(currentFollowing) });
+  });
+}
+
+export async function unfollowUser(currentUid: string, targetUid: string) {
+  if (!currentUid || !targetUid || currentUid === targetUid) return;
+
+  const currentRef = doc(db, 'users', currentUid);
+  const targetRef = doc(db, 'users', targetUid);
+
+  await runTransaction(db, async (tx) => {
+    const targetSnap = await tx.get(targetRef);
+    const currentSnap = await tx.get(currentRef);
+
+    if (!targetSnap.exists()) throw new Error('Target user not found');
+    if (!currentSnap.exists()) throw new Error('Current user not found');
+
+    const targetData = targetSnap.data() || {};
+    const currentData = currentSnap.data() || {};
+
+    const targetFollowers = new Set<string>(Array.isArray(targetData.followers) ? targetData.followers : []);
+    const currentFollowing = new Set<string>(Array.isArray(currentData.following) ? currentData.following : []);
+
+    if (targetFollowers.has(currentUid)) {
+      targetFollowers.delete(currentUid);
+    }
+    if (currentFollowing.has(targetUid)) {
+      currentFollowing.delete(targetUid);
+    }
+
+    tx.update(targetRef, { followers: Array.from(targetFollowers) });
+    tx.update(currentRef, { following: Array.from(currentFollowing) });
+  });
+}
+
 export function subscribeToUserCatches(uid: string, cb: (arr: any[]) => void) {
   const q = query(collection(db, 'catches'), where('uid', '==', uid), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snap) => {
