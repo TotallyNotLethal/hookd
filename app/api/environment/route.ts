@@ -12,6 +12,56 @@ const PRESSURE_LOW = 1008;
 const PRESSURE_TREND_THRESHOLD = 0.3;
 const MAX_FORWARD_HOURS = 6;
 
+const WEATHER_CODE_DESCRIPTIONS: Record<number, string> = {
+  0: 'Clear',
+  1: 'Mainly clear',
+  2: 'Partly cloudy',
+  3: 'Overcast',
+  45: 'Foggy',
+  48: 'Rime fog',
+  51: 'Light drizzle',
+  53: 'Drizzle',
+  55: 'Heavy drizzle',
+  56: 'Freezing drizzle',
+  57: 'Heavy freezing drizzle',
+  61: 'Light rain',
+  63: 'Rain',
+  65: 'Heavy rain',
+  66: 'Freezing rain',
+  67: 'Heavy freezing rain',
+  71: 'Light snow',
+  73: 'Snow',
+  75: 'Heavy snow',
+  77: 'Snow grains',
+  80: 'Rain showers',
+  81: 'Heavy rain showers',
+  82: 'Violent rain showers',
+  85: 'Snow showers',
+  86: 'Heavy snow showers',
+  95: 'Thunderstorm',
+  96: 'Thunderstorm with hail',
+  99: 'Severe thunderstorm',
+};
+
+const CARDINAL_DIRECTIONS = [
+  'N',
+  'NNE',
+  'NE',
+  'ENE',
+  'E',
+  'ESE',
+  'SE',
+  'SSE',
+  'S',
+  'SSW',
+  'SW',
+  'WSW',
+  'W',
+  'WNW',
+  'NW',
+  'NNW',
+];
+
 function normalizeToHour(date: Date) {
   return new Date(Math.floor(date.getTime() / (60 * 60 * 1000)) * 60 * 60 * 1000);
 }
@@ -53,6 +103,44 @@ function computePressureTrend(previous: number | null, next: number | null) {
   return 'steady' as const;
 }
 
+function describeWeather(code: number | null | undefined): string | null {
+  if (code == null || Number.isNaN(code)) return null;
+  const rounded = Math.round(code);
+  return WEATHER_CODE_DESCRIPTIONS[rounded] ?? null;
+}
+
+function normalizeTemperature(value: number | null | undefined): number | null {
+  if (value == null || Number.isNaN(value)) return null;
+  return value;
+}
+
+function celsiusToFahrenheit(value: number | null): number | null {
+  if (value == null) return null;
+  return Math.round(((value * 9) / 5 + 32) * 100) / 100;
+}
+
+function normalizeWindSpeed(value: number | null | undefined): number | null {
+  if (value == null || Number.isNaN(value)) return null;
+  return value;
+}
+
+function metersPerSecondToMilesPerHour(value: number | null): number | null {
+  if (value == null) return null;
+  return Math.round(value * 2.23693629 * 100) / 100;
+}
+
+function normalizeWindDirection(value: number | null | undefined): number | null {
+  if (value == null || Number.isNaN(value)) return null;
+  const normalized = ((value % 360) + 360) % 360;
+  return Math.round(normalized * 100) / 100;
+}
+
+function toCardinalDirection(value: number | null): string | null {
+  if (value == null) return null;
+  const index = Math.round((value % 360) / 22.5) % CARDINAL_DIRECTIONS.length;
+  return CARDINAL_DIRECTIONS[index] ?? null;
+}
+
 function parseHourKey(value: string) {
   const normalized = value.length === 13 ? `${value}:00:00Z` : `${value.replace(' ', 'T')}Z`;
   const parsed = Date.parse(normalized);
@@ -84,6 +172,11 @@ function buildSnapshot({
   pressure,
   pressureBefore,
   pressureAfter,
+  weatherCode,
+  airTemperature,
+  waterTemperature,
+  windSpeed,
+  windDirection,
 }: {
   target: Date;
   utcOffsetSeconds: number;
@@ -93,6 +186,11 @@ function buildSnapshot({
   pressure: number | null;
   pressureBefore: number | null;
   pressureAfter: number | null;
+  weatherCode: number | null;
+  airTemperature: number | null;
+  waterTemperature: number | null;
+  windSpeed: number | null;
+  windDirection: number | null;
 }): EnvironmentSnapshot {
   const normalizedCapture = normalizeToHour(target);
   const captureUtc = target.toISOString();
@@ -104,6 +202,14 @@ function buildSnapshot({
   const moonPhaseBand = computeMoonPhaseBand(moonPhase);
   const pressureBand = computePressureBand(pressure);
   const pressureTrend = computePressureTrend(pressureBefore, pressureAfter);
+  const normalizedWeatherCode = weatherCode == null || Number.isNaN(weatherCode) ? null : Math.round(weatherCode);
+  const weatherDescription = describeWeather(normalizedWeatherCode);
+  const airTemperatureC = normalizeTemperature(airTemperature);
+  const waterTemperatureC = normalizeTemperature(waterTemperature);
+  const windSpeedMps = normalizeWindSpeed(windSpeed);
+  const windSpeedMph = metersPerSecondToMilesPerHour(windSpeedMps);
+  const windDirectionDegrees = normalizeWindDirection(windDirection);
+  const windDirectionCardinal = toCardinalDirection(windDirectionDegrees);
 
   return {
     captureUtc,
@@ -116,6 +222,16 @@ function buildSnapshot({
     moonIllumination,
     moonPhaseBand,
     surfacePressure: pressure,
+    weatherCode: normalizedWeatherCode,
+    weatherDescription,
+    airTemperatureC,
+    airTemperatureF: celsiusToFahrenheit(airTemperatureC),
+    waterTemperatureC,
+    waterTemperatureF: celsiusToFahrenheit(waterTemperatureC),
+    windSpeedMps,
+    windSpeedMph,
+    windDirectionDegrees,
+    windDirectionCardinal,
     pressureTrend,
     pressureBand,
     computedAtUtc: new Date().toISOString(),
@@ -161,7 +277,8 @@ export async function GET(request: Request) {
     const forecastParams = new URLSearchParams({
       latitude: latitude.toString(),
       longitude: longitude.toString(),
-      hourly: 'surface_pressure',
+      hourly:
+        'surface_pressure,temperature_2m,weathercode,wind_speed_10m,wind_direction_10m,water_temperature',
       timezone: 'auto',
       start_date: startDate,
       end_date: endDate,
@@ -191,6 +308,11 @@ export async function GET(request: Request) {
 
     const hourlyTimes: string[] = forecast?.hourly?.time ?? [];
     const hourlyPressures: number[] = forecast?.hourly?.surface_pressure ?? [];
+    const hourlyWeatherCodes: number[] = forecast?.hourly?.weathercode ?? [];
+    const hourlyAirTemperatures: number[] = forecast?.hourly?.temperature_2m ?? [];
+    const hourlyWaterTemperatures: number[] = forecast?.hourly?.water_temperature ?? [];
+    const hourlyWindSpeeds: number[] = forecast?.hourly?.wind_speed_10m ?? [];
+    const hourlyWindDirections: number[] = forecast?.hourly?.wind_direction_10m ?? [];
     const utcOffsetSeconds = forecast?.utc_offset_seconds ?? astronomy?.utc_offset_seconds ?? 0;
     const timezone = forecast?.timezone ?? astronomy?.timezone ?? 'UTC';
 
@@ -209,6 +331,11 @@ export async function GET(request: Request) {
         hourlyIndex >= 0 && hourlyIndex + 1 < hourlyPressures.length
           ? hourlyPressures[hourlyIndex + 1] ?? null
           : null;
+      const weatherCode = hourlyIndex >= 0 ? hourlyWeatherCodes[hourlyIndex] ?? null : null;
+      const airTemperature = hourlyIndex >= 0 ? hourlyAirTemperatures[hourlyIndex] ?? null : null;
+      const waterTemperature = hourlyIndex >= 0 ? hourlyWaterTemperatures[hourlyIndex] ?? null : null;
+      const windSpeed = hourlyIndex >= 0 ? hourlyWindSpeeds[hourlyIndex] ?? null : null;
+      const windDirection = hourlyIndex >= 0 ? hourlyWindDirections[hourlyIndex] ?? null : null;
 
       const dateKey = new Date(target.getTime() + utcOffsetSeconds * 1000)
         .toISOString()
@@ -226,6 +353,11 @@ export async function GET(request: Request) {
         pressure: pressure ?? null,
         pressureBefore: pressureBefore ?? null,
         pressureAfter: pressureAfter ?? null,
+        weatherCode: weatherCode ?? null,
+        airTemperature: airTemperature ?? null,
+        waterTemperature: waterTemperature ?? null,
+        windSpeed: windSpeed ?? null,
+        windDirection: windDirection ?? null,
       });
 
       return {

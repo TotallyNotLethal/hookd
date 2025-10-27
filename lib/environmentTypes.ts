@@ -19,6 +19,16 @@ export type EnvironmentSnapshot = {
   moonIllumination: number | null;
   moonPhaseBand: MoonPhaseBand;
   surfacePressure: number | null;
+  weatherCode: number | null;
+  weatherDescription: string | null;
+  airTemperatureC: number | null;
+  airTemperatureF: number | null;
+  waterTemperatureC: number | null;
+  waterTemperatureF: number | null;
+  windSpeedMps: number | null;
+  windSpeedMph: number | null;
+  windDirectionDegrees: number | null;
+  windDirectionCardinal: string | null;
   pressureTrend: 'rising' | 'falling' | 'steady' | null;
   pressureBand: PressureBand;
   computedAtUtc: string;
