@@ -165,9 +165,6 @@ export default function Page() {
                 </Link>
               )}
             </div>
-            <p className="text-white/70 text-sm">
-              Installable PWA • Mobile-first design • Free to start
-            </p>
           </div>
 
           <div className="glass rounded-3xl p-6 border-white/10">
