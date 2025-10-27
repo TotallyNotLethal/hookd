@@ -10,6 +10,7 @@ import LogbookModal from '@/components/logbook/LogbookModal';
 import { summarizeCatchMetrics } from '@/lib/catchStats';
 import { app } from '@/lib/firebaseClient';
 import { followUser, subscribeToUser, subscribeToUserCatches, unfollowUser } from '@/lib/firestore';
+import { subscribeToUserTackleStats, type UserTackleStats } from '@/lib/tackleBox';
 import PostDetailModal from '@/app/feed/PostDetailModal';
 
 type ProfileData = {
@@ -50,6 +51,7 @@ export default function ProfilePage() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [catches, setCatches] = useState<CatchData[]>([]);
+  const [tackleStats, setTackleStats] = useState<UserTackleStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [followPending, setFollowPending] = useState(false);
   const [activeCatch, setActiveCatch] = useState<CatchData | null>(null);
@@ -70,16 +72,19 @@ export default function ProfilePage() {
     setProfile(null);
     setCatches([]);
     setActiveCatch(null);
+    setTackleStats(null);
 
     const unsubscribeProfile = subscribeToUser(userId, (data) => {
       setProfile(data);
       setLoading(false);
     });
     const unsubscribeCatches = subscribeToUserCatches(userId, (data) => setCatches(data));
+    const unsubscribeTackle = subscribeToUserTackleStats(userId, (data) => setTackleStats(data));
 
     return () => {
       unsubscribeProfile();
       unsubscribeCatches();
+      unsubscribeTackle();
     };
   }, [userId]);
 
@@ -126,9 +131,10 @@ export default function ProfilePage() {
             isFollowing={isFollowing}
             onToggleFollow={!isOwner && authUser ? handleToggleFollow : undefined}
             followPending={followPending}
-            onCatchSelect={(catchItem) => setActiveCatch(catchItem)}
-            catchSummary={catchSummary}
-          />
+          onCatchSelect={(catchItem) => setActiveCatch(catchItem)}
+          catchSummary={catchSummary}
+          tackleStats={tackleStats}
+        />
         ) : (
           <div className="card p-6">
             <p className="text-white/70">Profile not found.</p>
