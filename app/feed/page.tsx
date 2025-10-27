@@ -22,6 +22,8 @@ const AddCatchModal = dynamic(() => import("@/components/AddCatchModal"), {
 
 type FeedFilter = "all" | "following" | "local";
 
+const EMPTY_FOLLOWING_IDS: string[] = [];
+
 const FILTERS: { key: FeedFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "following", label: "Following" },
@@ -41,23 +43,35 @@ function FeedContent() {
   const router = useRouter();
   const [user] = useAuthState(auth);
 
+  const defer = useCallback((fn: () => void) => {
+    if (typeof queueMicrotask === "function") {
+      queueMicrotask(fn);
+    } else {
+      Promise.resolve().then(fn);
+    }
+  }, []);
+
+  const effectiveFollowingIds = useMemo(
+    () => (user?.uid ? followingIds : EMPTY_FOLLOWING_IDS),
+    [followingIds, user?.uid],
+  );
+
   useEffect(() => {
     if (!user?.uid) {
-      setFollowingIds([]);
       return;
     }
     const unsubscribe = subscribeToUser(user.uid, (data) => {
       if (!data) {
-        setFollowingIds([]);
+        defer(() => setFollowingIds([]));
         return;
       }
       const following = Array.isArray(data.following)
         ? data.following.filter((id: unknown): id is string => typeof id === "string")
         : [];
-      setFollowingIds(following);
+      defer(() => setFollowingIds(following));
     });
     return () => unsubscribe();
-  }, [user?.uid]);
+  }, [defer, user?.uid]);
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
@@ -65,14 +79,14 @@ function FeedContent() {
     if (filter === "all") {
       unsubscribe = subscribeToFeedCatches(setItems);
     } else if (filter === "following") {
-      if (!user?.uid || followingIds.length === 0) {
-        setItems([]);
+      if (!user?.uid || effectiveFollowingIds.length === 0) {
+        defer(() => setItems([]));
       } else {
-        unsubscribe = subscribeToFollowingFeedCatches(followingIds, setItems);
+        unsubscribe = subscribeToFollowingFeedCatches(effectiveFollowingIds, setItems);
       }
     } else if (filter === "local") {
       if (!location) {
-        setItems([]);
+        defer(() => setItems([]));
       } else {
         unsubscribe = subscribeToLocalFeedCatches(location, 50, setItems);
       }
@@ -81,11 +95,13 @@ function FeedContent() {
     return () => {
       unsubscribe?.();
     };
-  }, [filter, followingIds, location, user?.uid]);
+  }, [defer, effectiveFollowingIds, filter, location, user?.uid]);
 
   useEffect(() => {
-    if (sp.get("compose") === "1") setOpen(true);
-  }, [sp]);
+    if (sp.get("compose") === "1") {
+      defer(() => setOpen(true));
+    }
+  }, [defer, sp]);
 
   const handleFilterSelect = useCallback(
     (next: FeedFilter) => {
@@ -124,7 +140,7 @@ function FeedContent() {
     if (filter === "following" && !user) {
       return "Sign in to see catches from anglers you follow.";
     }
-    if (filter === "following" && followingIds.length === 0) {
+    if (filter === "following" && effectiveFollowingIds.length === 0) {
       return "Follow anglers to see their latest catches here.";
     }
     if (filter === "local" && geoLoading) {
@@ -137,7 +153,7 @@ function FeedContent() {
       return "No catches yet. Be the first to share!";
     }
     return null;
-  }, [filter, followingIds.length, geoLoading, items.length, location, user]);
+  }, [effectiveFollowingIds.length, filter, geoLoading, items.length, location, user]);
 
   const openDetail = (post: any) => {
     setActive(post);

@@ -16,7 +16,7 @@ import {
   subscribeToUser,
 } from "@/lib/firestore";
 import type { HookdUser, Tournament, TournamentLeaderboardEntry } from "@/lib/firestore";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthState } from "react-firebase-hooks/auth";
 import PostDetailModal from "@/app/feed/PostDetailModal";
 
@@ -31,6 +31,13 @@ export default function Page() {
   const [activeTournaments, setActiveTournaments] = useState<Tournament[]>([]);
   const [profile, setProfile] = useState<HookdUser | null>(null);
   const [user] = useAuthState(auth);
+  const defer = useCallback((fn: () => void) => {
+    if (typeof queueMicrotask === "function") {
+      queueMicrotask(fn);
+    } else {
+      Promise.resolve().then(fn);
+    }
+  }, []);
   const fallbackConditionsLocation = useMemo(
     () => ({
       name: "Canton, OH",
@@ -112,7 +119,7 @@ export default function Page() {
 
   useEffect(() => {
     if (!user?.uid) {
-      setProfile(null);
+      defer(() => setProfile(null));
       return undefined;
     }
 
@@ -123,7 +130,7 @@ export default function Page() {
     return () => {
       unsubscribe();
     };
-  }, [user?.uid]);
+  }, [defer, user?.uid]);
 
 
 

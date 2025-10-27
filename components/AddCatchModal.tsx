@@ -23,6 +23,7 @@ import FishSelector from './FishSelector';
 import WeightPicker, { type WeightValue } from './WeightPicker';
 
 const DEFAULT_CENTER = { lat: 39.8283, lng: -98.5795 };
+const EMPTY_TOURNAMENT_HASHTAGS: string[] = [];
 
 const normalizeLongitude = (longitude: number) =>
   ((longitude + 180) % 360 + 360) % 360 - 180;
@@ -288,7 +289,10 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     return segments.join(' • ');
   }, [measurementLengthUnitLabel, measurementWeightUnitLabel, requiresLength, requiresWeight, selectedTournament]);
   const lengthPlaceholder = measurementLengthUnit === 'cm' ? 'e.g. 75' : 'e.g. 24';
-  const tournamentHashtags = selectedTournament?.requiredHashtags ?? [];
+  const tournamentHashtags = useMemo(
+    () => selectedTournament?.requiredHashtags ?? EMPTY_TOURNAMENT_HASHTAGS,
+    [selectedTournament],
+  );
   const tournamentAntiCheat = selectedTournament?.antiCheat;
   const tournamentsAvailable = tournaments.length > 0;
   const originalFileName = originalFile ? originalFile.name : '';

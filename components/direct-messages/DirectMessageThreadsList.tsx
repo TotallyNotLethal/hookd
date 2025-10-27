@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
 import { DirectMessageThread, subscribeToDirectMessageThreads } from '@/lib/firestore';
@@ -37,17 +37,28 @@ export default function DirectMessageThreadsList({
   const [threads, setThreads] = useState<DirectMessageThread[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const defer = useCallback((fn: () => void) => {
+    if (typeof queueMicrotask === 'function') {
+      queueMicrotask(fn);
+    } else {
+      Promise.resolve().then(fn);
+    }
+  }, []);
 
   useEffect(() => {
     if (!currentUserId) {
-      setThreads([]);
-      setIsLoading(false);
-      setError(null);
+      defer(() => {
+        setThreads([]);
+        setIsLoading(false);
+        setError(null);
+      });
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
+    defer(() => {
+      setIsLoading(true);
+      setError(null);
+    });
 
     const unsubscribe = subscribeToDirectMessageThreads(
       currentUserId,
@@ -67,7 +78,7 @@ export default function DirectMessageThreadsList({
     return () => {
       unsubscribe();
     };
-  }, [currentUserId]);
+  }, [currentUserId, defer]);
 
   const listItems = useMemo<ThreadListItem[]>(() => {
     if (!currentUserId) return [];

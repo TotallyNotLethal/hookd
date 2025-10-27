@@ -52,7 +52,7 @@ export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any
     return () => {
       unsubscribe();
     };
-  }, [user?.uid, post.uid]);
+  }, [post.uid, user]);
 
   const handleLike = async (e: React.MouseEvent) => {
     e.stopPropagation(); // prevent modal from opening
@@ -64,7 +64,7 @@ export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any
     if (!user || user.uid === post.uid) {
       setIsFollowing(false);
     }
-  }, [user?.uid, post.uid]);
+  }, [post.uid, user]);
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation(); // prevent modal from opening
