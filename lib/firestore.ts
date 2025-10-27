@@ -11,6 +11,7 @@ import {
   DEFAULT_PROFILE_THEME,
   coerceProfileTheme,
 } from "./profileThemeOptions";
+import { updateUserTackleStatsForCatch } from "./tackleBox";
 import type {
   EnvironmentBands,
   EnvironmentSnapshot,
@@ -108,6 +109,22 @@ export type DirectMessageThread = {
   participantProfiles?: Record<string, DirectMessageParticipantProfile> | null;
 };
 
+export type CatchTackleInput = {
+  lureType?: string | null;
+  color?: string | null;
+  rigging?: string | null;
+  notes?: string | null;
+  favoriteKey?: string | null;
+};
+
+export type CatchTackle = {
+  lureType: string;
+  color?: string | null;
+  rigging?: string | null;
+  notes?: string | null;
+  favoriteKey?: string | null;
+};
+
 export type CatchInput = {
   uid: string;
   displayName: string;
@@ -129,6 +146,7 @@ export type CatchInput = {
   environmentSnapshot?: EnvironmentSnapshot | null;
   environmentBands?: EnvironmentBands | null;
   locationKey?: string | null;
+  tackle?: CatchTackleInput | null;
 };
 
 export type CatchWithCoordinates = {
@@ -153,7 +171,30 @@ export type CatchWithCoordinates = {
   trophy?: boolean | null;
   hashtags?: string[] | null;
   user?: Record<string, unknown> | null;
+  tackle?: CatchTackle | null;
 };
+
+function sanitizeTackle(input: CatchTackleInput | null | undefined): CatchTackle | null {
+  if (!input) return null;
+
+  const lureType = typeof input.lureType === 'string' ? input.lureType.trim() : '';
+  const color = typeof input.color === 'string' ? input.color.trim() : '';
+  const rigging = typeof input.rigging === 'string' ? input.rigging.trim() : '';
+  const notes = typeof input.notes === 'string' ? input.notes.trim() : '';
+  const favoriteKey = typeof input.favoriteKey === 'string' ? input.favoriteKey.trim() : '';
+
+  if (!lureType) {
+    return null;
+  }
+
+  return {
+    lureType,
+    color: color || null,
+    rigging: rigging || null,
+    notes: notes || null,
+    favoriteKey: favoriteKey || null,
+  };
+}
 
 export const TOURNAMENTS_COLLECTION = 'tournaments';
 export const TOURNAMENT_ENTRIES_COLLECTION = 'tournamentEntries';
@@ -648,6 +689,8 @@ export async function createCatch(input: CatchInput) {
         }
       : null;
 
+  const tackle = sanitizeTackle(input.tackle ?? null);
+
   // ✅ Save Firestore document with image URL
   const cRef = await addDoc(collection(db, 'catches'), {
     uid: input.uid,
@@ -673,6 +716,7 @@ export async function createCatch(input: CatchInput) {
     captureManualEntry: captureManualEntry || null,
     environmentSnapshot,
     environmentBands: environmentBands || null,
+    tackle: tackle || null,
     coordinates:
       input.coordinates &&
       Number.isFinite(input.coordinates.lat) &&
@@ -681,6 +725,20 @@ export async function createCatch(input: CatchInput) {
         : null,
     locationKey: locationKey || null,
   });
+
+  if (tackle) {
+    const normalizedCaptureDate =
+      input.capturedAt ?? (normalizedCaptureTimestamp ? new Date(normalizedCaptureTimestamp.toMillis()) : null);
+
+    await updateUserTackleStatsForCatch({
+      uid: input.uid,
+      catchId: cRef.id,
+      tackle,
+      species: input.species,
+      trophy: Boolean(input.trophy),
+      capturedAt: normalizedCaptureDate ?? new Date(),
+    });
+  }
 
   if (locationKey) {
     void import('./biteClock')

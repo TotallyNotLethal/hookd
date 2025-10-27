@@ -3,7 +3,7 @@
 import clsx from 'clsx';
 import Image from 'next/image';
 import Link from 'next/link';
-import { type KeyboardEvent, useCallback, useMemo } from 'react';
+import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { BookOpen, Fish, Medal, MessageCircle, Scale, Sparkles } from 'lucide-react';
 import rehypeSanitize from 'rehype-sanitize';
@@ -24,6 +24,7 @@ import {
 } from '@/lib/profileThemeOptions';
 import type { ProfileTheme } from '@/lib/firestore';
 import type { EnvironmentSnapshot } from '@/lib/environmentTypes';
+import { SEASON_LABELS, type SeasonKey, type UserTackleStats } from '@/lib/tackleBox';
 
 const ABOUT_ALLOWED_TAGS = ['p', 'strong', 'em', 'a', 'ul', 'ol', 'li', 'code', 'blockquote', 'br'] as const;
 
@@ -50,6 +51,8 @@ const ABOUT_MARKDOWN_COMPONENTS: MarkdownComponents = {
     <code {...props} className="about-inline-code" />
   ),
 };
+
+const SEASON_FILTER_ORDER: SeasonKey[] = ['spring', 'summer', 'fall', 'winter'];
 
 type Profile = {
   uid?: string;
@@ -89,6 +92,7 @@ type ProfileViewProps = {
   followPending?: boolean;
   onCatchSelect?: (catchItem: Catch) => void;
   catchSummary?: CatchSummary;
+  tackleStats?: UserTackleStats | null;
 };
 
 export default function ProfileView({
@@ -102,6 +106,7 @@ export default function ProfileView({
   followPending = false,
   onCatchSelect,
   catchSummary,
+  tackleStats,
 }: ProfileViewProps) {
   const trophyCatches = useMemo(() => catches.filter((catchItem) => catchItem.trophy), [catches]);
   const standardCatches = useMemo(() => catches.filter((catchItem) => !catchItem.trophy), [catches]);
@@ -506,6 +511,8 @@ export default function ProfileView({
         </div>
       </div>
 
+      <ConfidenceBaitsWidget stats={tackleStats ?? null} isProMember={isProMember} />
+
       <section aria-label="Trophy catches" className="mt-8">
         <h2 className="mb-3 text-lg text-white/80">Trophy Catches</h2>
         {trophyCatches.length ? (
@@ -573,6 +580,272 @@ export default function ProfileView({
           <p className="text-white/60">No catches posted yet.</p>
         )}
       </section>
+    </div>
+  );
+}
+
+type ConfidenceBaitsWidgetProps = {
+  stats: UserTackleStats | null | undefined;
+  isProMember: boolean;
+};
+
+function ConfidenceBaitsWidget({ stats, isProMember }: ConfidenceBaitsWidgetProps) {
+  const [speciesFilter, setSpeciesFilter] = useState<string>('all');
+  const [seasonFilter, setSeasonFilter] = useState<SeasonKey | 'all'>('all');
+
+  const speciesOptions = useMemo(() => {
+    if (!stats?.entries?.length) return [] as string[];
+    const values = new Set<string>();
+    stats.entries.forEach((entry) => {
+      Object.keys(entry.speciesCounts ?? {}).forEach((key) => {
+        const normalized = key.trim();
+        if (normalized) {
+          values.add(normalized);
+        }
+      });
+    });
+    return Array.from(values).sort((a, b) => a.localeCompare(b));
+  }, [stats]);
+
+  const seasonOptions = useMemo(() => {
+    if (!stats?.entries?.length) return [] as SeasonKey[];
+    const values = new Set<SeasonKey>();
+    stats.entries.forEach((entry) => {
+      const counts = entry.seasonCounts ?? {};
+      SEASON_FILTER_ORDER.forEach((key) => {
+        if ((counts[key] ?? 0) > 0) {
+          values.add(key);
+        }
+      });
+    });
+    return SEASON_FILTER_ORDER.filter((key) => values.has(key));
+  }, [stats]);
+
+  useEffect(() => {
+    if (speciesFilter !== 'all' && !speciesOptions.includes(speciesFilter)) {
+      setSpeciesFilter('all');
+    }
+  }, [speciesFilter, speciesOptions]);
+
+  useEffect(() => {
+    if (seasonFilter !== 'all' && !seasonOptions.includes(seasonFilter)) {
+      setSeasonFilter('all');
+    }
+  }, [seasonFilter, seasonOptions]);
+
+  const filteredEntries = useMemo(() => {
+    if (!stats?.entries?.length) return [] as typeof stats.entries;
+    return stats.entries
+      .filter((entry) => {
+        if (speciesFilter !== 'all') {
+          const counts = entry.speciesCounts ?? {};
+          if ((counts[speciesFilter] ?? 0) <= 0) {
+            return false;
+          }
+        }
+        if (seasonFilter !== 'all') {
+          const counts = entry.seasonCounts ?? {};
+          if ((counts[seasonFilter] ?? 0) <= 0) {
+            return false;
+          }
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        if (b.catchRate !== a.catchRate) {
+          return b.catchRate - a.catchRate;
+        }
+        if (b.trophyRate !== a.trophyRate) {
+          return b.trophyRate - a.trophyRate;
+        }
+        return (b.totalCatches ?? 0) - (a.totalCatches ?? 0);
+      });
+  }, [stats, speciesFilter, seasonFilter]);
+
+  const hasStats = Boolean(stats?.entries?.length);
+  const totalSamples = stats?.totalCatches ?? 0;
+
+  const resolveTopSpecies = useCallback((counts?: Record<string, number>) => {
+    if (!counts) return null;
+    let bestKey: string | null = null;
+    let bestValue = 0;
+    Object.entries(counts).forEach(([key, value]) => {
+      if (!key) return;
+      if (value > bestValue) {
+        bestValue = value;
+        bestKey = key;
+      }
+    });
+    return bestKey;
+  }, []);
+
+  const resolveTopSeason = useCallback((counts?: Record<SeasonKey, number>) => {
+    if (!counts) return null;
+    let bestKey: SeasonKey | null = null;
+    let bestValue = 0;
+    SEASON_FILTER_ORDER.forEach((key) => {
+      const value = counts[key] ?? 0;
+      if (value > bestValue) {
+        bestValue = value;
+        bestKey = key;
+      }
+    });
+    return bestKey;
+  }, []);
+
+  const formatPercent = useCallback((value: number) => {
+    if (!Number.isFinite(value)) return '0%';
+    return `${Math.round(value * 1000) / 10}%`;
+  }, []);
+
+  return (
+    <div className="card mt-8 p-4 md:p-6">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-white/90">
+            <Sparkles aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />
+            Confidence Baits
+          </h2>
+          <p className="text-xs text-white/50">Top-performing tackle from your logged catches.</p>
+        </div>
+        <span className="rounded-full border border-amber-300/60 bg-amber-500/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+          Pro
+        </span>
+      </div>
+      {isProMember ? (
+        hasStats ? (
+          <>
+            <div className="mt-4 flex flex-wrap items-end gap-3 text-xs text-white/60">
+              {speciesOptions.length > 0 && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] uppercase tracking-wide text-white/40">Species filter</span>
+                  <select
+                    className="input bg-black/40 text-xs"
+                    value={speciesFilter}
+                    onChange={(event) => setSpeciesFilter(event.target.value)}
+                  >
+                    <option value="all">All species</option>
+                    {speciesOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {seasonOptions.length > 0 && (
+                <label className="flex flex-col gap-1">
+                  <span className="text-[10px] uppercase tracking-wide text-white/40">Season filter</span>
+                  <select
+                    className="input bg-black/40 text-xs"
+                    value={seasonFilter}
+                    onChange={(event) => setSeasonFilter(event.target.value as SeasonKey | 'all')}
+                  >
+                    <option value="all">All seasons</option>
+                    {seasonOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {SEASON_LABELS[option]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {(speciesFilter !== 'all' || seasonFilter !== 'all') && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSpeciesFilter('all');
+                    setSeasonFilter('all');
+                  }}
+                  className="rounded-full border border-white/20 px-3 py-1 text-xs text-white/70 transition hover:border-white/40 hover:text-white"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
+            {filteredEntries.length ? (
+              <div className="mt-4 space-y-3">
+                {filteredEntries.slice(0, 5).map((entry) => {
+                  const activeSpecies = speciesFilter !== 'all'
+                    ? speciesFilter
+                    : resolveTopSpecies(entry.speciesCounts);
+                  const activeSeasonKey = seasonFilter !== 'all'
+                    ? seasonFilter
+                    : resolveTopSeason(entry.seasonCounts);
+                  const activeSeasonLabel = activeSeasonKey ? SEASON_LABELS[activeSeasonKey] : null;
+                  const secondaryLine = [entry.color, entry.rigging]
+                    .filter((part) => part && part.trim().length > 0)
+                    .join(' • ');
+                  const lastCaughtDate = entry.lastCaughtAt && typeof entry.lastCaughtAt.toDate === 'function'
+                    ? entry.lastCaughtAt.toDate()
+                    : null;
+                  const lastCaughtLabel = lastCaughtDate
+                    ? lastCaughtDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+                    : '—';
+
+                  return (
+                    <div key={entry.key} className="rounded-2xl border border-white/10 bg-black/40 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-white">{entry.lureType}</p>
+                          <p className="text-xs text-white/60">{secondaryLine || '—'}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-base font-semibold text-white">{formatPercent(entry.catchRate)}</p>
+                          <p className="text-[10px] uppercase tracking-wide text-white/40">Catch share</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid gap-3 text-xs text-white/60 sm:grid-cols-3">
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-white/40">Trophy ratio</p>
+                          <p className="text-sm text-white">{formatPercent(entry.trophyRate)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-white/40">Sample size</p>
+                          <p className="text-sm text-white">{entry.totalCatches}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] uppercase tracking-wide text-white/40">Last logged</p>
+                          <p className="text-sm text-white">{lastCaughtLabel}</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-white/60">
+                        {activeSpecies && (
+                          <span className="rounded-full bg-white/10 px-2 py-1">{activeSpecies}</span>
+                        )}
+                        {activeSeasonLabel && (
+                          <span className="rounded-full bg-white/10 px-2 py-1">{activeSeasonLabel}</span>
+                        )}
+                      </div>
+                      {entry.notesSample && (
+                        <p className="mt-3 text-xs italic text-white/60">“{entry.notesSample}”</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-white/60">
+                No tackle matches the current filters. Try resetting them to see all of your go-to baits.
+              </p>
+            )}
+            <p className="mt-4 text-[11px] text-white/40">
+              Based on {totalSamples} logged catches with tackle details.
+            </p>
+          </>
+        ) : (
+          <p className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-white/60">
+            Confidence baits will appear after you log catches with tackle information.
+          </p>
+        )
+      ) : (
+        <div className="mt-4 space-y-2 rounded-2xl border border-amber-400/40 bg-amber-500/10 p-4 text-amber-100">
+          <p className="text-sm font-medium">Unlock tackle analytics with Hook&apos;d Pro.</p>
+          <p className="text-xs text-amber-50/80">
+            Track catch rates by lure, color, and presentation to build unstoppable confidence baits.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

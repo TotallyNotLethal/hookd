@@ -10,6 +10,7 @@ import {
   updateUserProfile,
   uploadProfileAsset,
 } from "@/lib/firestore";
+import { subscribeToUserTackleStats, type UserTackleStats } from "@/lib/tackleBox";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import clsx from "clsx";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
@@ -495,6 +496,7 @@ export default function Page() {
   const [authUser, setAuthUser] = useState<any>(null);
   const [profile, setProfile] = useState<OwnedProfile | null>(null);
   const [catches, setCatches] = useState<UserCatch[]>([]);
+  const [tackleStats, setTackleStats] = useState<UserTackleStats | null>(null);
   const [editing, setEditing] = useState(false);
   const [activeCatch, setActiveCatch] = useState<UserCatch | null>(null);
   const [isLogbookModalOpen, setIsLogbookModalOpen] = useState(false);
@@ -506,12 +508,15 @@ export default function Page() {
     const auth = getAuth(app);
     let unsubscribeProfile: (() => void) | undefined;
     let unsubscribeCatches: (() => void) | undefined;
+    let unsubscribeTackle: (() => void) | undefined;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       unsubscribeProfile?.();
       unsubscribeProfile = undefined;
       unsubscribeCatches?.();
       unsubscribeCatches = undefined;
+      unsubscribeTackle?.();
+      unsubscribeTackle = undefined;
 
       setAuthUser(user);
 
@@ -534,16 +539,21 @@ export default function Page() {
             return items.find((item) => item.id === current.id) ?? null;
           });
         });
+        unsubscribeTackle = subscribeToUserTackleStats(user.uid, (stats) => {
+          setTackleStats(stats);
+        });
       } else {
         setProfile(null);
         setCatches([]);
         setActiveCatch(null);
+        setTackleStats(null);
       }
     });
 
     return () => {
       unsubscribeProfile?.();
       unsubscribeCatches?.();
+      unsubscribeTackle?.();
       unsubscribeAuth();
     };
   }, []);
@@ -573,6 +583,7 @@ export default function Page() {
           onOpenLogbook={canManageLogbook ? () => setIsLogbookModalOpen(true) : undefined}
           onCatchSelect={(catchItem) => setActiveCatch(catchItem)}
           catchSummary={catchSummary}
+          tackleStats={tackleStats}
         />
       </section>
 

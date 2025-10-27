@@ -13,6 +13,7 @@ import {
   TournamentLengthUnit,
   TournamentMeasurementMode,
   TournamentWeightUnit,
+  type CatchTackleInput,
   createCatch,
   deleteCatch,
   getActiveTournaments,
@@ -21,11 +22,48 @@ import {
 } from '@/lib/firestore';
 import type { EnvironmentBands, EnvironmentSnapshot } from '@/lib/environmentTypes';
 import { deriveLocationKey } from '@/lib/location';
+import { subscribeToUserTackleStats, type UserTackleStats } from '@/lib/tackleBox';
 import FishSelector from './FishSelector';
 import WeightPicker, { type WeightValue } from './WeightPicker';
 
 const DEFAULT_CENTER = { lat: 39.8283, lng: -98.5795 };
 const EMPTY_TOURNAMENT_HASHTAGS: string[] = [];
+
+type TackleFavorite = {
+  id: string;
+  label: string;
+  lureType: string;
+  color?: string;
+  rigging?: string;
+  notes?: string | null;
+};
+
+const DEFAULT_TACKLE_FAVORITES: TackleFavorite[] = [
+  {
+    id: 'swim-jig-bluegill',
+    label: 'Swim Jig · Bluegill',
+    lureType: 'Swim Jig',
+    color: 'Bluegill',
+    rigging: 'Weedless',
+    notes: 'Slow roll along weed edges',
+  },
+  {
+    id: 'dropshot-shad',
+    label: 'Drop Shot · Shad',
+    lureType: 'Drop Shot',
+    color: 'Shad',
+    rigging: 'Nose hook',
+    notes: 'Great for suspending smallmouth',
+  },
+  {
+    id: 'chatterbait-firecraw',
+    label: 'Chatterbait · Fire Craw',
+    lureType: 'Chatterbait',
+    color: 'Fire Craw',
+    rigging: 'Trailer hook',
+    notes: 'Burn over shallow grass',
+  },
+];
 
 const normalizeLongitude = (longitude: number) =>
   ((longitude + 180) % 360 + 360) % 360 - 180;
@@ -228,6 +266,12 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [location, setLocation] = useState('');
   const [isLocationPrivate, setIsLocationPrivate] = useState(false);
   const [caption, setCaption] = useState('');
+  const [tackleLureType, setTackleLureType] = useState('');
+  const [tackleColor, setTackleColor] = useState('');
+  const [tackleRigging, setTackleRigging] = useState('');
+  const [tackleNotes, setTackleNotes] = useState('');
+  const [selectedTackleFavorite, setSelectedTackleFavorite] = useState<string | null>(null);
+  const [tackleError, setTackleError] = useState<string | null>(null);
   const [isTrophy, setIsTrophy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [captureDate, setCaptureDate] = useState('');
@@ -294,6 +338,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const searchRequestId = useRef(0);
   const [user] = useAuthState(auth);
   const [profile, setProfile] = useState<HookdUser | null>(null);
+  const [tackleStats, setTackleStats] = useState<UserTackleStats | null>(null);
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [selectedTournamentId, setSelectedTournamentId] = useState('');
   const [tournamentsLoading, setTournamentsLoading] = useState(false);
@@ -343,6 +388,40 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const tournamentAntiCheat = selectedTournament?.antiCheat;
   const tournamentsAvailable = tournaments.length > 0;
   const originalFileName = originalFile ? originalFile.name : '';
+  const tackleFavorites = useMemo(() => {
+    const favorites: TackleFavorite[] = [];
+    const seen = new Set<string>();
+
+    if (tackleStats?.entries?.length) {
+      const entryMap = new Map<string, (typeof tackleStats.entries)[number]>();
+      tackleStats.entries.forEach((entry) => {
+        entryMap.set(entry.key, entry);
+      });
+
+      (tackleStats.favorites ?? []).forEach((key) => {
+        if (seen.has(key)) return;
+        const entry = entryMap.get(key);
+        if (!entry) return;
+        favorites.push({
+          id: key,
+          label: entry.color ? `${entry.lureType} · ${entry.color}` : entry.lureType,
+          lureType: entry.lureType,
+          color: entry.color ?? undefined,
+          rigging: entry.rigging ?? undefined,
+          notes: entry.notesSample ?? null,
+        });
+        seen.add(key);
+      });
+    }
+
+    for (const fallback of DEFAULT_TACKLE_FAVORITES) {
+      if (seen.has(fallback.id)) continue;
+      favorites.push(fallback);
+      seen.add(fallback.id);
+    }
+
+    return favorites;
+  }, [tackleStats]);
   const missingTournamentHashtags = useMemo(() => {
     if (!selectedTournament || tournamentHashtags.length === 0) {
       return [] as string[];
@@ -355,6 +434,14 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     (next: WeightValue) => setVerifiedWeight(next),
     [],
   );
+  const handleFavoriteSelect = useCallback((favorite: TackleFavorite) => {
+    setTackleLureType(favorite.lureType);
+    setTackleColor(favorite.color ?? '');
+    setTackleRigging(favorite.rigging ?? '');
+    setTackleNotes(favorite.notes ?? '');
+    setSelectedTackleFavorite(favorite.id);
+    setTackleError(null);
+  }, []);
 
   useEffect(() => {
     if (!user?.uid) {
@@ -364,6 +451,21 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
 
     const unsubscribe = subscribeToUser(user.uid, (data) => {
       setProfile(data);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [user?.uid]);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setTackleStats(null);
+      return undefined;
+    }
+
+    const unsubscribe = subscribeToUserTackleStats(user.uid, (stats) => {
+      setTackleStats(stats);
     });
 
     return () => {
@@ -929,6 +1031,43 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       return;
     }
 
+    setTackleError(null);
+    const trimmedLureType = tackleLureType.trim();
+    const trimmedColor = tackleColor.trim();
+    const trimmedRigging = tackleRigging.trim();
+    const trimmedNotes = tackleNotes.trim();
+    const hasTackleInput = Boolean(
+      trimmedLureType || trimmedColor || trimmedRigging || trimmedNotes,
+    );
+    let tacklePayload: CatchTackleInput | null = null;
+
+    if (hasTackleInput) {
+      if (trimmedLureType.length < 2) {
+        setTackleError('Please enter a lure type (at least 2 characters).');
+        return;
+      }
+      if (trimmedColor && trimmedColor.length < 2) {
+        setTackleError('Color must be at least 2 characters.');
+        return;
+      }
+      if (trimmedRigging && trimmedRigging.length < 2) {
+        setTackleError('Rigging must be at least 2 characters.');
+        return;
+      }
+      if (trimmedNotes && trimmedNotes.length < 2) {
+        setTackleError('Notes must be at least 2 characters.');
+        return;
+      }
+
+      tacklePayload = {
+        lureType: trimmedLureType,
+        color: trimmedColor || null,
+        rigging: trimmedRigging || null,
+        notes: trimmedNotes || null,
+        favoriteKey: selectedTackleFavorite,
+      };
+    }
+
     const tournament = selectedTournament;
     let weightScorePounds: number | null = null;
     let weightValueForUnit: number | null = null;
@@ -1013,6 +1152,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         captureNormalizedAt,
         environmentSnapshot,
         environmentBands,
+        tackle: tacklePayload,
         locationKey: deriveLocationKey({ coordinates, locationName: finalLocation }),
         coordinates,
       });
@@ -1133,6 +1273,105 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
               <WeightPicker value={weight} onChange={handleWeightChange} />
               <p className="text-xs text-white/60">Selected weight: {formattedWeight}</p>
             </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-white/70">Tackle</span>
+              <span className="text-xs text-white/40">Optional</span>
+            </div>
+            {tackleFavorites.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {tackleFavorites.map((favorite) => {
+                  const isActive = selectedTackleFavorite === favorite.id;
+                  return (
+                    <button
+                      key={favorite.id}
+                      type="button"
+                      onClick={() => handleFavoriteSelect(favorite)}
+                      className={`rounded-full border px-3 py-1 text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 ${
+                        isActive
+                          ? 'border-brand-400 bg-brand-500/30 text-white'
+                          : 'border-white/15 bg-white/5 text-white/80 hover:border-white/30 hover:text-white'
+                      }`}
+                    >
+                      {favorite.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <p className="text-xs text-white/50">
+              Pick a favorite or log custom tackle details. Lure type is required when adding tackle info.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <label className="text-sm text-white/70" htmlFor="tackle-lure-type">
+                  Lure type
+                </label>
+                <input
+                  id="tackle-lure-type"
+                  className="input"
+                  placeholder="e.g. Spinnerbait"
+                  value={tackleLureType}
+                  onChange={(event) => {
+                    setTackleLureType(event.target.value);
+                    setSelectedTackleFavorite(null);
+                    setTackleError(null);
+                  }}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm text-white/70" htmlFor="tackle-color">
+                  Color pattern
+                </label>
+                <input
+                  id="tackle-color"
+                  className="input"
+                  placeholder="e.g. Green pumpkin"
+                  value={tackleColor}
+                  onChange={(event) => {
+                    setTackleColor(event.target.value);
+                    setSelectedTackleFavorite(null);
+                    setTackleError(null);
+                  }}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-sm text-white/70" htmlFor="tackle-rigging">
+                  Rigging / presentation
+                </label>
+                <input
+                  id="tackle-rigging"
+                  className="input"
+                  placeholder="e.g. Texas rig, Ned rig"
+                  value={tackleRigging}
+                  onChange={(event) => {
+                    setTackleRigging(event.target.value);
+                    setSelectedTackleFavorite(null);
+                    setTackleError(null);
+                  }}
+                />
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <label className="text-sm text-white/70" htmlFor="tackle-notes">
+                  Custom notes
+                </label>
+                <textarea
+                  id="tackle-notes"
+                  className="input min-h-[72px]"
+                  placeholder="Retrieve cadence, trailer, conditions…"
+                  value={tackleNotes}
+                  onChange={(event) => {
+                    setTackleNotes(event.target.value);
+                    setSelectedTackleFavorite(null);
+                    setTackleError(null);
+                  }}
+                  rows={3}
+                />
+              </div>
+            </div>
+            {tackleError && <p className="text-xs text-red-400">{tackleError}</p>}
           </div>
 
           <div className="space-y-2">
