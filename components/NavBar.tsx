@@ -9,7 +9,6 @@ import { HookdUser, subscribeToUser } from '@/lib/firestore';
 import {
   Home,
   PlusCircle,
-  UserRound,
   LogIn,
   LogOut,
   Map as MapIcon,
@@ -59,7 +58,6 @@ export default function NavBar() {
     { href: '/map', icon: MapIcon, label: 'Map' },
     { href: '/chat', icon: MessageSquare, label: 'Chat' },
     { href: '/feed?compose=1', icon: PlusCircle, label: 'Add Catch' },
-    { href: '/profile', icon: UserRound, label: 'Profile' },
   ];
 
   return (
