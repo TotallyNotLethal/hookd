@@ -1,13 +1,14 @@
 'use client';
 import { app } from '@/lib/firebaseClient';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
-  UserCredential,
+  onAuthStateChanged,
+  User,
 } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { ensureUserProfile } from '@/lib/firestore';
@@ -17,11 +18,13 @@ export default function Page() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const handledAuthRef = useRef(false);
 
   const handleAuthSuccess = useCallback(
-    async (credential: UserCredential | null) => {
-      if (!credential?.user) return;
-      await ensureUserProfile(credential.user);
+    async (user: User | null) => {
+      if (!user || handledAuthRef.current) return;
+      handledAuthRef.current = true;
+      await ensureUserProfile(user);
       router.replace('/feed');
     },
     [router],
@@ -30,11 +33,29 @@ export default function Page() {
   useEffect(() => {
     const auth = getAuth(app);
     getRedirectResult(auth)
-      .then(handleAuthSuccess)
+      .then(async (credential) => {
+        if (credential?.user) {
+          await handleAuthSuccess(credential.user);
+          return;
+        }
+
+        if (auth.currentUser) {
+          await handleAuthSuccess(auth.currentUser);
+        }
+      })
       .catch((err) => {
         console.error('Google redirect login failed', err);
         setError('Google sign-in failed. Please try again.');
       });
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        handleAuthSuccess(user);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
   }, [handleAuthSuccess]);
 
   const shouldUseRedirect = () => {
@@ -64,7 +85,7 @@ export default function Page() {
       }
 
       const res = await signInWithPopup(auth, provider);
-      await handleAuthSuccess(res);
+      await handleAuthSuccess(res.user);
     } catch (err: any) {
       console.error('Google popup login failed', err);
       setError('Google sign-in failed. Please try again.');
