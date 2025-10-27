@@ -9,6 +9,7 @@ import {
   getRedirectResult,
   onAuthStateChanged,
   User,
+  UserCredential,
   setPersistence,
   browserLocalPersistence,
   indexedDBLocalPersistence,
@@ -24,8 +25,17 @@ export default function Page() {
 
   const handleAuthSuccess = useCallback(
     async (user: User | null) => {
-      if (!user || handledAuthRef.current) return;
+      if (!user) {
+        console.log('[Auth] handleAuthSuccess called but no user.');
+        return;
+      }
+      if (handledAuthRef.current) {
+        console.log('[Auth] Already handled user once, skipping.');
+        return;
+      }
+
       handledAuthRef.current = true;
+      console.log('[Auth] ✅ Auth success, ensuring profile and redirecting...');
       await ensureUserProfile(user);
       router.replace('/feed');
     },
@@ -35,29 +45,40 @@ export default function Page() {
   useEffect(() => {
     const auth = getAuth(app);
 
-    // Ensure persistence is set before anything else
     (async () => {
+      console.log('[Auth] Setting persistence...');
       try {
         await setPersistence(auth, browserLocalPersistence);
-      } catch {
+        console.log('[Auth] Persistence set to browserLocalPersistence.');
+      } catch (err) {
+        console.warn('[Auth] browserLocalPersistence failed, falling back...', err);
         await setPersistence(auth, indexedDBLocalPersistence);
+        console.log('[Auth] Persistence set to indexedDBLocalPersistence.');
       }
 
-      // Must await getRedirectResult before onAuthStateChanged fires,
-      // otherwise Firebase clears it and nothing happens.
-      const result = await getRedirectResult(auth).catch((err) => {
-        console.error('Redirect result error:', err);
+      console.log('[Auth] Checking redirect result...');
+      const result: UserCredential | null = await getRedirectResult(auth).catch((err) => {
+        console.error('[Auth] ❌ Redirect result error:', err);
         setError('Google sign-in failed. Please try again.');
+        return null;
       });
 
-      if (result?.user) {
+      if (result && result.user) {
+        console.log('[Auth] 🎯 Redirect result found user:', result.user.uid);
         await handleAuthSuccess(result.user);
         return;
+      } else {
+        console.log('[Auth] No redirect result user found.');
       }
 
-      // Fallback: listen for auth state changes
+      console.log('[Auth] Listening for auth state changes...');
       const unsubscribe = onAuthStateChanged(auth, (user) => {
-        if (user) handleAuthSuccess(user);
+        if (user) {
+          console.log('[Auth] 🔄 onAuthStateChanged fired, user present:', user.uid);
+          handleAuthSuccess(user);
+        } else {
+          console.log('[Auth] onAuthStateChanged fired, no user.');
+        }
       });
       return () => unsubscribe();
     })();
@@ -76,28 +97,31 @@ export default function Page() {
   async function google() {
     setError(null);
     setLoading(true);
+    console.log('[Auth] Google sign-in started...');
 
     try {
       const auth = getAuth(app);
       const provider = new GoogleAuthProvider();
 
       if (isMobileOrStandalone()) {
-        // Always redirect on mobile
+        console.log('[Auth] Detected mobile or standalone, using redirect...');
         try {
           await setPersistence(auth, browserLocalPersistence);
-        } catch {
+        } catch (err) {
+          console.warn('[Auth] browserLocalPersistence unavailable, using IndexedDB.', err);
           await setPersistence(auth, indexedDBLocalPersistence);
         }
         await signInWithRedirect(auth, provider);
         return;
       }
 
-      // Popup for desktop
+      console.log('[Auth] Using popup login (desktop)...');
       await setPersistence(auth, browserLocalPersistence);
-      const res = await signInWithPopup(auth, provider);
+      const res = (await signInWithPopup(auth, provider)) as UserCredential;
+      console.log('[Auth] Popup result user:', res.user?.uid);
       await handleAuthSuccess(res.user);
     } catch (err: any) {
-      console.error('Google login failed:', err);
+      console.error('[Auth] ❌ Google login failed:', err);
       setError('Google sign-in failed. Please try again.');
     } finally {
       setLoading(false);
