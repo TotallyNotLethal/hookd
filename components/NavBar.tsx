@@ -131,8 +131,10 @@ export default function NavBar() {
                     <Link
                       href={t.href}
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition ${
-                        active ? 'bg-white/15 text-white' : 'hover:bg-white/10'
+                      className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition bg-slate-900/80 shadow-inner ${
+                        active
+                          ? 'ring-1 ring-white/20 text-white'
+                          : 'hover:bg-slate-900/95 hover:ring-1 hover:ring-white/10'
                       }`}
                     >
                       <Icon className="h-5 w-5" />
@@ -145,7 +147,7 @@ export default function NavBar() {
                 <Link
                   href="/tools/fish-identifier"
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium hover:bg-white/10"
+                  className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition bg-slate-900/80 shadow-inner hover:bg-slate-900/95 hover:ring-1 hover:ring-white/10"
                 >
                   <Fish className="h-5 w-5" />
                   <span>Fish ID</span>
@@ -156,7 +158,7 @@ export default function NavBar() {
                   <Link
                     href="/login"
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium hover:bg-white/10"
+                    className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition bg-slate-900/80 shadow-inner hover:bg-slate-900/95 hover:ring-1 hover:ring-white/10"
                   >
                     <LogIn className="h-5 w-5" />
                     <span>Login</span>
@@ -169,7 +171,7 @@ export default function NavBar() {
                       signOut(getAuth(app));
                       setIsMobileMenuOpen(false);
                     }}
-                    className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium hover:bg-white/10"
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition bg-slate-900/80 shadow-inner hover:bg-slate-900/95 hover:ring-1 hover:ring-white/10"
                   >
                     <LogOut className="h-5 w-5" />
                     <span>Logout</span>
