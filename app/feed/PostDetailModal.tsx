@@ -1,9 +1,15 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { addComment, subscribeToComments, subscribeToUserLike, toggleLike } from '@/lib/firestore';
+import {
+  addComment,
+  deleteCatch,
+  subscribeToComments,
+  subscribeToUserLike,
+  toggleLike,
+} from '@/lib/firestore';
 import { getAuth } from 'firebase/auth';
 import { app } from '@/lib/firebaseClient';
-import { Heart } from 'lucide-react';
+import { Heart, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -24,9 +30,11 @@ export default function PostDetailModal({ post, onClose }: { post: any; onClose:
   const [comments, setComments] = useState<any[]>([]);
   const [text, setText] = useState('');
   const [liked, setLiked] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const locationIsPrivate = Boolean(post?.locationPrivate);
   const canShowLocation =
     post?.location && (!locationIsPrivate || (user && user.uid === post.uid));
+  const isOwner = user?.uid === post?.uid;
 
   useEffect(() => {
     if (!user?.uid || !post?.id) return;
@@ -47,6 +55,18 @@ export default function PostDetailModal({ post, onClose }: { post: any; onClose:
       text,
     });
     setText('');
+  }
+
+  async function handleDelete() {
+    if (!post?.id || !isOwner || deleting) return;
+    if (!confirm('Delete this catch?')) return;
+    try {
+      setDeleting(true);
+      await deleteCatch(post.id);
+      onClose();
+    } finally {
+      setDeleting(false);
+    }
   }
 
   const postTime = post?.createdAt?.seconds
@@ -101,9 +121,22 @@ export default function PostDetailModal({ post, onClose }: { post: any; onClose:
               <div className="p-4 pb-20 relative flex flex-col md:h-full">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-semibold">{post.species}</h3>
-                  <button onClick={onClose} className="opacity-70 hover:opacity-100 text-lg">
-                    ✕
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {isOwner && (
+                      <button
+                        onClick={handleDelete}
+                        disabled={deleting}
+                        className="opacity-70 hover:opacity-100 text-lg text-red-400 disabled:opacity-40"
+                        title="Delete catch"
+                      >
+                        <Trash2 className="h-5 w-5" />
+                        <span className="sr-only">Delete catch</span>
+                      </button>
+                    )}
+                    <button onClick={onClose} className="opacity-70 hover:opacity-100 text-lg">
+                      ✕
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between mb-3">

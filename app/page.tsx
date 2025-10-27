@@ -1,5 +1,5 @@
 'use client';
-import "@/lib/firebaseClient";
+import { auth } from "@/lib/firebaseClient";
 import NavBar from "@/components/NavBar";
 import Image from "next/image";
 import Link from "next/link";
@@ -12,6 +12,7 @@ import {
   subscribeToFeedCatches,
 } from "@/lib/firestore";
 import { useEffect, useMemo, useState } from "react";
+import { useAuthState } from "react-firebase-hooks/auth";
 import PostDetailModal from "@/app/feed/PostDetailModal";
 
 
@@ -20,6 +21,7 @@ export default function Page() {
   const [challengePosts, setChallengePosts] = useState<any[]>([]);
   const [recentCatches, setRecentCatches] = useState<any[]>([]);
   const [active, setActive] = useState<any | null>(null);
+  const [user] = useAuthState(auth);
   const fallbackConditionsLocation = useMemo(
     () => ({
       name: "Canton, OH",
@@ -147,12 +149,21 @@ export default function Page() {
               >
                 View Fishing Map
               </Link>
-              <Link
-                href="/login"
-                className="px-6 py-3 text-base md:text-lg rounded-xl border border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-              >
-                Sign In
-              </Link>
+              {user ? (
+                <Link
+                  href="/feed?compose=1"
+                  className="px-6 py-3 text-base md:text-lg rounded-xl border border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                >
+                  Share a Catch
+                </Link>
+              ) : (
+                <Link
+                  href="/login"
+                  className="px-6 py-3 text-base md:text-lg rounded-xl border border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                >
+                  Sign In
+                </Link>
+              )}
             </div>
             <p className="text-white/70 text-sm">
               Installable PWA • Mobile-first design • Free to start
