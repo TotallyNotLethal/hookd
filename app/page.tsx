@@ -236,11 +236,9 @@ export default function Page() {
         </div>
 
         {recentCatches.length > 0 ? (
-          <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             {recentCatches.map((post) => (
-              <div key={post.id} className="flex">
-                <PostCard post={post} onOpen={setActive} />
-              </div>
+              <PostCard key={post.id} post={post} onOpen={setActive} />
             ))}
           </div>
         ) : (
