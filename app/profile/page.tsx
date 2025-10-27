@@ -11,7 +11,24 @@ import {
   uploadProfileAsset,
 } from "@/lib/firestore";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
+import clsx from "clsx";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import {
+  DEFAULT_PROFILE_THEME,
+  PROFILE_ACCENT_OPTIONS,
+  PROFILE_BACKGROUND_TEXTURES,
+  PROFILE_LAYOUT_OPTIONS,
+  coerceProfileTheme,
+  isValidAccentKey,
+  isValidLayoutKey,
+  isValidTextureKey,
+} from "@/lib/profileThemeOptions";
+import type {
+  ProfileAccentKey,
+  ProfileLayoutKey,
+  ProfileTheme,
+  ProfileTextureKey,
+} from "@/lib/firestore";
 
 const ACCEPTED_IMAGE_TYPES = new Set([
   "image/png",
@@ -22,10 +39,43 @@ const ACCEPTED_IMAGE_TYPES = new Set([
 ]);
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 
-function EditProfileModal({ user, onClose }: { user: any; onClose: () => void }) {
+type UserCatch = {
+  id: string;
+  species?: string;
+  weight?: string;
+  imageUrl?: string;
+  trophy?: boolean;
+};
+
+type EditProfileUser = {
+  uid: string;
+  displayName?: string;
+  username?: string;
+  bio?: string;
+  about?: string;
+  photoURL?: string;
+  header?: string;
+  profileTheme?: Partial<ProfileTheme> | null;
+};
+
+type EditProfileModalProps = {
+  user: EditProfileUser;
+  catches: UserCatch[];
+  onClose: () => void;
+};
+
+function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
   const [displayName, setDisplayName] = useState(user?.displayName || "");
   const [bio, setBio] = useState(user?.bio || "");
   const [username, setUserName] = useState(user?.username || "");
+  const [about, setAbout] = useState(user?.about || "");
+  const [theme, setTheme] = useState<ProfileTheme>(() => {
+    try {
+      return coerceProfileTheme(user?.profileTheme ?? null, DEFAULT_PROFILE_THEME);
+    } catch {
+      return DEFAULT_PROFILE_THEME;
+    }
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -38,6 +88,7 @@ function EditProfileModal({ user, onClose }: { user: any; onClose: () => void })
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [bannerError, setBannerError] = useState<string | null>(null);
 
+  const catchIdSet = useMemo(() => new Set(catches.map((item) => item.id)), [catches]);
   const defaultAvatar = useMemo(() => user?.photoURL || "/logo.svg", [user?.photoURL]);
   const defaultBanner = useMemo(
     () => user?.header || user?.photoURL || "/logo.svg",
@@ -124,6 +175,39 @@ function EditProfileModal({ user, onClose }: { user: any; onClose: () => void })
     setBannerPreview(previewUrl);
   }
 
+  const handleAccentSelect = (accentKey: ProfileAccentKey) => {
+    if (!isValidAccentKey(accentKey)) {
+      setError("Selected accent color is not supported.");
+      return;
+    }
+    setError(null);
+    setTheme((prev) => ({ ...prev, accentColor: accentKey }));
+  };
+
+  const handleTextureSelect = (textureKey: ProfileTextureKey) => {
+    if (!isValidTextureKey(textureKey)) {
+      setError("Selected background texture is not supported.");
+      return;
+    }
+    setError(null);
+    setTheme((prev) => ({ ...prev, backgroundTexture: textureKey }));
+  };
+
+  const handleLayoutSelect = (layoutKey: ProfileLayoutKey) => {
+    if (!isValidLayoutKey(layoutKey)) {
+      setError("Selected layout is not supported.");
+      return;
+    }
+    setError(null);
+    setTheme((prev) => ({ ...prev, layoutVariant: layoutKey }));
+  };
+
+  const handleFeaturedCatchSelect = (event: ChangeEvent<HTMLSelectElement>) => {
+    const value = event.target.value;
+    setError(null);
+    setTheme((prev) => ({ ...prev, featuredCatchId: value ? value : null }));
+  };
+
   async function save() {
     try {
       setSaving(true);
@@ -135,9 +219,30 @@ function EditProfileModal({ user, onClose }: { user: any; onClose: () => void })
         return;
       }
 
+      if (
+        !isValidAccentKey(theme.accentColor) ||
+        !isValidTextureKey(theme.backgroundTexture) ||
+        !isValidLayoutKey(theme.layoutVariant)
+      ) {
+        setError("Selected theme options are no longer supported. Please choose different presets.");
+        return;
+      }
+
+      if (theme.featuredCatchId && !catchIdSet.has(theme.featuredCatchId)) {
+        setError("The selected featured catch is no longer available.");
+        return;
+      }
+
       const updates: Record<string, any> = {
         displayName,
         bio,
+        about,
+        profileTheme: {
+          accentColor: theme.accentColor,
+          backgroundTexture: theme.backgroundTexture,
+          layoutVariant: theme.layoutVariant,
+          featuredCatchId: theme.featuredCatchId ?? null,
+        },
       };
 
       if (avatarFile) {
@@ -169,9 +274,9 @@ function EditProfileModal({ user, onClose }: { user: any; onClose: () => void })
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
-      <div className="card w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-xl font-semibold mb-4">Edit Profile</h3>
-        <div className="space-y-3">
+      <div className="card w-full max-w-2xl p-6" onClick={(e) => e.stopPropagation()}>
+        <h3 className="mb-4 text-xl font-semibold">Edit Profile</h3>
+        <div className="space-y-4">
           <input
             className="input"
             value={displayName}
@@ -191,12 +296,147 @@ function EditProfileModal({ user, onClose }: { user: any; onClose: () => void })
             placeholder="Short bio"
           />
           <div className="grid gap-2">
+            <label className="text-sm text-white/70" htmlFor="about-input">
+              About (Markdown supported)
+            </label>
+            <textarea
+              id="about-input"
+              className="input min-h-[140px]"
+              value={about}
+              onChange={(e) => setAbout(e.target.value)}
+              placeholder="Share your story, favorite techniques, or fishing philosophy."
+            />
+            <p className="text-xs text-white/50">
+              Supports **bold**, _italic_, [links](https://example.com), lists, and inline code.
+            </p>
+          </div>
+
+          <div className="grid gap-4 border-t border-white/10 pt-4">
+            <div>
+              <p className="text-sm font-medium text-white">Profile theme</p>
+              <p className="text-xs text-white/60">
+                Choose curated presets to keep your profile consistent and readable.
+              </p>
+            </div>
+
+            <div className="grid gap-2">
+              <span className="text-sm text-white/70">Accent color</span>
+              <div className="flex flex-wrap gap-3">
+                {Object.entries(PROFILE_ACCENT_OPTIONS).map(([key, option]) => {
+                  const accentKey = key as ProfileAccentKey;
+                  const selected = theme.accentColor === accentKey;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={clsx(
+                        "flex w-[140px] flex-col items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+                        selected ? "border-white/40 ring-2 ring-white/60" : "hover:border-white/25",
+                      )}
+                      onClick={() => handleAccentSelect(accentKey)}
+                      aria-pressed={selected}
+                      title={option.description}
+                    >
+                      <span
+                        aria-hidden
+                        className="h-12 w-full rounded-lg border border-white/20"
+                        style={{ background: option.preview }}
+                      />
+                      <span className="text-xs font-medium text-white">{option.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <span className="text-sm text-white/70">Background texture</span>
+              <div className="flex flex-wrap gap-3">
+                {Object.entries(PROFILE_BACKGROUND_TEXTURES).map(([key, option]) => {
+                  const textureKey = key as ProfileTextureKey;
+                  const selected = theme.backgroundTexture === textureKey;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={clsx(
+                        "flex w-[140px] flex-col items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60",
+                        selected ? "border-white/40 ring-2 ring-white/60" : "hover:border-white/25",
+                      )}
+                      style={{ backgroundImage: option.preview }}
+                      onClick={() => handleTextureSelect(textureKey)}
+                      aria-pressed={selected}
+                      title={option.description}
+                    >
+                      <span className="text-xs font-medium text-white drop-shadow">{option.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <span className="text-sm text-white/70">Layout</span>
+              <div className="flex flex-col gap-3 md:flex-row md:flex-wrap">
+                {Object.entries(PROFILE_LAYOUT_OPTIONS).map(([key, option]) => {
+                  const layoutKey = key as ProfileLayoutKey;
+                  const selected = theme.layoutVariant === layoutKey;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className={clsx(
+                        "w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 md:w-[calc(50%-0.5rem)]",
+                        selected ? "border-white/40 ring-2 ring-white/60" : "hover:border-white/25",
+                      )}
+                      onClick={() => handleLayoutSelect(layoutKey)}
+                      aria-pressed={selected}
+                    >
+                      <span className="text-sm font-semibold text-white">{option.label}</span>
+                      <p className="mt-1 text-xs text-white/70">{option.description}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid gap-2">
+              <label className="text-sm text-white/70" htmlFor="featured-catch-select">
+                Featured catch
+              </label>
+              <select
+                id="featured-catch-select"
+                className="input"
+                value={theme.featuredCatchId ?? ""}
+                onChange={handleFeaturedCatchSelect}
+                disabled={!catches.length}
+              >
+                <option value="">None</option>
+                {catches.map((catchItem) => (
+                  <option key={catchItem.id} value={catchItem.id}>
+                    {catchItem.species || "Catch"}
+                    {catchItem.weight ? ` • ${catchItem.weight}` : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-white/50">
+                Highlight one of your catches as a hero image on your profile.
+              </p>
+              {!catches.length && (
+                <p className="text-xs text-white/40">
+                  You haven’t shared any catches yet. Post one to feature it here.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="grid gap-2 border-t border-white/10 pt-4">
             <label className="text-sm text-white/70">Avatar</label>
             <div className="flex items-center gap-3">
               <img
                 src={avatarPreview || "/logo.svg"}
                 alt="Avatar preview"
-                className="h-16 w-16 rounded-2xl object-cover border border-white/15"
+                className="h-16 w-16 rounded-2xl border border-white/15 object-cover"
               />
               <input
                 className="input"
@@ -205,15 +445,16 @@ function EditProfileModal({ user, onClose }: { user: any; onClose: () => void })
                 onChange={handleAvatarChange}
               />
             </div>
-            {avatarError && <p className="text-red-400 text-sm">{avatarError}</p>}
+            {avatarError && <p className="text-sm text-red-400">{avatarError}</p>}
           </div>
+
           <div className="grid gap-2">
             <label className="text-sm text-white/70">Banner</label>
             <div className="flex items-center gap-3">
               <img
                 src={bannerPreview || "/logo.svg"}
                 alt="Banner preview"
-                className="h-16 w-24 rounded-2xl object-cover border border-white/15"
+                className="h-16 w-24 rounded-2xl border border-white/15 object-cover"
               />
               <input
                 className="input"
@@ -222,12 +463,14 @@ function EditProfileModal({ user, onClose }: { user: any; onClose: () => void })
                 onChange={handleBannerChange}
               />
             </div>
-            {bannerError && <p className="text-red-400 text-sm">{bannerError}</p>}
+            {bannerError && <p className="text-sm text-red-400">{bannerError}</p>}
           </div>
-          {statusMessage && <p className="text-brand-300 text-sm">{statusMessage}</p>}
-          {error && <p className="text-red-400 text-sm">{error}</p>}
+
+          {statusMessage && <p className="text-sm text-brand-300">{statusMessage}</p>}
+          {error && <p className="text-sm text-red-400">{error}</p>}
+
           <div className="flex justify-end gap-3 pt-2">
-            <button className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5" onClick={onClose}>
+            <button className="rounded-xl border border-white/15 px-4 py-2 hover:bg-white/5" onClick={onClose}>
               Cancel
             </button>
             <button className="btn-primary" onClick={save} disabled={saving}>
@@ -312,7 +555,13 @@ export default function Page() {
         />
       </section>
 
-      {editing && <EditProfileModal user={{ ...profile, uid: authUser.uid }} onClose={() => setEditing(false)} />}
+      {editing && (
+        <EditProfileModal
+          user={{ ...profile, uid: authUser.uid }}
+          catches={catches}
+          onClose={() => setEditing(false)}
+        />
+      )}
     </main>
   );
 }
