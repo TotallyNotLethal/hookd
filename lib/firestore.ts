@@ -237,7 +237,7 @@ export async function updateUserProfile(
     payload.profileTheme = themeToPersist;
   }
 
-  await updateDoc(refUser, payload);
+  await setDoc(refUser, payload, { merge: true });
 }
 
 export function subscribeToUser(uid: string, cb: (u: any | null) => void) {
