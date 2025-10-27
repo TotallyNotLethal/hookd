@@ -3,7 +3,7 @@
 import clsx from 'clsx';
 import Image from 'next/image';
 import Link from 'next/link';
-import { type KeyboardEvent, useMemo } from 'react';
+import { type KeyboardEvent, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { BookOpen, Fish, Medal, MessageCircle, Scale, Sparkles } from 'lucide-react';
 import rehypeSanitize from 'rehype-sanitize';
@@ -13,6 +13,7 @@ import type { Options as RehypeSanitizeOptions } from 'rehype-sanitize';
 import {
   summarizeCatchMetrics,
   type CatchSummary,
+  type CatchEnvironmentSummary,
 } from '@/lib/catchStats';
 import {
   DEFAULT_PROFILE_THEME,
@@ -22,6 +23,7 @@ import {
   coerceProfileTheme,
 } from '@/lib/profileThemeOptions';
 import type { ProfileTheme } from '@/lib/firestore';
+import type { EnvironmentSnapshot } from '@/lib/environmentTypes';
 
 const ABOUT_ALLOWED_TAGS = ['p', 'strong', 'em', 'a', 'ul', 'ol', 'li', 'code', 'blockquote', 'br'] as const;
 
@@ -72,6 +74,7 @@ type Catch = {
   weight?: string;
   trophy?: boolean;
   caption?: string;
+  environmentSnapshot?: EnvironmentSnapshot | null;
   [key: string]: any;
 };
 
@@ -106,6 +109,7 @@ export default function ProfileView({
     () => catchSummary ?? summarizeCatchMetrics(catches),
     [catchSummary, catches],
   );
+  const environmentSummary = stats.environment;
 
   const avatarSrc = profile?.photoURL || '/logo.svg';
   const headerSrc = profile?.header || avatarSrc;
@@ -165,6 +169,78 @@ export default function ProfileView({
   const followingCount = profile?.following?.length ?? 0;
   const personalBestWeight = stats.personalBest?.weightText ?? '—';
   const personalBestSpecies = stats.personalBest?.species;
+
+  const formatTemperature = useCallback((value: number | null | undefined) => {
+    if (value == null || Number.isNaN(value)) return '—';
+    return `${Math.round(value)}°F`;
+  }, []);
+
+  const formatBandLabel = useCallback((value: string | null | undefined) => {
+    if (!value) return '—';
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  }, []);
+
+  const formatPressure = useCallback(
+    (value: string | null | undefined) => {
+      if (!value) return '—';
+      if (value === 'mid') return 'Steady';
+      return formatBandLabel(value);
+    },
+    [formatBandLabel],
+  );
+
+  const formatWind = useCallback((wind: CatchEnvironmentSummary['prevailingWind']) => {
+      if (!wind) return '—';
+      const direction = wind.direction ?? (wind.degrees != null ? `${Math.round(wind.degrees)}°` : null);
+      const speed = wind.speedMph != null && Number.isFinite(wind.speedMph)
+        ? `${Math.round(wind.speedMph)} mph`
+        : null;
+      if (direction && speed) return `${direction} · ${speed}`;
+      return direction ?? speed ?? '—';
+  }, []);
+
+  const environmentMetrics = useMemo(() => {
+    if (!environmentSummary) return [];
+    return [
+      {
+        key: 'weather',
+        label: 'Typical Weather',
+        value: environmentSummary.typicalWeather?.description ?? '—',
+      },
+      {
+        key: 'air',
+        label: 'Avg Air Temp',
+        value: formatTemperature(environmentSummary.averageAirTempF),
+      },
+      {
+        key: 'water',
+        label: 'Avg Water Temp',
+        value: formatTemperature(environmentSummary.averageWaterTempF),
+      },
+      {
+        key: 'pressure',
+        label: 'Typical Pressure',
+        value: formatPressure(environmentSummary.typicalPressure),
+      },
+      {
+        key: 'moon',
+        label: 'Typical Moon Phase',
+        value: formatBandLabel(environmentSummary.typicalMoonPhase),
+      },
+      {
+        key: 'time',
+        label: 'Prime Time',
+        value: formatBandLabel(environmentSummary.typicalTimeOfDay),
+      },
+      {
+        key: 'wind',
+        label: 'Prevailing Wind',
+        value: formatWind(environmentSummary.prevailingWind),
+      },
+    ];
+  }, [environmentSummary, formatBandLabel, formatPressure, formatTemperature, formatWind]);
+
+  const hasEnvironmentData = Boolean(environmentSummary && environmentSummary.sampleSize > 0);
 
   const aboutContent = profile?.about?.trim();
   const canOpenLogbook = useMemo(
@@ -385,6 +461,49 @@ export default function ProfileView({
             </div>
           </div>
         </dl>
+
+        <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-white/80">Catch Insights</p>
+              <p className="text-xs text-white/50">Auto-logged conditions from your catches</p>
+            </div>
+            <span className="rounded-full border border-amber-300/60 bg-amber-500/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+              Pro
+            </span>
+          </div>
+          {isProMember ? (
+            hasEnvironmentData ? (
+              <>
+                <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {environmentMetrics.map((metric) => (
+                    <div
+                      key={metric.key}
+                      className="rounded-xl border border-white/10 bg-black/30 p-3"
+                    >
+                      <dt className="text-xs uppercase tracking-wide text-white/50">{metric.label}</dt>
+                      <dd className="mt-1 text-sm font-medium text-white/90">{metric.value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <p className="mt-4 text-[11px] text-white/40">
+                  Based on {environmentSummary?.sampleSize ?? 0} logged catches with location data.
+                </p>
+              </>
+            ) : (
+              <p className="mt-4 rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white/60">
+                Catch insights will appear after you post catches with location and timestamp info.
+              </p>
+            )
+          ) : (
+            <div className="mt-4 space-y-2 rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-amber-100">
+              <p className="text-sm font-medium">Unlock detailed weather insights with Hook&apos;d Pro.</p>
+              <p className="text-xs text-amber-50/80">
+                Weather, temps, pressure, moon phase, and wind are captured automatically every time you log a catch.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       <section aria-label="Trophy catches" className="mt-8">

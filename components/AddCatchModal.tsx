@@ -239,6 +239,40 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [environmentBands, setEnvironmentBands] = useState<EnvironmentBands | null>(null);
   const [environmentLoading, setEnvironmentLoading] = useState(false);
   const [environmentError, setEnvironmentError] = useState<string | null>(null);
+  const environmentDetailLine = useMemo(() => {
+    if (!environmentSnapshot) return null;
+    const segments: string[] = [];
+
+    if (environmentSnapshot.weatherDescription) {
+      segments.push(environmentSnapshot.weatherDescription);
+    }
+
+    const airTemp = environmentSnapshot.airTemperatureF ?? null;
+    if (airTemp != null && Number.isFinite(airTemp)) {
+      segments.push(`${Math.round(airTemp)}°F air temp`);
+    }
+
+    const waterTemp = environmentSnapshot.waterTemperatureF ?? null;
+    if (waterTemp != null && Number.isFinite(waterTemp)) {
+      segments.push(`${Math.round(waterTemp)}°F water temp`);
+    }
+
+    const windDirection = environmentSnapshot.windDirectionCardinal;
+    const windSpeed = environmentSnapshot.windSpeedMph ?? null;
+    if (windDirection && windSpeed != null && Number.isFinite(windSpeed)) {
+      segments.push(`${windDirection} winds ${Math.round(windSpeed)} mph`);
+    } else if (windDirection) {
+      segments.push(`${windDirection} winds`);
+    } else if (windSpeed != null && Number.isFinite(windSpeed)) {
+      segments.push(`${Math.round(windSpeed)} mph winds`);
+    }
+
+    if (environmentSnapshot.surfacePressure != null && Number.isFinite(environmentSnapshot.surfacePressure)) {
+      segments.push(`${Math.round(environmentSnapshot.surfacePressure)} hPa pressure`);
+    }
+
+    return segments.length ? segments.join(' • ') : null;
+  }, [environmentSnapshot]);
   const capturedAt = useMemo(() => {
     if (!captureDate || !captureTime) return null;
     const candidate = new Date(`${captureDate}T${captureTime}`);
@@ -1244,12 +1278,15 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
             </div>
           </div>
           <div className="text-xs text-white/60 space-y-1">
-            {environmentLoading && <p>Pulling moon and pressure tags…</p>}
+            {environmentLoading && <p>Pulling catch insights…</p>}
             {!environmentLoading && environmentSnapshot && (
-              <p>
-                Tagged as {environmentSnapshot.timeOfDayBand} · {environmentSnapshot.moonPhaseBand} moon ·{' '}
-                {environmentSnapshot.pressureBand} pressure
-              </p>
+              <div className="space-y-0.5">
+                <p>
+                  Tagged as {environmentSnapshot.timeOfDayBand} · {environmentSnapshot.moonPhaseBand} moon ·{' '}
+                  {environmentSnapshot.pressureBand} pressure
+                </p>
+                {environmentDetailLine && <p>Auto-logged: {environmentDetailLine}</p>}
+              </div>
             )}
             {environmentError && !environmentLoading && (
               <p className="text-amber-300">Environment data unavailable: {environmentError}</p>
