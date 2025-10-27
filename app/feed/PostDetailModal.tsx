@@ -12,6 +12,7 @@ import { app } from '@/lib/firebaseClient';
 import { Heart, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
+import ProBadge from '@/components/ProBadge';
 
 function timeAgo(timestamp: number): string {
   const now = Date.now();
@@ -72,6 +73,13 @@ export default function PostDetailModal({ post, onClose }: { post: any; onClose:
   const postTime = post?.createdAt?.seconds
     ? timeAgo(post.createdAt.seconds * 1000)
     : null;
+  const isProMember = Boolean(
+    post?.isPro ||
+      post?.user?.isPro ||
+      post?.userIsPro ||
+      post?.user?.membership === 'pro' ||
+      post?.membership === 'pro',
+  );
 
   return (
     <AnimatePresence>
@@ -140,11 +148,15 @@ export default function PostDetailModal({ post, onClose }: { post: any; onClose:
                 </div>
 
                 <div className="flex items-center justify-between mb-3">
-                  <div
-                    className="text-sm text-blue-400 hover:underline cursor-pointer font-medium"
-                    onClick={() => router.push(`/profile/${post.uid}`)}
-                  >
-                    {post.displayName || post.user.name}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      className="text-left text-sm text-blue-400 hover:underline cursor-pointer font-medium"
+                      onClick={() => router.push(`/profile/${post.uid}`)}
+                    >
+                      {post.displayName || post.user.name}
+                    </button>
+                    {isProMember && <ProBadge className="text-[10px]" />}
                   </div>
                   {postTime && <span className="text-xs opacity-60">{postTime}</span>}
                 </div>
