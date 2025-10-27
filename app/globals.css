@@ -33,3 +33,118 @@ body {
 .card {
   @apply rounded-2xl bg-[var(--card)] border border-white/10 shadow-soft;
 }
+
+.profile-theme {
+  --profile-accent-strong: #0d8be6;
+  --profile-accent-soft: rgba(13, 139, 230, 0.14);
+  --profile-accent-border: rgba(13, 139, 230, 0.35);
+  --profile-accent-ring: rgba(13, 139, 230, 0.55);
+  --profile-texture: none;
+  position: relative;
+  isolation: isolate;
+}
+
+.profile-theme::before {
+  content: "";
+  position: absolute;
+  inset: -2rem;
+  border-radius: clamp(2rem, 4vw, 3rem);
+  background: var(--profile-texture, transparent);
+  opacity: 0.7;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.profile-accent-tide {
+  --profile-accent-strong: #38bdf8;
+  --profile-accent-soft: rgba(56, 189, 248, 0.16);
+  --profile-accent-border: rgba(56, 189, 248, 0.38);
+  --profile-accent-ring: rgba(56, 189, 248, 0.55);
+}
+
+.profile-accent-ember {
+  --profile-accent-strong: #f97316;
+  --profile-accent-soft: rgba(249, 115, 22, 0.18);
+  --profile-accent-border: rgba(249, 115, 22, 0.42);
+  --profile-accent-ring: rgba(249, 115, 22, 0.58);
+}
+
+.profile-accent-kelp {
+  --profile-accent-strong: #4ade80;
+  --profile-accent-soft: rgba(74, 222, 128, 0.18);
+  --profile-accent-border: rgba(74, 222, 128, 0.4);
+  --profile-accent-ring: rgba(74, 222, 128, 0.56);
+}
+
+.profile-accent-midnight {
+  --profile-accent-strong: #818cf8;
+  --profile-accent-soft: rgba(129, 140, 248, 0.18);
+  --profile-accent-border: rgba(129, 140, 248, 0.42);
+  --profile-accent-ring: rgba(129, 140, 248, 0.6);
+}
+
+.profile-texture-calm {
+  --profile-texture: radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.25), transparent 55%),
+    radial-gradient(circle at 80% 30%, rgba(14, 165, 233, 0.22), transparent 60%);
+}
+
+.profile-texture-dusk {
+  --profile-texture: radial-gradient(circle at 10% 10%, rgba(253, 186, 116, 0.28), transparent 55%),
+    radial-gradient(circle at 80% 80%, rgba(244, 114, 182, 0.32), transparent 60%);
+}
+
+.profile-texture-midnight {
+  --profile-texture: radial-gradient(circle at 15% 80%, rgba(129, 140, 248, 0.32), transparent 55%),
+    radial-gradient(circle at 85% 20%, rgba(56, 189, 248, 0.28), transparent 60%);
+}
+
+.profile-theme .accent-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  border-radius: 0.75rem;
+  background-color: var(--profile-accent-soft);
+}
+
+.profile-theme .accent-link {
+  color: var(--profile-accent-strong);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.profile-theme .accent-link:hover {
+  opacity: 0.85;
+}
+
+.profile-theme .about-inline-code {
+  border-radius: 0.5rem;
+  background-color: rgba(255, 255, 255, 0.08);
+  padding: 0.15rem 0.45rem;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.profile-theme .markdown {
+  display: grid;
+  gap: 0.75rem;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.profile-theme .markdown ul,
+.profile-theme .markdown ol {
+  margin-left: 1.25rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.profile-theme .markdown ul {
+  list-style-type: disc;
+}
+
+.profile-theme .markdown ol {
+  list-style-type: decimal;
+}

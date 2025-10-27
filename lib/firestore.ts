@@ -7,6 +7,10 @@ import {
   GeoPoint, Timestamp,
 } from "firebase/firestore";
 import { getStorage, getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import {
+  DEFAULT_PROFILE_THEME,
+  coerceProfileTheme,
+} from "./profileThemeOptions";
 
 // ✅ Define storage first
 const storage = getStorage(app, "gs://hookd-b7ae6.firebasestorage.app");
@@ -38,12 +42,25 @@ export type HookdUser = {
   photoURL?: string;
   header?: string;
   bio?: string;
+  about?: string;
   trophies?: string[];
   followers?: string[];
   following?: string[];
   createdAt?: any;
   updatedAt?: any;
   isTester: boolean;
+  profileTheme?: ProfileTheme;
+};
+
+export type ProfileAccentKey = "tide" | "ember" | "kelp" | "midnight";
+export type ProfileTextureKey = "calm" | "dusk" | "midnight";
+export type ProfileLayoutKey = "classic" | "spotlight";
+
+export type ProfileTheme = {
+  accentColor: ProfileAccentKey;
+  backgroundTexture: ProfileTextureKey;
+  layoutVariant: ProfileLayoutKey;
+  featuredCatchId?: string | null;
 };
 
 export type CatchInput = {
@@ -91,20 +108,33 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
       photoURL: user.photoURL || undefined,
       header: undefined,
       bio: '',
+      about: '',
       trophies: [],
       followers: [],
       following: [],
       isTester: false,             // ✅ default tester flag
+      profileTheme: { ...DEFAULT_PROFILE_THEME },
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
     await setDoc(refUser, payload);
   } else {
-    await updateDoc(refUser, {
+    const existing = snap.data() as HookdUser;
+    const updates: Record<string, any> = {
       displayName: user.displayName || 'Angler',
       photoURL: user.photoURL || null,
       updatedAt: serverTimestamp(),
-    });
+    };
+
+    if (!existing.profileTheme) {
+      updates.profileTheme = { ...DEFAULT_PROFILE_THEME };
+    }
+
+    if (typeof existing.about !== 'string') {
+      updates.about = '';
+    }
+
+    await updateDoc(refUser, updates);
   }
 }
 
@@ -130,11 +160,28 @@ export async function updateUserProfile(
     bio?: string;
     photoURL?: string | null;
     header?: string | null;
+    about?: string | null;
+    profileTheme?: Partial<ProfileTheme> | null;
     [key: string]: any;
   },
 ) {
   const refUser = doc(db, 'users', uid);
-  await updateDoc(refUser, { ...data, updatedAt: serverTimestamp() });
+  const { profileTheme, about, ...rest } = data;
+  const payload: Record<string, any> = { ...rest, updatedAt: serverTimestamp() };
+
+  if (about !== undefined) {
+    payload.about = about ?? '';
+  }
+
+  if (profileTheme !== undefined) {
+    const themeToPersist = profileTheme === null
+      ? { ...DEFAULT_PROFILE_THEME }
+      : coerceProfileTheme(profileTheme, DEFAULT_PROFILE_THEME);
+
+    payload.profileTheme = themeToPersist;
+  }
+
+  await updateDoc(refUser, payload);
 }
 
 export function subscribeToUser(uid: string, cb: (u: any | null) => void) {
