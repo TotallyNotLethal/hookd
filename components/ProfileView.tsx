@@ -65,7 +65,7 @@ type Profile = {
 
 type Catch = {
   id: string;
-  imageUrl: string;
+  imageUrl?: string;
   species?: string;
   weight?: string;
   trophy?: boolean;
@@ -342,29 +342,32 @@ export default function ProfileView({
         <h2 className="mb-3 text-lg text-white/80">Trophy Catches</h2>
         {trophyCatches.length ? (
           <div className="flex gap-4 overflow-auto pb-2">
-            {trophyCatches.map((trophy) => (
-              <div
-                key={trophy.id}
-                className={clsx(
-                  'relative h-[180px] min-w-[260px] overflow-hidden rounded-2xl border border-white/10',
-                  onCatchSelect &&
-                    'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)] hover:border-[var(--profile-accent-border)]',
-                )}
-                role={onCatchSelect ? 'button' : undefined}
-                tabIndex={onCatchSelect ? 0 : undefined}
-                onClick={onCatchSelect ? () => onCatchSelect(trophy) : undefined}
-                onKeyDown={onCatchSelect ? (event) => handleCatchKeyDown(event, trophy) : undefined}
-                aria-label={
-                  onCatchSelect ? `Open details for ${trophy.species || 'catch'}` : undefined
-                }
-              >
-                <Image src={trophy.imageUrl} alt={trophy.species || 'trophy catch'} fill className="object-cover" />
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2 text-sm">
-                  <span className="font-medium">{trophy.species}</span>
-                  {trophy.weight ? ` • ${trophy.weight}` : ''}
+            {trophyCatches.map((trophy) => {
+              const imageSrc = trophy.imageUrl || '/logo.svg';
+              return (
+                <div
+                  key={trophy.id}
+                  className={clsx(
+                    'relative h-[180px] min-w-[260px] overflow-hidden rounded-2xl border border-white/10',
+                    onCatchSelect &&
+                      'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)] hover:border-[var(--profile-accent-border)]',
+                  )}
+                  role={onCatchSelect ? 'button' : undefined}
+                  tabIndex={onCatchSelect ? 0 : undefined}
+                  onClick={onCatchSelect ? () => onCatchSelect(trophy) : undefined}
+                  onKeyDown={onCatchSelect ? (event) => handleCatchKeyDown(event, trophy) : undefined}
+                  aria-label={
+                    onCatchSelect ? `Open details for ${trophy.species || 'catch'}` : undefined
+                  }
+                >
+                  <Image src={imageSrc} alt={trophy.species || 'trophy catch'} fill className="object-cover" />
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-2 text-sm">
+                    <span className="font-medium">{trophy.species}</span>
+                    {trophy.weight ? ` • ${trophy.weight}` : ''}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <p className="text-white/60">No trophies yet. Mark a catch as a trophy when you upload.</p>
@@ -375,25 +378,28 @@ export default function ProfileView({
         <h2 className="mb-3 text-lg text-white/80">All Catches</h2>
         {standardCatches.length ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {standardCatches.map((catchItem) => (
-              <div
-                key={catchItem.id}
-                className={clsx(
-                  'relative aspect-square overflow-hidden rounded-2xl border border-white/10',
-                  onCatchSelect &&
-                    'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)] hover:border-[var(--profile-accent-border)]',
-                )}
-                role={onCatchSelect ? 'button' : undefined}
-                tabIndex={onCatchSelect ? 0 : undefined}
-                onClick={onCatchSelect ? () => onCatchSelect(catchItem) : undefined}
-                onKeyDown={onCatchSelect ? (event) => handleCatchKeyDown(event, catchItem) : undefined}
-                aria-label={
-                  onCatchSelect ? `Open details for ${catchItem.species || 'catch'}` : undefined
-                }
-              >
-                <Image src={catchItem.imageUrl} alt={catchItem.species || 'catch'} fill className="object-cover" />
-              </div>
-            ))}
+            {standardCatches.map((catchItem) => {
+              const imageSrc = catchItem.imageUrl || '/logo.svg';
+              return (
+                <div
+                  key={catchItem.id}
+                  className={clsx(
+                    'relative aspect-square overflow-hidden rounded-2xl border border-white/10',
+                    onCatchSelect &&
+                      'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)] hover:border-[var(--profile-accent-border)]',
+                  )}
+                  role={onCatchSelect ? 'button' : undefined}
+                  tabIndex={onCatchSelect ? 0 : undefined}
+                  onClick={onCatchSelect ? () => onCatchSelect(catchItem) : undefined}
+                  onKeyDown={onCatchSelect ? (event) => handleCatchKeyDown(event, catchItem) : undefined}
+                  aria-label={
+                    onCatchSelect ? `Open details for ${catchItem.species || 'catch'}` : undefined
+                  }
+                >
+                  <Image src={imageSrc} alt={catchItem.species || 'catch'} fill className="object-cover" />
+                </div>
+              );
+            })}
           </div>
         ) : (
           <p className="text-white/60">No catches posted yet.</p>
