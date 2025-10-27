@@ -250,6 +250,10 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     };
   }, [user?.uid]);
 
+  const handleLocationPrivacyChange = useCallback((checked: boolean) => {
+    setIsLocationPrivate(checked);
+  }, []);
+
   const updateMapZoom = useCallback(
     (value: number | ((previous: number) => number)) => {
       setMapZoomState((previous) => {
@@ -790,7 +794,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
               id="location-private"
               type="checkbox"
               checked={isLocationPrivate}
-              onChange={(event) => setIsLocationPrivate(event.target.checked)}
+              onChange={(event) => handleLocationPrivacyChange(event.target.checked)}
               className="mt-1"
             />
             <div>

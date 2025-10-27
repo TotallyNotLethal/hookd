@@ -49,6 +49,7 @@ export type HookdUser = {
   createdAt?: any;
   updatedAt?: any;
   isTester: boolean;
+  isPro: boolean;
   profileTheme?: ProfileTheme;
 };
 
@@ -161,6 +162,7 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
       followers: [],
       following: [],
       isTester: false,             // ✅ default tester flag
+      isPro: false,
       profileTheme: { ...DEFAULT_PROFILE_THEME },
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -188,6 +190,10 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
 
     if (typeof existing.about !== 'string') {
       updates.about = '';
+    }
+
+    if (typeof existing.isPro !== 'boolean') {
+      updates.isPro = false;
     }
 
     await updateDoc(refUser, updates);
@@ -218,6 +224,7 @@ export async function updateUserProfile(
     header?: string | null;
     about?: string | null;
     profileTheme?: Partial<ProfileTheme> | null;
+    isPro?: boolean;
     [key: string]: any;
   },
 ) {
@@ -240,9 +247,17 @@ export async function updateUserProfile(
   await setDoc(refUser, payload, { merge: true });
 }
 
-export function subscribeToUser(uid: string, cb: (u: any | null) => void) {
+export function subscribeToUser(uid: string, cb: (u: HookdUser | null) => void) {
   const refUser = doc(db, 'users', uid);
-  return onSnapshot(refUser, (snap) => cb(snap.exists() ? { uid, ...snap.data() } : null));
+  return onSnapshot(refUser, (snap) => {
+    if (!snap.exists()) {
+      cb(null);
+      return;
+    }
+
+    const data = snap.data() as HookdUser;
+    cb({ ...data, uid });
+  });
 }
 
 export async function followUser(currentUid: string, targetUid: string) {

@@ -2,7 +2,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { getAuth, onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { app } from '@/lib/firebaseClient';
 import { HookdUser, subscribeToUser } from '@/lib/firestore';
@@ -53,6 +53,8 @@ export default function NavBar() {
     };
   }, []);
 
+  const isProMember = useMemo(() => Boolean(profile?.isPro), [profile?.isPro]);
+
   const tabs = [
     { href: '/', icon: Home, label: 'Home' },
     { href: '/map', icon: MapIcon, label: 'Map' },
@@ -93,7 +95,7 @@ export default function NavBar() {
                   <Link
                     href="/profile"
                     aria-label="Profile"
-                    className="inline-flex rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                    className="relative inline-flex rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
                   >
                     <Image
                       src={profile?.photoURL || user?.photoURL || '/logo.svg'}
@@ -102,6 +104,12 @@ export default function NavBar() {
                       height={32}
                       className="rounded-full"
                     />
+                    {isProMember && (
+                      <span className="absolute -bottom-1 -right-1 rounded-full border border-amber-300/60 bg-amber-500/80 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-950 shadow-lg">
+                        <span aria-hidden>Pro</span>
+                        <span className="sr-only">Pro member</span>
+                      </span>
+                    )}
                   </Link>
                 </>
               )}
@@ -113,7 +121,7 @@ export default function NavBar() {
                 <Link
                   href="/profile"
                   aria-label="Profile"
-                  className="inline-flex rounded-full border border-white/15 p-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                  className="relative inline-flex rounded-full border border-white/15 p-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
                 >
                   <Image
                     src={profile?.photoURL || user?.photoURL || '/logo.svg'}
@@ -122,6 +130,12 @@ export default function NavBar() {
                     height={32}
                     className="rounded-full"
                   />
+                  {isProMember && (
+                    <span className="absolute -bottom-1 -right-1 rounded-full border border-amber-300/60 bg-amber-500/80 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-950 shadow-lg">
+                      <span aria-hidden>Pro</span>
+                      <span className="sr-only">Pro member</span>
+                    </span>
+                  )}
                 </Link>
               ) : null}
               <button

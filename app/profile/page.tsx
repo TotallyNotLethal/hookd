@@ -14,6 +14,7 @@ import { getAuth, onAuthStateChanged } from "firebase/auth";
 import clsx from "clsx";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import PostDetailModal from "@/app/feed/PostDetailModal";
+import LogbookModal from "@/components/logbook/LogbookModal";
 import {
   DEFAULT_PROFILE_THEME,
   PROFILE_ACCENT_OPTIONS,
@@ -25,11 +26,13 @@ import {
   isValidTextureKey,
 } from "@/lib/profileThemeOptions";
 import type {
+  HookdUser,
   ProfileAccentKey,
   ProfileLayoutKey,
   ProfileTheme,
   ProfileTextureKey,
 } from "@/lib/firestore";
+import { useProAccess } from "@/hooks/useProAccess";
 
 const ACCEPTED_IMAGE_TYPES = new Set([
   "image/png",
@@ -49,16 +52,13 @@ type UserCatch = {
   [key: string]: any;
 };
 
-type EditProfileUser = {
+type OwnedProfile = Omit<Partial<HookdUser>, "profileTheme"> & {
   uid: string;
-  displayName?: string;
-  username?: string;
-  bio?: string;
-  about?: string;
-  photoURL?: string;
-  header?: string;
+  email?: string | null;
   profileTheme?: Partial<ProfileTheme> | null;
 };
+
+type EditProfileUser = OwnedProfile;
 
 type EditProfileModalProps = {
   user: EditProfileUser;
@@ -493,11 +493,14 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
 
 export default function Page() {
   const [authUser, setAuthUser] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
+  const [profile, setProfile] = useState<OwnedProfile | null>(null);
   const [catches, setCatches] = useState<UserCatch[]>([]);
   const [editing, setEditing] = useState(false);
   const [activeCatch, setActiveCatch] = useState<UserCatch | null>(null);
+  const [isLogbookModalOpen, setIsLogbookModalOpen] = useState(false);
   const catchSummary = useMemo(() => summarizeCatchMetrics(catches), [catches]);
+  const { isPro: hasProAccess } = useProAccess();
+  const canManageLogbook = useMemo(() => Boolean(hasProAccess), [hasProAccess]);
 
   useEffect(() => {
     const auth = getAuth(app);
@@ -513,7 +516,7 @@ export default function Page() {
       setAuthUser(user);
 
       if (user) {
-        const baseProfile = {
+        const baseProfile: OwnedProfile = {
           uid: user.uid,
           displayName: user.displayName ?? undefined,
           photoURL: user.photoURL ?? undefined,
@@ -567,6 +570,7 @@ export default function Page() {
           catches={catches}
           isOwner
           onEditProfile={() => setEditing(true)}
+          onOpenLogbook={canManageLogbook ? () => setIsLogbookModalOpen(true) : undefined}
           onCatchSelect={(catchItem) => setActiveCatch(catchItem)}
           catchSummary={catchSummary}
         />
@@ -581,6 +585,9 @@ export default function Page() {
       )}
       {activeCatch && (
         <PostDetailModal post={activeCatch} onClose={() => setActiveCatch(null)} />
+      )}
+      {canManageLogbook && (
+        <LogbookModal open={isLogbookModalOpen} onClose={() => setIsLogbookModalOpen(false)} />
       )}
     </main>
   );
