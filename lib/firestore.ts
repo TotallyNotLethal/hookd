@@ -11,6 +11,11 @@ import {
   DEFAULT_PROFILE_THEME,
   coerceProfileTheme,
 } from "./profileThemeOptions";
+import type {
+  EnvironmentBands,
+  EnvironmentSnapshot,
+} from "./environmentTypes";
+import { deriveLocationKey } from "./location";
 
 // ✅ Define storage first
 const storage = getStorage(app, "gs://hookd-b7ae6.firebasestorage.app");
@@ -118,6 +123,12 @@ export type CatchInput = {
   captureTime?: string | null;
   capturedAt?: Date | null;
   coordinates?: { lat: number; lng: number } | null;
+  captureWasCorrected?: boolean;
+  captureManualEntry?: { captureDate?: string | null; captureTime?: string | null } | null;
+  captureNormalizedAt?: Date | null;
+  environmentSnapshot?: EnvironmentSnapshot | null;
+  environmentBands?: EnvironmentBands | null;
+  locationKey?: string | null;
 };
 
 export type CatchWithCoordinates = {
@@ -592,6 +603,51 @@ export async function createCatch(input: CatchInput) {
     ? Array.from(input.caption.matchAll(/#[A-Za-z0-9_]+/g)).map((m) => m[0])
     : [];
 
+  const normalizedCaptureTimestamp = (() => {
+    if (input.captureNormalizedAt instanceof Date && !Number.isNaN(input.captureNormalizedAt.getTime())) {
+      return Timestamp.fromDate(input.captureNormalizedAt);
+    }
+    if (input.environmentSnapshot?.normalizedCaptureUtc) {
+      const normalized = new Date(input.environmentSnapshot.normalizedCaptureUtc);
+      if (!Number.isNaN(normalized.getTime())) {
+        return Timestamp.fromDate(normalized);
+      }
+    }
+    if (input.capturedAt instanceof Date && !Number.isNaN(input.capturedAt.getTime())) {
+      const floored = new Date(Math.floor(input.capturedAt.getTime() / (60 * 60 * 1000)) * 60 * 60 * 1000);
+      return Timestamp.fromDate(floored);
+    }
+    return null;
+  })();
+
+  const locationKey = input.locationKey ?? deriveLocationKey({
+    coordinates: input.coordinates ?? null,
+    locationName: input.location ?? null,
+  });
+
+  const environmentSnapshot = input.environmentSnapshot
+    ? { ...input.environmentSnapshot }
+    : null;
+
+  const environmentBands: EnvironmentBands | null = input.environmentBands
+    ? { ...input.environmentBands }
+    : environmentSnapshot
+      ? {
+          timeOfDay: environmentSnapshot.timeOfDayBand,
+          moonPhase: environmentSnapshot.moonPhaseBand,
+          pressure: environmentSnapshot.pressureBand,
+        }
+      : null;
+
+  const captureManualEntry = input.captureManualEntry
+    ? { ...input.captureManualEntry }
+    : input.captureWasCorrected
+      ? {
+          captureDate: input.captureDate ?? null,
+          captureTime: input.captureTime ?? null,
+        }
+      : null;
+
   // ✅ Save Firestore document with image URL
   const cRef = await addDoc(collection(db, 'catches'), {
     uid: input.uid,
@@ -612,13 +668,32 @@ export async function createCatch(input: CatchInput) {
     captureDate: input.captureDate || null,
     captureTime: input.captureTime || null,
     capturedAt: input.capturedAt ? Timestamp.fromDate(input.capturedAt) : null,
+    captureNormalizedAt: normalizedCaptureTimestamp,
+    captureWasCorrected: Boolean(input.captureWasCorrected),
+    captureManualEntry: captureManualEntry || null,
+    environmentSnapshot,
+    environmentBands: environmentBands || null,
     coordinates:
       input.coordinates &&
       Number.isFinite(input.coordinates.lat) &&
       Number.isFinite(input.coordinates.lng)
         ? new GeoPoint(input.coordinates.lat, input.coordinates.lng)
         : null,
+    locationKey: locationKey || null,
   });
+
+  if (locationKey) {
+    void import('./biteClock')
+      .then(({ refreshBiteSignalForCatch }) =>
+        refreshBiteSignalForCatch({
+          locationKey,
+          coordinates: input.coordinates ?? null,
+        }),
+      )
+      .catch((error) => {
+        console.warn('Unable to refresh bite signal for catch', error);
+      });
+  }
 
   return cRef.id;
 }
