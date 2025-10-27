@@ -1,12 +1,47 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import NavBar from "@/components/NavBar";
 import TrendingExplorer from "@/components/TrendingExplorer";
+import {
+  subscribeToActiveTournaments,
+  subscribeToTournamentLeaderboardByLength,
+  subscribeToTournamentLeaderboardByWeight,
+} from "@/lib/firestore";
+import type { Tournament, TournamentLeaderboardEntry } from "@/lib/firestore";
 
 const FishingMap = dynamic(() => import("@/components/FishingMap"), { ssr: false });
 
 export default function MapPage() {
+  const [activeTournaments, setActiveTournaments] = useState<Tournament[]>([]);
+  const [weightLeaders, setWeightLeaders] = useState<TournamentLeaderboardEntry[]>([]);
+  const [lengthLeaders, setLengthLeaders] = useState<TournamentLeaderboardEntry[]>([]);
+
+  useEffect(() => {
+    const unsubscribeWeight = subscribeToTournamentLeaderboardByWeight(10, (entries) => {
+      setWeightLeaders(entries);
+    });
+    const unsubscribeLength = subscribeToTournamentLeaderboardByLength(10, (entries) => {
+      setLengthLeaders(entries);
+    });
+
+    return () => {
+      if (typeof unsubscribeWeight === "function") unsubscribeWeight();
+      if (typeof unsubscribeLength === "function") unsubscribeLength();
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToActiveTournaments((events) => {
+      setActiveTournaments(events);
+    });
+
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
+  }, []);
+
   return (
     <main>
       <NavBar />
@@ -28,7 +63,12 @@ export default function MapPage() {
         </div>
       </section>
 
-      <TrendingExplorer className="pb-20" />
+      <TrendingExplorer
+        className="pb-20"
+        activeTournaments={activeTournaments}
+        weightLeaders={weightLeaders}
+        lengthLeaders={lengthLeaders}
+      />
     </main>
   );
 }

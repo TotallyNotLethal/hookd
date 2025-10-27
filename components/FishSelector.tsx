@@ -89,9 +89,17 @@ export default function FishSelector({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const listboxId = useId();
 
+  const defer = useCallback((fn: () => void) => {
+    if (typeof queueMicrotask === 'function') {
+      queueMicrotask(fn);
+    } else {
+      Promise.resolve().then(fn);
+    }
+  }, []);
+
   useEffect(() => {
-    setQuery(value ?? '');
-  }, [value]);
+    defer(() => setQuery(value ?? ''));
+  }, [defer, value]);
 
   const options = useMemo(() => {
     const sortedSpecies = sortSpeciesByName(speciesList);
@@ -106,10 +114,12 @@ export default function FishSelector({
 
   useEffect(() => {
     if (!open) return;
-    setActiveIndex(options.length ? 0 : -1);
-    setScrollTop(0);
-    listRef.current?.scrollTo({ top: 0 });
-  }, [open, options.length, query]);
+    defer(() => {
+      setActiveIndex(options.length ? 0 : -1);
+      setScrollTop(0);
+      listRef.current?.scrollTo({ top: 0 });
+    });
+  }, [defer, open, options.length, query]);
 
   useEffect(() => {
     if (!open) return;
@@ -285,6 +295,7 @@ export default function FishSelector({
         onBlur={handleBlur}
         onKeyDown={handleKeyDown}
         placeholder={placeholder}
+        role="combobox"
         aria-autocomplete="list"
         aria-expanded={open}
         aria-controls={listboxId}

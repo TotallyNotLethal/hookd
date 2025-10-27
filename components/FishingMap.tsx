@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer, Circle, CircleMarker, useMap } from "react-leaflet";
 import L from "leaflet";
 import { useRouter } from "next/navigation";
@@ -46,6 +46,13 @@ export default function FishingMap() {
   const [speciesFilters, setSpeciesFilters] = useState<SpeciesFilters>(() =>
     buildSpeciesFilters(aggregateSpots(fishingSpots, [])),
   );
+  const defer = useCallback((fn: () => void) => {
+    if (typeof queueMicrotask === "function") {
+      queueMicrotask(fn);
+    } else {
+      Promise.resolve().then(fn);
+    }
+  }, []);
   const [showRegulations, setShowRegulations] = useState(true);
 
   useEffect(() => {
@@ -74,20 +81,22 @@ export default function FishingMap() {
   );
 
   useEffect(() => {
-    setSpeciesFilters((prev) => {
-      const next = { ...prev };
-      let changed = false;
-      aggregatedSpots.forEach((spot) => {
-        spot.species.forEach((species) => {
-          if (!(species in next)) {
-            next[species] = true;
-            changed = true;
-          }
+    defer(() => {
+      setSpeciesFilters((prev) => {
+        const next = { ...prev };
+        let changed = false;
+        aggregatedSpots.forEach((spot) => {
+          spot.species.forEach((species) => {
+            if (!(species in next)) {
+              next[species] = true;
+              changed = true;
+            }
+          });
         });
+        return changed ? next : prev;
       });
-      return changed ? next : prev;
     });
-  }, [aggregatedSpots]);
+  }, [aggregatedSpots, defer]);
 
   const filteredSpots = useMemo(() => {
     return aggregatedSpots.filter((spot) => {

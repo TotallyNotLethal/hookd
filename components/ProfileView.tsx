@@ -134,7 +134,7 @@ export default function ProfileView({
     } catch {
       return DEFAULT_PROFILE_THEME;
     }
-  }, [profile?.profileTheme]);
+  }, [profile]);
 
   const accent = PROFILE_ACCENT_OPTIONS[theme.accentColor];
   const background = PROFILE_BACKGROUND_TEXTURES[theme.backgroundTexture];

@@ -144,6 +144,251 @@ export type CatchWithCoordinates = {
   user?: Record<string, unknown> | null;
 };
 
+export const TOURNAMENTS_COLLECTION = 'tournaments';
+export const TOURNAMENT_ENTRIES_COLLECTION = 'tournamentEntries';
+
+export type TournamentMeasurementMode = 'weight' | 'length' | 'combined';
+export type TournamentWeightUnit = 'lb' | 'kg';
+export type TournamentLengthUnit = 'in' | 'cm';
+
+export type TournamentAntiCheatFlags = {
+  requireExif: boolean;
+  requireOriginalPhoto: boolean;
+  enforcePose: boolean;
+};
+
+export type TournamentMeasurement = {
+  mode: TournamentMeasurementMode;
+  weightUnit?: TournamentWeightUnit;
+  lengthUnit?: TournamentLengthUnit;
+};
+
+export type Tournament = {
+  id: string;
+  title: string;
+  description?: string | null;
+  ruleset: string;
+  measurement: TournamentMeasurement;
+  requiredHashtags: string[];
+  antiCheat: TournamentAntiCheatFlags;
+  startAt?: Timestamp | null;
+  endAt?: Timestamp | null;
+  isPublished: boolean;
+  isArchived?: boolean;
+  createdBy?: string | null;
+  createdAt?: Timestamp | null;
+  updatedAt?: Timestamp | null;
+};
+
+export type TournamentVerificationSnapshot = {
+  exifValidatedAt?: Timestamp | null;
+  poseValidatedAt?: Timestamp | null;
+  hasGps: boolean;
+  captureTimestamp?: Timestamp | null;
+  sha256?: string | null;
+  missingHashtags: string[];
+  metadataMismatch: boolean;
+  poseSuspicious: boolean;
+};
+
+export type TournamentEntry = {
+  id: string;
+  tournamentId: string;
+  catchId: string;
+  userId: string;
+  userDisplayName?: string | null;
+  measurementMode: TournamentMeasurementMode;
+  measurementUnit: {
+    weight?: TournamentWeightUnit;
+    length?: TournamentLengthUnit;
+  };
+  weightDisplay?: string | null;
+  weightScore?: number | null;
+  weightValue?: number | null;
+  lengthDisplay?: string | null;
+  lengthScore?: number | null;
+  lengthValue?: number | null;
+  scoreValue: number;
+  scoreLabel: string;
+  tournamentTitle?: string | null;
+  measurementSummary?: string | null;
+  createdAt?: Timestamp | null;
+  verifiedAt?: Timestamp | null;
+  verification: TournamentVerificationSnapshot;
+  originalPhotoPath?: string | null;
+};
+
+export type ValidatedTournamentEntryPayload = {
+  tournamentId: string;
+  catchId: string;
+  userId: string;
+  userDisplayName?: string | null;
+  tournamentTitle?: string | null;
+  measurementMode: TournamentMeasurementMode;
+  measurementUnit: {
+    weight?: TournamentWeightUnit;
+    length?: TournamentLengthUnit;
+  };
+  weightDisplay?: string | null;
+  weightScore?: number | null;
+  weightValue?: number | null;
+  lengthDisplay?: string | null;
+  lengthScore?: number | null;
+  lengthValue?: number | null;
+  scoreValue: number;
+  scoreLabel: string;
+  measurementSummary?: string | null;
+  verification: TournamentVerificationSnapshot;
+  originalPhotoPath?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+export type TournamentLeaderboardEntry = TournamentEntry;
+
+function normalizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+    .filter((entry) => entry.length > 0);
+}
+
+function mapTournamentData(id: string, data: Record<string, any>): Tournament {
+  const measurementRaw = data.measurement ?? {};
+  const measurement: TournamentMeasurement = {
+    mode:
+      measurementRaw.mode === 'length' || measurementRaw.mode === 'combined'
+        ? measurementRaw.mode
+        : 'weight',
+    weightUnit:
+      measurementRaw.weightUnit === 'kg' || measurementRaw.weightUnit === 'lb'
+        ? measurementRaw.weightUnit
+        : 'lb',
+    lengthUnit:
+      measurementRaw.lengthUnit === 'cm' || measurementRaw.lengthUnit === 'in'
+        ? measurementRaw.lengthUnit
+        : 'in',
+  };
+
+  const antiCheatRaw = data.antiCheat ?? {};
+  const antiCheat: TournamentAntiCheatFlags = {
+    requireExif: Boolean(antiCheatRaw.requireExif),
+    requireOriginalPhoto: Boolean(antiCheatRaw.requireOriginalPhoto),
+    enforcePose: Boolean(antiCheatRaw.enforcePose),
+  };
+
+  const startAt = data.startAt instanceof Timestamp ? data.startAt : null;
+  const endAt = data.endAt instanceof Timestamp ? data.endAt : null;
+
+  return {
+    id,
+    title: typeof data.title === 'string' ? data.title : 'Tournament',
+    description: typeof data.description === 'string' ? data.description : null,
+    ruleset: typeof data.ruleset === 'string' ? data.ruleset : '',
+    measurement,
+    requiredHashtags: normalizeStringArray(data.requiredHashtags),
+    antiCheat,
+    startAt,
+    endAt,
+    isPublished: Boolean(data.isPublished ?? true),
+    isArchived: Boolean(data.isArchived ?? false),
+    createdBy: typeof data.createdBy === 'string' ? data.createdBy : null,
+    createdAt: data.createdAt instanceof Timestamp ? data.createdAt : null,
+    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt : null,
+  };
+}
+
+function tournamentIsActive(tournament: Tournament, now: Date): boolean {
+  if (tournament.isArchived || !tournament.isPublished) {
+    return false;
+  }
+
+  if (tournament.startAt instanceof Timestamp && tournament.startAt.toDate() > now) {
+    return false;
+  }
+
+  if (tournament.endAt instanceof Timestamp && tournament.endAt.toDate() < now) {
+    return false;
+  }
+
+  return true;
+}
+
+function mapTournamentEntryData(id: string, data: Record<string, any>): TournamentEntry {
+  const verificationRaw = data.verification ?? {};
+  const verification: TournamentVerificationSnapshot = {
+    exifValidatedAt:
+      verificationRaw.exifValidatedAt instanceof Timestamp
+        ? verificationRaw.exifValidatedAt
+        : null,
+    poseValidatedAt:
+      verificationRaw.poseValidatedAt instanceof Timestamp
+        ? verificationRaw.poseValidatedAt
+        : null,
+    hasGps: Boolean(verificationRaw.hasGps),
+    captureTimestamp:
+      verificationRaw.captureTimestamp instanceof Timestamp
+        ? verificationRaw.captureTimestamp
+        : null,
+    sha256: typeof verificationRaw.sha256 === 'string' ? verificationRaw.sha256 : null,
+    missingHashtags: normalizeStringArray(verificationRaw.missingHashtags),
+    metadataMismatch: Boolean(verificationRaw.metadataMismatch),
+    poseSuspicious: Boolean(verificationRaw.poseSuspicious),
+  };
+
+  return {
+    id,
+    tournamentId: typeof data.tournamentId === 'string' ? data.tournamentId : '',
+    catchId: typeof data.catchId === 'string' ? data.catchId : '',
+    userId: typeof data.userId === 'string' ? data.userId : '',
+    userDisplayName: typeof data.userDisplayName === 'string' ? data.userDisplayName : null,
+    measurementMode:
+      data.measurementMode === 'length' || data.measurementMode === 'combined'
+        ? data.measurementMode
+        : 'weight',
+    measurementUnit: {
+      weight:
+        data.measurementUnit?.weight === 'kg' || data.measurementUnit?.weight === 'lb'
+          ? data.measurementUnit.weight
+          : undefined,
+      length:
+        data.measurementUnit?.length === 'cm' || data.measurementUnit?.length === 'in'
+          ? data.measurementUnit.length
+          : undefined,
+    },
+    weightDisplay: typeof data.weightDisplay === 'string' ? data.weightDisplay : null,
+    weightScore:
+      typeof data.weightScore === 'number' && Number.isFinite(data.weightScore)
+        ? data.weightScore
+        : null,
+    weightValue:
+      typeof data.weightValue === 'number' && Number.isFinite(data.weightValue)
+        ? data.weightValue
+        : null,
+    lengthDisplay: typeof data.lengthDisplay === 'string' ? data.lengthDisplay : null,
+    lengthScore:
+      typeof data.lengthScore === 'number' && Number.isFinite(data.lengthScore)
+        ? data.lengthScore
+        : null,
+    lengthValue:
+      typeof data.lengthValue === 'number' && Number.isFinite(data.lengthValue)
+        ? data.lengthValue
+        : null,
+    scoreValue:
+      typeof data.scoreValue === 'number' && Number.isFinite(data.scoreValue)
+        ? data.scoreValue
+        : 0,
+    scoreLabel: typeof data.scoreLabel === 'string' ? data.scoreLabel : '',
+    tournamentTitle: typeof data.tournamentTitle === 'string' ? data.tournamentTitle : null,
+    measurementSummary:
+      typeof data.measurementSummary === 'string' ? data.measurementSummary : null,
+    createdAt: data.createdAt instanceof Timestamp ? data.createdAt : null,
+    verifiedAt: data.verifiedAt instanceof Timestamp ? data.verifiedAt : null,
+    verification,
+    originalPhotoPath:
+      typeof data.originalPhotoPath === 'string' ? data.originalPhotoPath : null,
+  };
+}
+
 /** ---------- Users ---------- */
 export async function ensureUserProfile(user: { uid: string; displayName: string | null; photoURL?: string | null; }) {
   const refUser = doc(db, 'users', user.uid);
@@ -885,5 +1130,134 @@ export async function getChallengeCatches() {
       return bTime - aTime;
     })
     .slice(0, 6);
+}
+
+/** ---------- Tournaments ---------- */
+export async function getActiveTournaments(now: Date = new Date()): Promise<Tournament[]> {
+  const tournamentsRef = collection(db, TOURNAMENTS_COLLECTION);
+  const nowTimestamp = Timestamp.fromDate(now);
+  const snap = await getDocs(
+    query(
+      tournamentsRef,
+      where('endAt', '>=', nowTimestamp),
+      orderBy('endAt', 'asc')
+    )
+  );
+  const active: Tournament[] = [];
+
+  snap.forEach((docSnap) => {
+    const data = mapTournamentData(docSnap.id, docSnap.data() as Record<string, any>);
+    if (tournamentIsActive(data, now)) {
+      active.push(data);
+    }
+  });
+
+  return active;
+}
+
+export function subscribeToActiveTournaments(
+  cb: (tournaments: Tournament[]) => void,
+  options: { now?: Date } = {},
+) {
+  const now = options.now ?? new Date();
+  const nowTimestamp = Timestamp.fromDate(now);
+  const tournamentsRef = collection(db, TOURNAMENTS_COLLECTION);
+  const q = query(tournamentsRef, where('endAt', '>=', nowTimestamp), orderBy('endAt', 'asc'));
+
+  return onSnapshot(q, (snapshot) => {
+    const tournaments: Tournament[] = [];
+    snapshot.forEach((docSnap) => {
+      const data = mapTournamentData(docSnap.id, docSnap.data() as Record<string, any>);
+      if (tournamentIsActive(data, now)) {
+        tournaments.push(data);
+      }
+    });
+    cb(tournaments);
+  });
+}
+
+export async function postValidatedTournamentEntry(
+  payload: ValidatedTournamentEntryPayload,
+): Promise<string> {
+  const sanitizedVerification: TournamentVerificationSnapshot = {
+    exifValidatedAt: payload.verification.exifValidatedAt ?? null,
+    poseValidatedAt: payload.verification.poseValidatedAt ?? null,
+    hasGps: Boolean(payload.verification.hasGps),
+    captureTimestamp: payload.verification.captureTimestamp ?? null,
+    sha256: payload.verification.sha256 ?? null,
+    missingHashtags: payload.verification.missingHashtags ?? [],
+    metadataMismatch: Boolean(payload.verification.metadataMismatch),
+    poseSuspicious: Boolean(payload.verification.poseSuspicious),
+  };
+
+  const docRef = await addDoc(collection(db, TOURNAMENT_ENTRIES_COLLECTION), {
+    tournamentId: payload.tournamentId,
+    catchId: payload.catchId,
+    userId: payload.userId,
+    userDisplayName: payload.userDisplayName ?? null,
+    tournamentTitle: payload.tournamentTitle ?? null,
+    measurementMode: payload.measurementMode,
+    measurementUnit: payload.measurementUnit,
+    weightDisplay: payload.weightDisplay ?? null,
+    weightScore: payload.weightScore ?? null,
+    weightValue: payload.weightValue ?? null,
+    lengthDisplay: payload.lengthDisplay ?? null,
+    lengthScore: payload.lengthScore ?? null,
+    lengthValue: payload.lengthValue ?? null,
+    scoreValue: payload.scoreValue,
+    scoreLabel: payload.scoreLabel,
+    measurementSummary: payload.measurementSummary ?? null,
+    verification: sanitizedVerification,
+    originalPhotoPath: payload.originalPhotoPath ?? null,
+    metadata: payload.metadata ?? null,
+    createdAt: serverTimestamp(),
+    verifiedAt: serverTimestamp(),
+  });
+
+  return docRef.id;
+}
+
+export function subscribeToTournamentLeaderboardByWeight(
+  limitCount: number,
+  cb: (entries: TournamentLeaderboardEntry[]) => void,
+) {
+  const leaderboardQuery = query(
+    collection(db, TOURNAMENT_ENTRIES_COLLECTION),
+    orderBy('weightScore', 'desc'),
+    limit(limitCount),
+  );
+
+  return onSnapshot(leaderboardQuery, (snapshot) => {
+    const entries: TournamentLeaderboardEntry[] = [];
+    snapshot.forEach((docSnap) => {
+      const mapped = mapTournamentEntryData(docSnap.id, docSnap.data() as Record<string, any>);
+      if (mapped.weightScore !== null && mapped.weightScore !== undefined) {
+        entries.push(mapped);
+      }
+    });
+    cb(entries);
+  });
+}
+
+export function subscribeToTournamentLeaderboardByLength(
+  limitCount: number,
+  cb: (entries: TournamentLeaderboardEntry[]) => void,
+) {
+  const leaderboardQuery = query(
+    collection(db, TOURNAMENT_ENTRIES_COLLECTION),
+    orderBy('lengthScore', 'desc'),
+    limit(limitCount),
+  );
+
+  return onSnapshot(leaderboardQuery, (snapshot) => {
+    const entries: TournamentLeaderboardEntry[] = [];
+    snapshot.forEach((docSnap) => {
+      const mapped = mapTournamentEntryData(docSnap.id, docSnap.data() as Record<string, any>);
+      if (mapped.lengthScore !== null && mapped.lengthScore !== undefined) {
+        entries.push(mapped);
+      }
+    });
+    cb(entries);
+  });
 }
 

@@ -8,10 +8,15 @@ import ConditionsWidget from "@/components/ConditionsWidget";
 import TrendingExplorer from "@/components/TrendingExplorer";
 import {
   getChallengeCatches,
+  subscribeToActiveTournaments,
   subscribeToChallengeCatches,
   subscribeToFeedCatches,
+  subscribeToTournamentLeaderboardByLength,
+  subscribeToTournamentLeaderboardByWeight,
+  subscribeToUser,
 } from "@/lib/firestore";
-import { useEffect, useMemo, useState } from "react";
+import type { HookdUser, Tournament, TournamentLeaderboardEntry } from "@/lib/firestore";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthState } from "react-firebase-hooks/auth";
 import PostDetailModal from "@/app/feed/PostDetailModal";
 
@@ -21,7 +26,18 @@ export default function Page() {
   const [challengePosts, setChallengePosts] = useState<any[]>([]);
   const [recentCatches, setRecentCatches] = useState<any[]>([]);
   const [active, setActive] = useState<any | null>(null);
+  const [weightLeaders, setWeightLeaders] = useState<TournamentLeaderboardEntry[]>([]);
+  const [lengthLeaders, setLengthLeaders] = useState<TournamentLeaderboardEntry[]>([]);
+  const [activeTournaments, setActiveTournaments] = useState<Tournament[]>([]);
+  const [profile, setProfile] = useState<HookdUser | null>(null);
   const [user] = useAuthState(auth);
+  const defer = useCallback((fn: () => void) => {
+    if (typeof queueMicrotask === "function") {
+      queueMicrotask(fn);
+    } else {
+      Promise.resolve().then(fn);
+    }
+  }, []);
   const fallbackConditionsLocation = useMemo(
     () => ({
       name: "Canton, OH",
@@ -31,47 +47,15 @@ export default function Page() {
     }),
     [],
   );
-
-  const leaderboard = useMemo(() => {
-    const scores = new Map<
-      string,
-      {
-        uid: string;
-        displayName: string;
-        likes: number;
-        comments: number;
-      }
-    >();
-
-    challengePosts.forEach((post) => {
-      const uid = post.uid || post.userId;
-      if (!uid) return;
-
-      const entry = scores.get(uid) || {
-        uid,
-        displayName: post.displayName || "Angler",
-        likes: 0,
-        comments: 0,
-      };
-
-      entry.likes += typeof post.likesCount === "number" ? post.likesCount : 0;
-      entry.comments +=
-        typeof post.commentsCount === "number" ? post.commentsCount : 0;
-
-      scores.set(uid, entry);
-    });
-
-    return Array.from(scores.values())
-      .map((entry) => ({
-        ...entry,
-        score: entry.likes > 0 ? entry.likes : entry.comments,
-      }))
-      .sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        if (b.likes !== a.likes) return b.likes - a.likes;
-        return b.comments - a.comments;
-      });
-  }, [challengePosts]);
+  const topWeightLeaders = useMemo(
+    () => weightLeaders.filter((entry) => (entry.weightScore ?? 0) > 0).slice(0, 3),
+    [weightLeaders],
+  );
+  const topLengthLeaders = useMemo(
+    () => lengthLeaders.filter((entry) => (entry.lengthScore ?? 0) > 0).slice(0, 3),
+    [lengthLeaders],
+  );
+  const isProModerator = Boolean(profile?.isPro);
 
 
   useEffect(() => {
@@ -108,6 +92,45 @@ export default function Page() {
       if (unsubscribe) unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    const unsubscribeWeight = subscribeToTournamentLeaderboardByWeight(10, (entries) => {
+      setWeightLeaders(entries);
+    });
+    const unsubscribeLength = subscribeToTournamentLeaderboardByLength(10, (entries) => {
+      setLengthLeaders(entries);
+    });
+
+    return () => {
+      if (typeof unsubscribeWeight === 'function') unsubscribeWeight();
+      if (typeof unsubscribeLength === 'function') unsubscribeLength();
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToActiveTournaments((events) => {
+      setActiveTournaments(events);
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      defer(() => setProfile(null));
+      return undefined;
+    }
+
+    const unsubscribe = subscribeToUser(user.uid, (data) => {
+      setProfile(data);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [defer, user?.uid]);
 
 
 
@@ -230,7 +253,12 @@ export default function Page() {
         )}
       </section>
 
-      <TrendingExplorer />
+      <TrendingExplorer
+        activeTournaments={activeTournaments}
+        weightLeaders={weightLeaders}
+        lengthLeaders={lengthLeaders}
+        isProModerator={isProModerator}
+      />
 
       {/* --- WEEKLY CHALLENGE GALLERY --- */}
       <section className="container py-16">
@@ -253,39 +281,98 @@ export default function Page() {
             </div>
           </div>
           <aside className="glass rounded-3xl border border-white/10 p-6 self-start">
-            <h3 className="text-lg font-semibold text-brand-200 mb-4">
-              Challenge Leaderboard
-            </h3>
-            {leaderboard.length > 0 ? (
-              <ol className="space-y-3">
-                {leaderboard.slice(0, 3).map((angler, index) => {
-                  const label = angler.likes > 0 ? "likes" : "comments";
-                  const score = angler.likes > 0 ? angler.likes : angler.comments;
-                  return (
-                    <li key={angler.uid} className="card p-4 flex items-center gap-4">
-                      <span className="text-2xl font-semibold text-brand-300 w-6">
-                        {index + 1}.
-                      </span>
-                      <div className="flex-1">
-                        <Link
-                          href={`/profile/${angler.uid}`}
-                          className="font-medium hover:text-brand-200 transition"
-                        >
-                          {angler.displayName}
-                        </Link>
-                        <p className="text-sm text-white/70">
-                          {score} {label}
-                        </p>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
-            ) : (
-              <div className="card p-4 text-white/70 text-sm">
-                Be the first to land a challenge catch and claim the top spot on the
-                leaderboard!
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <h3 className="text-lg font-semibold text-brand-200">
+                Live Tournament Leaderboards
+              </h3>
+              {isProModerator && (
+                <span className="rounded-full border border-brand-400/60 px-3 py-1 text-xs text-brand-200">
+                  Pro moderator
+                </span>
+              )}
+            </div>
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-sm font-semibold text-white">Heaviest verified catches</h4>
+                {topWeightLeaders.length > 0 ? (
+                  <ol className="mt-3 space-y-3">
+                    {topWeightLeaders.map((entry, index) => {
+                      const isKilogram = entry.measurementUnit?.weight === 'kg';
+                      const fallbackWeight = isKilogram
+                        ? entry.weightValue ?? ((entry.weightScore ?? 0) * 0.45359237)
+                        : entry.weightScore ?? 0;
+                      const displayWeight =
+                        entry.weightDisplay && entry.weightDisplay.length > 0
+                          ? entry.weightDisplay
+                          : `${fallbackWeight.toFixed(2)} ${isKilogram ? 'kg' : 'lb'}`;
+
+                      return (
+                        <li key={entry.id} className="card p-4 flex items-center gap-4">
+                          <span className="text-2xl font-semibold text-brand-300 w-6">
+                            {index + 1}.
+                          </span>
+                          <div className="flex-1">
+                            <p className="font-medium text-white">
+                              {entry.userDisplayName || 'Angler'}
+                            </p>
+                            <p className="text-xs text-white/60">
+                              {displayWeight}
+                              {entry.tournamentTitle ? ` · ${entry.tournamentTitle}` : null}
+                            </p>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                ) : (
+                  <p className="mt-2 text-sm text-white/60">
+                    No verified weights have been posted yet.
+                  </p>
+                )}
               </div>
+              <div>
+                <h4 className="text-sm font-semibold text-white">Longest verified catches</h4>
+                {topLengthLeaders.length > 0 ? (
+                  <ol className="mt-3 space-y-3">
+                    {topLengthLeaders.map((entry, index) => {
+                      const isCentimeter = entry.measurementUnit?.length === 'cm';
+                      const fallbackLength = isCentimeter
+                        ? entry.lengthValue ?? ((entry.lengthScore ?? 0) * 2.54)
+                        : entry.lengthScore ?? 0;
+                      const displayLength =
+                        entry.lengthDisplay && entry.lengthDisplay.length > 0
+                          ? entry.lengthDisplay
+                          : `${fallbackLength.toFixed(2)} ${isCentimeter ? 'cm' : 'in'}`;
+
+                      return (
+                        <li key={entry.id} className="card p-4 flex items-center gap-4">
+                          <span className="text-2xl font-semibold text-brand-300 w-6">
+                            {index + 1}.
+                          </span>
+                          <div className="flex-1">
+                            <p className="font-medium text-white">
+                              {entry.userDisplayName || 'Angler'}
+                            </p>
+                            <p className="text-xs text-white/60">
+                              {displayLength}
+                              {entry.tournamentTitle ? ` · ${entry.tournamentTitle}` : null}
+                            </p>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                ) : (
+                  <p className="mt-2 text-sm text-white/60">
+                    No verified length entries yet.
+                  </p>
+                )}
+              </div>
+            </div>
+            {!isProModerator && (
+              <p className="mt-4 text-xs text-white/60">
+                Tournament creation and moderation tools are reserved for Hook&apos;d Pro moderators.
+              </p>
             )}
           </aside>
         </div>
