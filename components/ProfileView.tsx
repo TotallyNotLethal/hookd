@@ -2,6 +2,9 @@
 
 import Image from 'next/image';
 import { type KeyboardEvent, useMemo } from 'react';
+import { Fish, Medal, Scale, Sparkles } from 'lucide-react';
+
+import { summarizeCatchMetrics, type CatchSummary } from '@/lib/catchStats';
 
 type Profile = {
   uid?: string;
@@ -34,6 +37,7 @@ type ProfileViewProps = {
   onToggleFollow?: () => void;
   followPending?: boolean;
   onCatchSelect?: (catchItem: Catch) => void;
+  catchSummary?: CatchSummary;
 };
 
 export default function ProfileView({
@@ -45,9 +49,14 @@ export default function ProfileView({
   onToggleFollow,
   followPending = false,
   onCatchSelect,
+  catchSummary,
 }: ProfileViewProps) {
   const trophyCatches = useMemo(() => catches.filter((catchItem) => catchItem.trophy), [catches]);
   const standardCatches = useMemo(() => catches.filter((catchItem) => !catchItem.trophy), [catches]);
+  const stats = useMemo(
+    () => catchSummary ?? summarizeCatchMetrics(catches),
+    [catchSummary, catches],
+  );
 
   const avatarSrc = profile?.photoURL || '/logo.svg';
   const headerSrc = profile?.header || avatarSrc;
@@ -60,6 +69,8 @@ export default function ProfileView({
 
   const followerCount = profile?.followers?.length ?? 0;
   const followingCount = profile?.following?.length ?? 0;
+  const personalBestWeight = stats.personalBest?.weightText ?? '—';
+  const personalBestSpecies = stats.personalBest?.species;
 
   const handleCatchKeyDown = (event: KeyboardEvent<HTMLDivElement>, catchItem: Catch) => {
     if (!onCatchSelect) return;
@@ -129,6 +140,71 @@ export default function ProfileView({
             </div>
           </div>
           {profile?.bio && <p className="text-white/80 mt-4">{profile.bio}</p>}
+        </div>
+      </div>
+
+      <div className="card mt-6">
+        <div className="p-4 md:p-6">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-white/90">
+            <Sparkles aria-hidden className="h-5 w-5 text-brand-200" />
+            Angler Stats
+          </h2>
+          <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div
+              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4"
+              title="Total number of catches shared by this angler"
+            >
+              <div className="rounded-xl bg-brand-500/20 p-2">
+                <Fish aria-hidden className="h-5 w-5 text-brand-200" />
+              </div>
+              <div>
+                <dt className="text-sm text-white/60">Total Catches</dt>
+                <dd className="text-xl font-semibold text-white">{stats.totalCatches}</dd>
+              </div>
+            </div>
+
+            <div
+              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4"
+              title="How many catches were marked as trophies"
+            >
+              <div className="rounded-xl bg-amber-400/20 p-2">
+                <Medal aria-hidden className="h-5 w-5 text-amber-200" />
+              </div>
+              <div>
+                <dt className="text-sm text-white/60">Trophies</dt>
+                <dd className="text-xl font-semibold text-white">{stats.trophyCount}</dd>
+              </div>
+            </div>
+
+            <div
+              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4"
+              title="Distinct species featured in posted catches"
+            >
+              <div className="rounded-xl bg-emerald-400/20 p-2">
+                <Sparkles aria-hidden className="h-5 w-5 text-emerald-200" />
+              </div>
+              <div>
+                <dt className="text-sm text-white/60">Unique Species</dt>
+                <dd className="text-xl font-semibold text-white">{stats.uniqueSpeciesCount}</dd>
+              </div>
+            </div>
+
+            <div
+              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4"
+              title="Heaviest recorded catch based on provided weight"
+            >
+              <div className="rounded-xl bg-sky-400/20 p-2">
+                <Scale aria-hidden className="h-5 w-5 text-sky-200" />
+              </div>
+              <div>
+                <dt className="text-sm text-white/60">Personal Best</dt>
+                <dd className="text-xl font-semibold text-white">{personalBestWeight}</dd>
+                {personalBestSpecies && (
+                  <p className="text-xs text-white/60">{personalBestSpecies}</p>
+                )}
+              </div>
+            </div>
+          </dl>
         </div>
       </div>
 

@@ -6,6 +6,7 @@ import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 
 import NavBar from '@/components/NavBar';
 import ProfileView from '@/components/ProfileView';
+import { summarizeCatchMetrics } from '@/lib/catchStats';
 import { app } from '@/lib/firebaseClient';
 import { followUser, subscribeToUser, subscribeToUserCatches, unfollowUser } from '@/lib/firestore';
 import PostDetailModal from '@/app/feed/PostDetailModal';
@@ -50,6 +51,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [followPending, setFollowPending] = useState(false);
   const [activeCatch, setActiveCatch] = useState<CatchData | null>(null);
+  const catchSummary = useMemo(() => summarizeCatchMetrics(catches), [catches]);
 
   useEffect(() => {
     const auth = getAuth(app);
@@ -116,6 +118,7 @@ export default function ProfilePage() {
             onToggleFollow={!isOwner && authUser ? handleToggleFollow : undefined}
             followPending={followPending}
             onCatchSelect={(catchItem) => setActiveCatch(catchItem)}
+            catchSummary={catchSummary}
           />
         ) : (
           <div className="card p-6">
