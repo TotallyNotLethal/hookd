@@ -139,7 +139,10 @@ export default function ProfileView({
     layout.introClass,
     featuredCatch && layout.introWithHeroClass,
   );
-  const headerCardClasses = clsx('card overflow-hidden profile-header-card', layout.headerCardClass);
+  const headerCardClasses = clsx(
+    'card overflow-hidden profile-header-card relative',
+    layout.headerCardClass,
+  );
   const heroCardClasses = clsx('card overflow-hidden profile-featured-card', layout.heroCardClass);
 
   const followerCount = profile?.followers?.length ?? 0;
@@ -163,16 +166,16 @@ export default function ProfileView({
         <div className={headerCardClasses}>
           <div className="relative h-40 w-full">
             <Image src={headerSrc} alt="Header" fill className="object-cover opacity-70" />
-            <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/40 to-black/70" />
+            <div className="absolute inset-0 z-10 bg-gradient-to-b from-black/20 via-black/40 to-black/70" />
           </div>
-          <div className="p-4 md:p-6">
+          <div className="relative z-20 p-4 md:p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
               <Image
                 src={avatarSrc}
                 alt={profile?.displayName || 'Profile avatar'}
                 width={80}
                 height={80}
-                className="-mt-12 rounded-2xl border-4 border-[var(--card)] object-cover"
+                className="relative z-30 -mt-12 rounded-2xl border-4 border-[var(--card)] object-cover shadow-lg"
               />
               <div className="flex-1">
                 <h1 className="text-2xl font-semibold">{displayName}</h1>

@@ -273,8 +273,14 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
-      <div className="card w-full max-w-2xl p-6" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="card w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h3 className="mb-4 text-xl font-semibold">Edit Profile</h3>
         <div className="space-y-4">
           <input
