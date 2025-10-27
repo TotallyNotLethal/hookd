@@ -25,7 +25,7 @@ type ProfileData = {
 
 type CatchData = {
   id: string;
-  imageUrl: string;
+  imageUrl?: string;
   species?: string;
   weight?: string;
   trophy?: boolean;

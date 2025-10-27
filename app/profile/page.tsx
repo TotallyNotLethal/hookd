@@ -13,6 +13,7 @@ import {
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import clsx from "clsx";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import PostDetailModal from "@/app/feed/PostDetailModal";
 import {
   DEFAULT_PROFILE_THEME,
   PROFILE_ACCENT_OPTIONS,
@@ -45,6 +46,7 @@ type UserCatch = {
   weight?: string;
   imageUrl?: string;
   trophy?: boolean;
+  [key: string]: any;
 };
 
 type EditProfileUser = {
@@ -492,8 +494,9 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
 export default function Page() {
   const [authUser, setAuthUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
-  const [catches, setCatches] = useState<any[]>([]);
+  const [catches, setCatches] = useState<UserCatch[]>([]);
   const [editing, setEditing] = useState(false);
+  const [activeCatch, setActiveCatch] = useState<UserCatch | null>(null);
   const catchSummary = useMemo(() => summarizeCatchMetrics(catches), [catches]);
 
   useEffect(() => {
@@ -521,10 +524,17 @@ export default function Page() {
         unsubscribeProfile = subscribeToUser(user.uid, (data) => {
           setProfile(data ? { ...baseProfile, ...data } : baseProfile);
         });
-        unsubscribeCatches = subscribeToUserCatches(user.uid, setCatches);
+        unsubscribeCatches = subscribeToUserCatches(user.uid, (items) => {
+          setCatches(items);
+          setActiveCatch((current) => {
+            if (!current) return current;
+            return items.find((item) => item.id === current.id) ?? null;
+          });
+        });
       } else {
         setProfile(null);
         setCatches([]);
+        setActiveCatch(null);
       }
     });
 
@@ -557,6 +567,7 @@ export default function Page() {
           catches={catches}
           isOwner
           onEditProfile={() => setEditing(true)}
+          onCatchSelect={(catchItem) => setActiveCatch(catchItem)}
           catchSummary={catchSummary}
         />
       </section>
@@ -567,6 +578,9 @@ export default function Page() {
           catches={catches}
           onClose={() => setEditing(false)}
         />
+      )}
+      {activeCatch && (
+        <PostDetailModal post={activeCatch} onClose={() => setActiveCatch(null)} />
       )}
     </main>
   );
