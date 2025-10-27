@@ -378,7 +378,7 @@ export default function Page() {
         </div>
       </section>
       {active && (
-        <PostDetailModal post={active} onClose={() => setActive(null)} />
+        <PostDetailModal post={active} onClose={() => setActive(null)} size="wide" />
       )}
     </main>
   );
