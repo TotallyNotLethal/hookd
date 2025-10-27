@@ -35,40 +35,41 @@ export default function Page() {
   useEffect(() => {
     const auth = getAuth(app);
 
-    // Handle redirect results from mobile login
-    getRedirectResult(auth)
-      .then(async (credential) => {
-        if (credential?.user) {
-          await handleAuthSuccess(credential.user);
-          return;
-        }
+    // Ensure persistence is set before anything else
+    (async () => {
+      try {
+        await setPersistence(auth, browserLocalPersistence);
+      } catch {
+        await setPersistence(auth, indexedDBLocalPersistence);
+      }
 
-        if (auth.currentUser) {
-          await handleAuthSuccess(auth.currentUser);
-        }
-      })
-      .catch((err) => {
-        console.error('Google redirect login failed', err);
+      // Must await getRedirectResult before onAuthStateChanged fires,
+      // otherwise Firebase clears it and nothing happens.
+      const result = await getRedirectResult(auth).catch((err) => {
+        console.error('Redirect result error:', err);
         setError('Google sign-in failed. Please try again.');
       });
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) handleAuthSuccess(user);
-    });
+      if (result?.user) {
+        await handleAuthSuccess(result.user);
+        return;
+      }
 
-    return () => unsubscribe();
+      // Fallback: listen for auth state changes
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        if (user) handleAuthSuccess(user);
+      });
+      return () => unsubscribe();
+    })();
   }, [handleAuthSuccess]);
 
-  // Detect if we're on mobile or in a standalone PWA
   const isMobileOrStandalone = () => {
     if (typeof window === 'undefined') return false;
-
     const isMobile = /Mobi|Android/i.test(navigator.userAgent);
     const isStandalone =
       (typeof window.matchMedia === 'function' &&
         window.matchMedia('(display-mode: standalone)').matches) ||
       (window.navigator as any).standalone === true;
-
     return isMobile || isStandalone;
   };
 
@@ -80,24 +81,23 @@ export default function Page() {
       const auth = getAuth(app);
       const provider = new GoogleAuthProvider();
 
-      // Use redirect on mobile or standalone PWAs — popup for desktop
       if (isMobileOrStandalone()) {
+        // Always redirect on mobile
         try {
           await setPersistence(auth, browserLocalPersistence);
-        } catch (err) {
-          console.warn('Falling back to IndexedDB persistence for mobile', err);
+        } catch {
           await setPersistence(auth, indexedDBLocalPersistence);
         }
         await signInWithRedirect(auth, provider);
         return;
       }
 
-      // Desktop flow with popup
+      // Popup for desktop
       await setPersistence(auth, browserLocalPersistence);
       const res = await signInWithPopup(auth, provider);
       await handleAuthSuccess(res.user);
     } catch (err: any) {
-      console.error('Google login failed', err);
+      console.error('Google login failed:', err);
       setError('Google sign-in failed. Please try again.');
     } finally {
       setLoading(false);
