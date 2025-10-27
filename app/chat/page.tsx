@@ -229,23 +229,34 @@ export default function ChatPage() {
 
                 {formattedMessages.map((message) => (
                   <article key={message.id} className="flex items-start gap-3 text-sm">
-                    <div className="relative h-10 w-10 flex-none overflow-hidden rounded-full border border-white/10 bg-slate-800">
+                    <Link
+                      href={`/profile/${message.uid}`}
+                      prefetch={false}
+                      className="group relative block h-10 w-10 flex-none overflow-hidden rounded-full border border-white/10 bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                    >
                       {message.photoURL ? (
                         <Image
                           src={message.photoURL}
                           alt={message.displayName}
                           fill
-                          className="object-cover"
+                          className="object-cover transition-transform duration-200 group-hover:scale-105"
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-xs uppercase text-white/70">
                           {message.displayName.slice(0, 2).toUpperCase()}
                         </div>
                       )}
-                    </div>
+                      <span className="sr-only">View {message.displayName}&apos;s profile</span>
+                    </Link>
                     <div className="flex-1 space-y-1">
                       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-white/60">
-                        <span className="font-medium text-white">{message.displayName}</span>
+                        <Link
+                          href={`/profile/${message.uid}`}
+                          prefetch={false}
+                          className="rounded font-medium text-white transition hover:text-brand-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                        >
+                          {message.displayName}
+                        </Link>
                         <span>{message.timestampLabel}</span>
                       </div>
                       <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-white/90">
