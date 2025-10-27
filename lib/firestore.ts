@@ -130,10 +130,18 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
   } else {
     const existing = snap.data() as HookdUser;
     const updates: Record<string, any> = {
-      displayName: user.displayName || 'Angler',
-      photoURL: user.photoURL || null,
       updatedAt: serverTimestamp(),
     };
+
+    const nextDisplayName = user.displayName || existing.displayName || 'Angler';
+    if (nextDisplayName !== existing.displayName) {
+      updates.displayName = nextDisplayName;
+    }
+
+    const hasExistingPhoto = typeof existing.photoURL === 'string' && existing.photoURL.trim().length > 0;
+    if (!hasExistingPhoto) {
+      updates.photoURL = user.photoURL || null;
+    }
 
     if (!existing.profileTheme) {
       updates.profileTheme = { ...DEFAULT_PROFILE_THEME };
