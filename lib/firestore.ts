@@ -72,6 +72,12 @@ export type ChatMessage = {
   createdAt: Date | null;
 };
 
+export type ChatPresence = {
+  id: string;
+  uid: string;
+  lastActive: Date | null;
+};
+
 export type CatchInput = {
   uid: string;
   displayName: string;
@@ -535,6 +541,53 @@ export function subscribeToChallengeCatches(cb: (arr: any[]) => void) {
 }
 
 /** ---------- Chat Board ---------- */
+export async function updateChatPresence(uid: string) {
+  if (!uid) {
+    throw new Error('A UID is required to update chat presence');
+  }
+
+  const ref = doc(db, 'chatPresence', uid);
+  await setDoc(ref, { uid, lastActive: serverTimestamp() }, { merge: true });
+}
+
+export function subscribeToChatPresence(
+  cb: (presence: ChatPresence[]) => void,
+  options: { inactivityMs?: number; onError?: (error: Error) => void } = {},
+) {
+  const { inactivityMs = 60_000, onError } = options;
+  const q = query(
+    collection(db, 'chatPresence'),
+    orderBy('lastActive', 'desc'),
+    limit(100),
+  );
+
+  return onSnapshot(q, (snap) => {
+    const now = Date.now();
+    const items: ChatPresence[] = [];
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as Record<string, any>;
+      const lastActiveMs = timestampToMillis(data.lastActive);
+      const lastActive = lastActiveMs ? new Date(lastActiveMs) : null;
+
+      if (lastActive && now - lastActive.getTime() > inactivityMs) {
+        return;
+      }
+
+      items.push({
+        id: docSnap.id,
+        uid: typeof data.uid === 'string' && data.uid.trim() ? data.uid : docSnap.id,
+        lastActive,
+      });
+    });
+
+    cb(items);
+  }, (error) => {
+    console.error('Failed to subscribe to chat presence', error);
+    if (onError) onError(error);
+  });
+}
+
 export function subscribeToChatMessages(
   cb: (messages: ChatMessage[]) => void,
   options: { limit?: number; onError?: (error: Error) => void } = {},

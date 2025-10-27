@@ -10,9 +10,12 @@ import NavBar from '@/components/NavBar';
 import { auth } from '@/lib/firebaseClient';
 import {
   ChatMessage,
+  ChatPresence,
   sendChatMessage,
   subscribeToChatMessages,
+  subscribeToChatPresence,
   subscribeToUser,
+  updateChatPresence,
 } from '@/lib/firestore';
 
 type UserProfile = {
@@ -31,7 +34,52 @@ export default function ChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [presenceCount, setPresenceCount] = useState<number | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
+      setPresenceCount(null);
+      return;
+    }
+
+    let isActive = true;
+
+    const sendHeartbeat = async () => {
+      try {
+        await updateChatPresence(user.uid);
+      } catch (err) {
+        console.error('Failed to update chat presence', err);
+      }
+    };
+
+    sendHeartbeat();
+    heartbeatRef.current = setInterval(sendHeartbeat, 30_000);
+
+    const unsubscribe = subscribeToChatPresence((presence: ChatPresence[]) => {
+      if (!isActive) return;
+      setPresenceCount(presence.length);
+    }, {
+      onError: (err) => {
+        console.error('Failed to subscribe to chat presence', err);
+      },
+    });
+
+    return () => {
+      isActive = false;
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
+      setPresenceCount(null);
+      unsubscribe();
+    };
+  }, [user?.uid]);
 
   useEffect(() => {
     const unsubscribe = subscribeToChatMessages((incoming) => {
@@ -148,8 +196,15 @@ export default function ChatPage() {
                 <h2 className="text-lg font-medium">General Channel</h2>
                 <p className="text-xs text-white/60">Seamless, community-wide conversations</p>
               </div>
-              <div className="text-xs text-white/50">
-                {isLoading ? 'Loading…' : `${messages.length} message${messages.length === 1 ? '' : 's'}`}
+              <div className="text-right text-xs text-white/50">
+                <div>
+                  {isLoading ? 'Loading…' : `${messages.length} message${messages.length === 1 ? '' : 's'}`}
+                </div>
+                <div className="text-white/60">
+                  {presenceCount === null
+                    ? '— anglers online'
+                    : `${presenceCount} angler${presenceCount === 1 ? '' : 's'} online`}
+                </div>
               </div>
             </div>
 
