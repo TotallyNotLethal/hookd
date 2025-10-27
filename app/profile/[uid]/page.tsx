@@ -22,6 +22,7 @@ type ProfileData = {
   followers?: any[];
   following?: any[];
   isTester?: boolean;
+  isPro?: boolean;
 };
 
 type CatchData = {
@@ -54,6 +55,7 @@ export default function ProfilePage() {
   const [activeCatch, setActiveCatch] = useState<CatchData | null>(null);
   const [isLogbookModalOpen, setIsLogbookModalOpen] = useState(false);
   const catchSummary = useMemo(() => summarizeCatchMetrics(catches), [catches]);
+  const isProMember = useMemo(() => Boolean(profile?.isPro), [profile?.isPro]);
 
   useEffect(() => {
     const auth = getAuth(app);
@@ -82,6 +84,10 @@ export default function ProfilePage() {
   }, [userId]);
 
   const isOwner = authUser?.uid === userId;
+  const canManageLogbook = useMemo(
+    () => Boolean(isOwner && isProMember),
+    [isOwner, isProMember],
+  );
   const isFollowing = useMemo(() => {
     if (!authUser || !profile) return false;
     const followers = Array.isArray(profile.followers) ? profile.followers : [];
@@ -116,7 +122,7 @@ export default function ProfilePage() {
             profile={profile}
             catches={catches}
             isOwner={isOwner}
-            onOpenLogbook={isOwner ? () => setIsLogbookModalOpen(true) : undefined}
+            onOpenLogbook={canManageLogbook ? () => setIsLogbookModalOpen(true) : undefined}
             isFollowing={isFollowing}
             onToggleFollow={!isOwner && authUser ? handleToggleFollow : undefined}
             followPending={followPending}
@@ -132,7 +138,7 @@ export default function ProfilePage() {
       {activeCatch && (
         <PostDetailModal post={activeCatch} onClose={() => setActiveCatch(null)} />
       )}
-      {isOwner ? (
+      {canManageLogbook ? (
         <LogbookModal open={isLogbookModalOpen} onClose={() => setIsLogbookModalOpen(false)} />
       ) : null}
     </main>

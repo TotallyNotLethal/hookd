@@ -60,6 +60,7 @@ type Profile = {
   followers?: any[];
   following?: any[];
   isTester?: boolean;
+  isPro?: boolean;
   about?: string;
   profileTheme?: Partial<ProfileTheme> | null;
 };
@@ -114,6 +115,18 @@ export default function ProfileView({
     if (!username) return null;
     return profile?.isTester ? `@hookd_${username}` : `@${username}`;
   }, [profile?.isTester, username]);
+  const isProMember = useMemo(() => Boolean(profile?.isPro), [profile?.isPro]);
+  const proBadge = useMemo(
+    () =>
+      isProMember ? (
+        <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/60 bg-amber-500/15 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-300">
+          <Sparkles aria-hidden className="h-3.5 w-3.5" />
+          <span aria-hidden>Pro</span>
+          <span className="sr-only">Pro member</span>
+        </span>
+      ) : null,
+    [isProMember],
+  );
 
   const theme = useMemo(() => {
     try {
@@ -154,6 +167,10 @@ export default function ProfileView({
   const personalBestSpecies = stats.personalBest?.species;
 
   const aboutContent = profile?.about?.trim();
+  const canOpenLogbook = useMemo(
+    () => Boolean(isOwner && isProMember && onOpenLogbook),
+    [isOwner, isProMember, onOpenLogbook],
+  );
 
   const handleCatchKeyDown = (event: KeyboardEvent<HTMLDivElement>, catchItem: Catch) => {
     if (!onCatchSelect) return;
@@ -181,7 +198,10 @@ export default function ProfileView({
                 className="relative z-30 -mt-12 rounded-2xl border-4 border-[var(--card)] object-cover shadow-lg"
               />
               <div className="flex-1">
-                <h1 className="text-2xl font-semibold">{displayName}</h1>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-2xl font-semibold">{displayName}</h1>
+                  {proBadge}
+                </div>
                 {usernameDisplay && (
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/70">
                     <span
@@ -244,11 +264,17 @@ export default function ProfileView({
                   <button
                     type="button"
                     onClick={onOpenLogbook}
-                    className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)]"
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)] disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={!canOpenLogbook}
                   >
                     <BookOpen className="h-4 w-4" />
                     Manage Logbook
                   </button>
+                )}
+                {isOwner && !isProMember && (
+                  <span className="text-xs font-medium uppercase tracking-wide text-amber-300">
+                    Go Pro to unlock the logbook
+                  </span>
                 )}
               </div>
             </div>
