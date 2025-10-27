@@ -24,7 +24,13 @@ function timeAgo(timestamp: number): string {
   return new Date(timestamp).toLocaleDateString();
 }
 
-export default function PostDetailModal({ post, onClose }: { post: any; onClose: () => void }) {
+interface PostDetailModalProps {
+  post: any;
+  onClose: () => void;
+  size?: 'default' | 'wide';
+}
+
+export default function PostDetailModal({ post, onClose, size = 'default' }: PostDetailModalProps) {
   const auth = getAuth(app);
   const user = auth.currentUser;
   const router = useRouter();
@@ -81,6 +87,15 @@ export default function PostDetailModal({ post, onClose }: { post: any; onClose:
       post?.membership === 'pro',
   );
 
+  const isWide = size === 'wide';
+  const modalContainerClasses = `relative bg-[var(--card)] border border-white/10 rounded-2xl w-full ${
+    isWide ? 'max-w-5xl' : 'max-w-3xl'
+  } max-h-[90vh] overflow-y-auto md:max-h-[85vh] md:overflow-hidden shadow-2xl`;
+  const layoutClasses = `flex flex-col md:grid ${isWide ? 'md:grid-cols-[1.15fr_0.85fr]' : 'md:grid-cols-2'}`;
+  const imageWrapperClasses = `relative h-64 sm:h-80 md:h-full ${
+    isWide ? 'md:min-h-[540px]' : 'md:min-h-[480px]'
+  } bg-black/60 flex items-center justify-center`;
+
   return (
     <AnimatePresence>
       {post && (
@@ -102,16 +117,16 @@ export default function PostDetailModal({ post, onClose }: { post: any; onClose:
 
           {/* Modal container */}
           <motion.div
-            className="relative bg-[var(--card)] border border-white/10 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto md:max-h-[85vh] md:overflow-hidden shadow-2xl"
+            className={modalContainerClasses}
             initial={{ y: 50, opacity: 0, scale: 0.95 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 50, opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.3, ease: 'easeOut' }}
           >
-            <div className="flex flex-col md:grid md:grid-cols-2">
+            <div className={layoutClasses}>
               {/* Image with zoom animation */}
               <motion.div
-                className="relative h-64 sm:h-80 md:h-full md:min-h-[480px] bg-black/60 flex items-center justify-center"
+                className={imageWrapperClasses}
                 initial={{ scale: 1.05 }}
                 animate={{ scale: 1 }}
                 transition={{ duration: 0.4 }}
