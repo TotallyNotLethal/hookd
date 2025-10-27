@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { MapContainer, Marker, Popup, TileLayer, Circle, useMap } from "react-leaflet";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { MapContainer, Marker, Popup, TileLayer, Circle, CircleMarker, useMap } from "react-leaflet";
 import L from "leaflet";
 import { fishingSpots, FishingSpot } from "@/lib/fishingSpots";
 import { subscribeToCatchesWithCoordinates, CatchWithCoordinates } from "@/lib/firestore";
@@ -9,7 +9,8 @@ import { Check, MapPin, ShieldAlert, X } from "lucide-react";
 
 const DEFAULT_POSITION: [number, number] = [40.7989, -81.3784];
 
-const MATCH_DISTANCE_MILES = 0.75;
+const MATCH_DISTANCE_MILES = 0.5;
+const MATCH_DISTANCE_METERS = MATCH_DISTANCE_MILES * 1609.34;
 
 const USER_REPORTED_REGULATIONS: FishingSpot["regulations"] = {
   description: "User reported location. Verify public access and regulations before fishing.",
@@ -28,6 +29,12 @@ type SpotCatchSummary = {
   source: "dynamic" | "static";
 };
 
+type SpotPin = {
+  id: string;
+  latitude: number;
+  longitude: number;
+};
+
 type MapSpot = {
   id: string;
   name: string;
@@ -38,6 +45,8 @@ type MapSpot = {
   catchCount: number;
   latestCatch: SpotCatchSummary | null;
   fromStatic: boolean;
+  pins: SpotPin[];
+  aggregationRadiusMeters: number | null;
 };
 
 const icon = new L.Icon({
@@ -79,10 +88,6 @@ function computeDistanceMiles(a: [number, number], b: [number, number]) {
   return Math.round(R * c * 10) / 10;
 }
 
-function buildDynamicKey(lat: number, lng: number) {
-  return `dynamic-${lat.toFixed(3)}-${lng.toFixed(3)}`;
-}
-
 function catchBelongsToStaticSpot(
   spot: MapSpot,
   catchDoc: CatchWithCoordinates,
@@ -92,23 +97,19 @@ function catchBelongsToStaticSpot(
   return computeDistanceMiles([spot.latitude, spot.longitude], catchPosition) <= MATCH_DISTANCE_MILES;
 }
 
-function catchBelongsToDynamicSpot(
-  spot: MapSpot,
-  catchDoc: CatchWithCoordinates,
-): boolean {
-  if (!catchDoc.coordinates) return false;
-  const key = buildDynamicKey(catchDoc.coordinates.lat, catchDoc.coordinates.lng);
-  return key === buildDynamicKey(spot.latitude, spot.longitude);
-}
-
 function getSpotCatches(
   spot: MapSpot | null,
   catches: CatchWithCoordinates[],
 ): CatchWithCoordinates[] {
   if (!spot) return [];
-  return catches.filter((catchDoc) =>
-    spot.fromStatic ? catchBelongsToStaticSpot(spot, catchDoc) : catchBelongsToDynamicSpot(spot, catchDoc),
-  );
+  if (spot.pins.length > 0) {
+    const pinIds = new Set(spot.pins.map((pin) => pin.id));
+    return catches.filter((catchDoc) => pinIds.has(catchDoc.id));
+  }
+  if (spot.fromStatic) {
+    return catches.filter((catchDoc) => catchBelongsToStaticSpot(spot, catchDoc));
+  }
+  return [];
 }
 
 function parseWeightValue(weight?: string | null): number | null {
@@ -305,17 +306,21 @@ type BaseBucket = {
   latestCatch: SpotCatchSummary | null;
   latestTime: number;
   fallbackLatest: SpotCatchSummary | null;
+  pins: SpotPin[];
 };
 
 type DynamicBucket = {
-  id: string;
+  anchorId: string;
   name: string;
   latitude: number;
   longitude: number;
+  sumLat: number;
+  sumLng: number;
   speciesSet: Set<string>;
   catchCount: number;
   latestCatch: SpotCatchSummary | null;
   latestTime: number;
+  pins: SpotPin[];
 };
 
 function aggregateSpots(baseSpots: FishingSpot[], catches: CatchWithCoordinates[]): MapSpot[] {
@@ -328,12 +333,19 @@ function aggregateSpots(baseSpots: FishingSpot[], catches: CatchWithCoordinates[
       latestCatch: null,
       latestTime: Number.NEGATIVE_INFINITY,
       fallbackLatest: toStaticSummary(spot.latestCatch),
+      pins: [],
     });
   });
 
-  const dynamicBuckets = new Map<string, DynamicBucket>();
+  const dynamicBuckets: DynamicBucket[] = [];
 
-  catches.forEach((catchDoc) => {
+  const sortedCatches = [...catches].sort((a, b) => {
+    const aTime = (a.capturedAt ?? a.createdAt)?.getTime() ?? 0;
+    const bTime = (b.capturedAt ?? b.createdAt)?.getTime() ?? 0;
+    return aTime - bTime;
+  });
+
+  sortedCatches.forEach((catchDoc) => {
     if (!catchDoc.coordinates) return;
 
     const catchPosition: [number, number] = [catchDoc.coordinates.lat, catchDoc.coordinates.lng];
@@ -363,33 +375,63 @@ function aggregateSpots(baseSpots: FishingSpot[], catches: CatchWithCoordinates[
         matchedBucket.latestCatch = summary;
         matchedBucket.latestTime = occurredAtTime;
       }
+      matchedBucket.pins.push({
+        id: catchDoc.id,
+        latitude: catchDoc.coordinates.lat,
+        longitude: catchDoc.coordinates.lng,
+      });
       return;
     }
 
-    const dynamicKey = `dynamic-${catchDoc.coordinates.lat.toFixed(3)}-${catchDoc.coordinates.lng.toFixed(3)}`;
-    if (!dynamicBuckets.has(dynamicKey)) {
-      dynamicBuckets.set(dynamicKey, {
-        id: dynamicKey,
+    let targetBucket: DynamicBucket | null = null;
+    let bestDynamicDistance = MATCH_DISTANCE_MILES;
+
+    dynamicBuckets.forEach((bucket) => {
+      const distance = computeDistanceMiles([bucket.latitude, bucket.longitude], catchPosition);
+      if (distance <= bestDynamicDistance) {
+        bestDynamicDistance = distance;
+        targetBucket = bucket;
+      }
+    });
+
+    if (!targetBucket) {
+      targetBucket = {
+        anchorId: catchDoc.id,
         name:
           (catchDoc.location && catchDoc.location.trim()) ||
           `Catch near ${catchDoc.coordinates.lat.toFixed(3)}, ${catchDoc.coordinates.lng.toFixed(3)}`,
         latitude: catchDoc.coordinates.lat,
         longitude: catchDoc.coordinates.lng,
+        sumLat: 0,
+        sumLng: 0,
         speciesSet: new Set<string>(),
         catchCount: 0,
         latestCatch: null,
         latestTime: Number.NEGATIVE_INFINITY,
-      });
+        pins: [],
+      };
+      dynamicBuckets.push(targetBucket);
     }
 
-    const bucket = dynamicBuckets.get(dynamicKey)!;
-    bucket.catchCount += 1;
-    bucket.speciesSet.add(catchDoc.species);
-    if (occurredAtTime >= bucket.latestTime) {
-      bucket.latestCatch = summary;
-      bucket.latestTime = occurredAtTime;
+    targetBucket.catchCount += 1;
+    targetBucket.speciesSet.add(catchDoc.species);
+    if (occurredAtTime >= targetBucket.latestTime) {
+      targetBucket.latestCatch = summary;
+      targetBucket.latestTime = occurredAtTime;
     }
-  });
+    if (targetBucket.name.startsWith("Catch near") && catchDoc.location && catchDoc.location.trim()) {
+      targetBucket.name = catchDoc.location.trim();
+    }
+    targetBucket.pins.push({
+      id: catchDoc.id,
+      latitude: catchDoc.coordinates.lat,
+      longitude: catchDoc.coordinates.lng,
+    });
+    targetBucket.sumLat += catchDoc.coordinates.lat;
+    targetBucket.sumLng += catchDoc.coordinates.lng;
+    targetBucket.latitude = targetBucket.sumLat / targetBucket.catchCount;
+    targetBucket.longitude = targetBucket.sumLng / targetBucket.catchCount;
+    });
 
   const aggregated: MapSpot[] = [];
 
@@ -404,12 +446,17 @@ function aggregateSpots(baseSpots: FishingSpot[], catches: CatchWithCoordinates[
       catchCount: bucket.catchCount,
       latestCatch: bucket.latestCatch ?? bucket.fallbackLatest,
       fromStatic: true,
+      pins: bucket.pins,
+      aggregationRadiusMeters: bucket.pins.length > 0 ? MATCH_DISTANCE_METERS : null,
     });
   });
 
   dynamicBuckets.forEach((bucket) => {
+    const sortedPins = [...bucket.pins].sort((a, b) => a.id.localeCompare(b.id));
+    const anchorPin = sortedPins[0];
+    const anchorId = anchorPin?.id ?? bucket.anchorId;
     aggregated.push({
-      id: bucket.id,
+      id: `dynamic-${anchorId}`,
       name: bucket.name,
       latitude: bucket.latitude,
       longitude: bucket.longitude,
@@ -418,6 +465,8 @@ function aggregateSpots(baseSpots: FishingSpot[], catches: CatchWithCoordinates[
       catchCount: bucket.catchCount,
       latestCatch: bucket.latestCatch,
       fromStatic: false,
+      pins: sortedPins,
+      aggregationRadiusMeters: MATCH_DISTANCE_METERS,
     });
   });
 
@@ -536,48 +585,68 @@ export default function FishingMap() {
           {filteredSpots.map((spot) => {
             const latest = spot.latestCatch;
             const occurredAt = latest?.occurredAt ? formatCatchDate(latest.occurredAt) : null;
+            const circleColor = spot.fromStatic ? "#0d8be6" : "#22d3ee";
+            const showAggregationCircle =
+              !spot.fromStatic && spot.aggregationRadiusMeters && spot.pins.length > 0;
 
             return (
-              <Marker key={spot.id} position={[spot.latitude, spot.longitude]} icon={icon}>
-                <Popup>
-                  <div className="space-y-2">
-                    <h3 className="text-base font-semibold">{spot.name}</h3>
-                    {spot.regulations?.description && (
-                      <p className="text-sm text-slate-600">{spot.regulations.description}</p>
-                    )}
-                    <p className="text-sm text-slate-600">
-                      {spot.catchCount > 0 ? (
-                        <>
-                          Logged catches: <strong>{spot.catchCount}</strong>
-                        </>
-                      ) : (
-                        "No catches logged yet"
+              <Fragment key={spot.id}>
+                {showAggregationCircle && (
+                  <Circle
+                    center={[spot.latitude, spot.longitude]}
+                    radius={spot.aggregationRadiusMeters!}
+                    pathOptions={{ color: circleColor, fillOpacity: 0.08, weight: 1, dashArray: "6 4" }}
+                  />
+                )}
+                {spot.pins.map((pin) => (
+                  <CircleMarker
+                    key={`${spot.id}-pin-${pin.id}`}
+                    center={[pin.latitude, pin.longitude]}
+                    radius={4}
+                    pathOptions={{ color: circleColor, weight: 1, fillColor: circleColor, fillOpacity: 0.7 }}
+                  />
+                ))}
+                <Marker position={[spot.latitude, spot.longitude]} icon={icon}>
+                  <Popup>
+                    <div className="space-y-2">
+                      <h3 className="text-base font-semibold">{spot.name}</h3>
+                      {spot.regulations?.description && (
+                        <p className="text-sm text-slate-600">{spot.regulations.description}</p>
                       )}
-                    </p>
-                    {latest && (
-                      <p className="text-sm">
-                        Latest catch: <strong>{latest.species}</strong>
-                        {latest.weight ? ` (${latest.weight})` : ""}
-                        {latest.source === "dynamic" && latest.displayName
-                          ? ` by ${latest.displayName}`
-                          : ""}
-                        {latest.source === "dynamic" && occurredAt ? ` on ${occurredAt}` : ""}
-                        {latest.source === "static" && latest.bait ? ` on ${latest.bait}` : ""}
+                      <p className="text-sm text-slate-600">
+                        {spot.catchCount > 0 ? (
+                          <>
+                            Logged catches: <strong>{spot.catchCount}</strong>
+                          </>
+                        ) : (
+                          "No catches logged yet"
+                        )}
                       </p>
-                    )}
-                    <p className="text-xs text-slate-500">
-                      Species logged: {spot.species.length > 0 ? spot.species.join(", ") : "TBD"}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedSpotId(spot.id)}
-                      className="w-full rounded-xl bg-brand-500/90 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-                    >
-                      View catches at this spot
-                    </button>
-                  </div>
-                </Popup>
-              </Marker>
+                      {latest && (
+                        <p className="text-sm">
+                          Latest catch: <strong>{latest.species}</strong>
+                          {latest.weight ? ` (${latest.weight})` : ""}
+                          {latest.source === "dynamic" && latest.displayName
+                            ? ` by ${latest.displayName}`
+                            : ""}
+                          {latest.source === "dynamic" && occurredAt ? ` on ${occurredAt}` : ""}
+                          {latest.source === "static" && latest.bait ? ` on ${latest.bait}` : ""}
+                        </p>
+                      )}
+                      <p className="text-xs text-slate-500">
+                        Species logged: {spot.species.length > 0 ? spot.species.join(", ") : "TBD"}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSpotId(spot.id)}
+                        className="w-full rounded-xl bg-brand-500/90 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                      >
+                        View catches at this spot
+                      </button>
+                    </div>
+                  </Popup>
+                </Marker>
+              </Fragment>
             );
           })}
           {showRegulations && (
