@@ -148,11 +148,13 @@ export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any
       </div>
 
       {post.imageUrl && (
-        <img
-          src={post.imageUrl}
-          alt={post.species}
-          className="w-full rounded-xl mb-3"
-        />
+        <div className="relative w-full mb-3 overflow-hidden rounded-xl bg-black/40 aspect-[4/5]">
+          <img
+            src={post.imageUrl}
+            alt={post.species}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        </div>
       )}
 	  
 	  <p className="mt-2 text-sm opacity-80">

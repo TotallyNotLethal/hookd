@@ -111,7 +111,7 @@ export default function PostDetailModal({ post, onClose }: { post: any; onClose:
             <div className="flex flex-col md:grid md:grid-cols-2">
               {/* Image with zoom animation */}
               <motion.div
-                className="relative h-64 sm:h-80 md:h-full md:min-h-[480px] overflow-hidden"
+                className="relative h-64 sm:h-80 md:h-full md:min-h-[480px] bg-black/60 flex items-center justify-center"
                 initial={{ scale: 1.05 }}
                 animate={{ scale: 1 }}
                 transition={{ duration: 0.4 }}
@@ -120,7 +120,7 @@ export default function PostDetailModal({ post, onClose }: { post: any; onClose:
                   <img
                     src={post.imageUrl}
                     alt={post.species}
-                    className="w-full h-full object-cover"
+                    className="max-h-full max-w-full object-contain"
                   />
                 )}
               </motion.div>
