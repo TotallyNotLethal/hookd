@@ -7,7 +7,7 @@ import type { LeafletEvent } from 'leaflet';
 import { parse } from 'exifr';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth } from '@/lib/firebaseClient';
-import { createCatch } from '@/lib/firestore';
+import { HookdUser, createCatch, subscribeToUser } from '@/lib/firestore';
 import FishSelector from './FishSelector';
 import WeightPicker, { type WeightValue } from './WeightPicker';
 
@@ -231,8 +231,24 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const initialGeolocationRequestRef = useRef(false);
   const searchRequestId = useRef(0);
   const [user] = useAuthState(auth);
+  const [profile, setProfile] = useState<HookdUser | null>(null);
   const formattedWeight = useMemo(() => formatWeight(weight), [weight]);
   const handleWeightChange = useCallback((next: WeightValue) => setWeight(next), []);
+
+  useEffect(() => {
+    if (!user?.uid) {
+      setProfile(null);
+      return undefined;
+    }
+
+    const unsubscribe = subscribeToUser(user.uid, (data) => {
+      setProfile(data);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [user?.uid]);
 
   const updateMapZoom = useCallback(
     (value: number | ((previous: number) => number)) => {
@@ -613,8 +629,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       const capturedAt = hasCaptureDetails ? new Date(`${captureDate}T${captureTime}`) : null;
       await createCatch({
         uid: user.uid,
-        displayName: user.displayName || 'Angler',
-        userPhoto: user.photoURL || undefined,
+        displayName: profile?.displayName || user.displayName || 'Angler',
+        userPhoto: profile?.photoURL || user.photoURL || undefined,
         species: trimmedSpecies,
         weight: formattedWeight,
         location: finalLocation,
