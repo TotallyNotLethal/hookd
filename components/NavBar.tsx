@@ -131,7 +131,7 @@ export default function NavBar() {
                     <Link
                       href={t.href}
                       onClick={() => setIsMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition bg-slate-900/80 shadow-inner ${
+                      className={`flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition bg-slate-900/95 shadow-inner ${
                         active
                           ? 'ring-1 ring-white/20 text-white'
                           : 'hover:bg-slate-900/95 hover:ring-1 hover:ring-white/10'
