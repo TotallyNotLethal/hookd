@@ -7,7 +7,7 @@ import { getStorage, FirebaseStorage } from 'firebase/storage';
 // --- Config
 const firebaseConfig = {
   apiKey: 'AIzaSyDmF3UWRSfMILLTMmzU1_PishWAZNlphtk',
-  authDomain: 'hookd-b7ae6.firebaseapp.com',
+  authDomain: 'hookd.fish',
   projectId: 'hookd-b7ae6',
   storageBucket: 'hookd-b7ae6.firebasestorage.app',
   messagingSenderId: '627079728513',
