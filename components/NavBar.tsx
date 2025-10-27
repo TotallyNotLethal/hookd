@@ -17,6 +17,7 @@ import {
   Fish,
   Menu,
   X,
+  MessageCircle,
   MessageSquare,
 } from 'lucide-react';
 
@@ -59,6 +60,7 @@ export default function NavBar() {
     { href: '/', icon: Home, label: 'Home' },
     { href: '/map', icon: MapIcon, label: 'Map' },
     { href: '/chat', icon: MessageSquare, label: 'Chat' },
+    { href: '/messages', icon: MessageCircle, label: 'Messages' },
     { href: '/feed?compose=1', icon: PlusCircle, label: 'Add Catch' },
     { href: '/logbook', icon: NotebookPen, label: 'Logbook' },
     { href: '/profile', icon: UserRound, label: 'Profile' },
@@ -79,6 +81,7 @@ export default function NavBar() {
             <Link href="/map" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Map</Link>
             <Link href="/logbook" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Logbook</Link>
             <Link href="/chat" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Chat</Link>
+            <Link href="/messages" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Messages</Link>
             <Link href="/tools/fish-identifier" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Fish ID</Link>
             {!user ? (
               <>
@@ -89,6 +92,7 @@ export default function NavBar() {
               <>
                 <Link href="/feed" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Feed</Link>
                 <Link href="/chat" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Chat</Link>
+                <Link href="/messages" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Messages</Link>
                 <Link href="/profile" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Profile</Link>
                 <button
                   onClick={() => signOut(getAuth(app))}

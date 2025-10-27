@@ -78,6 +78,30 @@ export type ChatPresence = {
   lastActive: Date | null;
 };
 
+export type DirectMessageParticipantProfile = {
+  displayName?: string | null;
+  photoURL?: string | null;
+};
+
+export type DirectMessage = {
+  id: string;
+  text: string;
+  senderUid: string;
+  recipientUid: string;
+  createdAt: Date | null;
+  displayName?: string | null;
+  photoURL?: string | null;
+};
+
+export type DirectMessageThread = {
+  id: string;
+  participants: string[];
+  updatedAt: Date | null;
+  lastMessage?: string | null;
+  lastSenderUid?: string | null;
+  participantProfiles?: Record<string, DirectMessageParticipantProfile> | null;
+};
+
 export type CatchInput = {
   uid: string;
   displayName: string;
@@ -649,6 +673,137 @@ export async function sendChatMessage(data: {
     text: normalized.slice(0, 2000),
     photoURL: data.photoURL ?? null,
     createdAt: serverTimestamp(),
+  });
+}
+
+export function getDirectMessageThreadId(uidA: string, uidB: string) {
+  return [uidA, uidB].sort((a, b) => a.localeCompare(b)).join('__');
+}
+
+export function subscribeToDirectMessageThreads(
+  uid: string,
+  cb: (threads: DirectMessageThread[]) => void,
+  options: { onError?: (error: Error) => void } = {},
+) {
+  const { onError } = options;
+  const q = query(collection(db, 'directThreads'), where('participants', 'array-contains', uid));
+
+  return onSnapshot(q, (snap) => {
+    const items: DirectMessageThread[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as Record<string, any>;
+      const updatedAt = data.updatedAt instanceof Timestamp
+        ? data.updatedAt.toDate()
+        : data.updatedAt && typeof data.updatedAt.toDate === 'function'
+          ? data.updatedAt.toDate()
+          : null;
+
+      const participantProfiles = typeof data.participantProfiles === 'object' && data.participantProfiles !== null
+        ? data.participantProfiles as Record<string, DirectMessageParticipantProfile>
+        : null;
+
+      items.push({
+        id: docSnap.id,
+        participants: Array.isArray(data.participants) ? data.participants : [],
+        updatedAt,
+        lastMessage: typeof data.lastMessage === 'string' ? data.lastMessage : null,
+        lastSenderUid: typeof data.lastSenderUid === 'string' ? data.lastSenderUid : null,
+        participantProfiles,
+      });
+    });
+
+    items.sort((a, b) => {
+      const aTime = a.updatedAt?.getTime() ?? 0;
+      const bTime = b.updatedAt?.getTime() ?? 0;
+      return bTime - aTime;
+    });
+
+    cb(items);
+  }, (error) => {
+    console.error('Failed to subscribe to direct message threads', error);
+    if (onError) onError(error);
+  });
+}
+
+export function subscribeToDirectMessages(
+  threadId: string,
+  cb: (messages: DirectMessage[]) => void,
+  options: { onError?: (error: Error) => void } = {},
+) {
+  const { onError } = options;
+  const messagesRef = collection(db, 'directThreads', threadId, 'messages');
+  const q = query(messagesRef, orderBy('createdAt', 'asc'));
+
+  return onSnapshot(q, (snap) => {
+    const items: DirectMessage[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as Record<string, any>;
+      const createdAt = data.createdAt instanceof Timestamp
+        ? data.createdAt.toDate()
+        : data.createdAt && typeof data.createdAt.toDate === 'function'
+          ? data.createdAt.toDate()
+          : null;
+
+      items.push({
+        id: docSnap.id,
+        text: typeof data.text === 'string' ? data.text : '',
+        senderUid: typeof data.senderUid === 'string' ? data.senderUid : '',
+        recipientUid: typeof data.recipientUid === 'string' ? data.recipientUid : '',
+        createdAt,
+        displayName: typeof data.displayName === 'string' ? data.displayName : null,
+        photoURL: data.photoURL ?? null,
+      });
+    });
+
+    cb(items);
+  }, (error) => {
+    console.error('Failed to subscribe to direct messages', error);
+    if (onError) onError(error);
+  });
+}
+
+export async function sendDirectMessage(data: {
+  senderUid: string;
+  recipientUid: string;
+  text: string;
+  senderDisplayName: string;
+  senderPhotoURL?: string | null;
+  recipientDisplayName?: string | null;
+  recipientPhotoURL?: string | null;
+}) {
+  const normalized = data.text.trim();
+  if (!normalized) {
+    throw new Error('Message cannot be empty');
+  }
+
+  const threadId = getDirectMessageThreadId(data.senderUid, data.recipientUid);
+  const threadRef = doc(db, 'directThreads', threadId);
+  const now = serverTimestamp();
+
+  await setDoc(threadRef, {
+    participants: [data.senderUid, data.recipientUid].sort((a, b) => a.localeCompare(b)),
+    updatedAt: now,
+    lastMessage: normalized.slice(0, 2000),
+    lastSenderUid: data.senderUid,
+    participantProfiles: {
+      [data.senderUid]: {
+        displayName: data.senderDisplayName || null,
+        photoURL: data.senderPhotoURL ?? null,
+      },
+      [data.recipientUid]: {
+        displayName: data.recipientDisplayName || null,
+        photoURL: data.recipientPhotoURL ?? null,
+      },
+    },
+  }, { merge: true });
+
+  await addDoc(collection(threadRef, 'messages'), {
+    text: normalized.slice(0, 2000),
+    senderUid: data.senderUid,
+    recipientUid: data.recipientUid,
+    createdAt: now,
+    displayName: data.senderDisplayName || null,
+    photoURL: data.senderPhotoURL ?? null,
   });
 }
 

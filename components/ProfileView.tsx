@@ -2,9 +2,10 @@
 
 import clsx from 'clsx';
 import Image from 'next/image';
+import Link from 'next/link';
 import { type KeyboardEvent, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Fish, Medal, Scale, Sparkles } from 'lucide-react';
+import { Fish, Medal, MessageCircle, Scale, Sparkles } from 'lucide-react';
 import rehypeSanitize from 'rehype-sanitize';
 import type { Components as MarkdownComponents } from 'react-markdown';
 import type { Options as RehypeSanitizeOptions } from 'rehype-sanitize';
@@ -218,6 +219,16 @@ export default function ProfileView({
                   >
                     {isFollowing ? 'Unfollow' : 'Follow'}
                   </button>
+                )}
+                {!isOwner && profile?.uid && (
+                  <Link
+                    href={`/messages/${profile.uid}`}
+                    prefetch={false}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)]"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                    Message
+                  </Link>
                 )}
                 {isOwner && onEditProfile && (
                   <button
