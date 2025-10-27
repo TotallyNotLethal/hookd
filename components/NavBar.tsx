@@ -92,20 +92,25 @@ export default function NavBar() {
               <>
                 <Link href="/feed" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Feed</Link>
                 <Link href="/messages" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Messages</Link>
-                <Link href="/profile" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Profile</Link>
                 <button
                   onClick={() => signOut(getAuth(app))}
                   className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
                 >
                   <LogOut className="w-4 h-4" /> Logout
                 </button>
-                <Image
-                  src={profile?.photoURL || user?.photoURL || '/logo.svg'}
-                  alt={profile?.displayName || user?.displayName || 'Account avatar'}
-                  width={32}
-                  height={32}
-                  className="rounded-full"
-                />
+                <Link
+                  href="/profile"
+                  aria-label="Profile"
+                  className="inline-flex rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                >
+                  <Image
+                    src={profile?.photoURL || user?.photoURL || '/logo.svg'}
+                    alt={profile?.displayName || user?.displayName || 'Account avatar'}
+                    width={32}
+                    height={32}
+                    className="rounded-full"
+                  />
+                </Link>
               </>
             )}
           </div>
