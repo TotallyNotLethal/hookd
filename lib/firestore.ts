@@ -16,12 +16,27 @@ if (storage) {
   const testRef = ref(storage, "/");
 }
 
+type ProfileAssetType = "avatar" | "header";
+
+const PROFILE_ASSET_PATH: Record<ProfileAssetType, (uid: string) => string> = {
+  avatar: (uid) => `profiles/${uid}/avatar`,
+  header: (uid) => `profiles/${uid}/header`,
+};
+
+export async function uploadProfileAsset(uid: string, file: File, type: ProfileAssetType) {
+  const storageRef = ref(storage, PROFILE_ASSET_PATH[type](uid));
+  await uploadBytes(storageRef, file, { contentType: file.type });
+  const url = await getDownloadURL(storageRef);
+  return url;
+}
+
 /** ---------- Types ---------- */
 export type HookdUser = {
   uid: string;
   displayName: string;
   username: string;
   photoURL?: string;
+  header?: string;
   bio?: string;
   trophies?: string[];
   followers?: string[];
@@ -74,6 +89,7 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
       displayName: user.displayName || 'Angler',
       username: '',                // ✅ default username
       photoURL: user.photoURL || undefined,
+      header: undefined,
       bio: '',
       trophies: [],
       followers: [],
@@ -107,7 +123,16 @@ export async function setUsername(uid: string, username: string) {
   return clean;
 }
 
-export async function updateUserProfile(uid: string, data: { displayName?: string; bio?: string }) {
+export async function updateUserProfile(
+  uid: string,
+  data: {
+    displayName?: string;
+    bio?: string;
+    photoURL?: string | null;
+    header?: string | null;
+    [key: string]: any;
+  },
+) {
   const refUser = doc(db, 'users', uid);
   await updateDoc(refUser, { ...data, updatedAt: serverTimestamp() });
 }
