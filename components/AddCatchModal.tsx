@@ -232,8 +232,6 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const searchRequestId = useRef(0);
   const [user] = useAuthState(auth);
   const [profile, setProfile] = useState<HookdUser | null>(null);
-  const isProMember = useMemo(() => Boolean(profile?.isPro), [profile?.isPro]);
-  const canKeepLocationPrivate = useMemo(() => isProMember, [isProMember]);
   const formattedWeight = useMemo(() => formatWeight(weight), [weight]);
   const handleWeightChange = useCallback((next: WeightValue) => setWeight(next), []);
 
@@ -252,11 +250,9 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     };
   }, [user?.uid]);
 
-  useEffect(() => {
-    if (!canKeepLocationPrivate && isLocationPrivate) {
-      setIsLocationPrivate(false);
-    }
-  }, [canKeepLocationPrivate, isLocationPrivate]);
+  const handleLocationPrivacyChange = useCallback((checked: boolean) => {
+    setIsLocationPrivate(checked);
+  }, []);
 
   const updateMapZoom = useCallback(
     (value: number | ((previous: number) => number)) => {
@@ -800,7 +796,6 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
               checked={isLocationPrivate}
               onChange={(event) => handleLocationPrivacyChange(event.target.checked)}
               className="mt-1"
-              disabled={!canKeepLocationPrivate}
             />
             <div>
               <label htmlFor="location-private" className="text-sm font-semibold text-white">
@@ -809,11 +804,6 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
               <p className="text-xs text-white/60">
                 When enabled, your catch location stays visible only to you and will not appear on the public map.
               </p>
-              {!canKeepLocationPrivate && (
-                <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-amber-300">
-                  Pro members can hide locations
-                </p>
-              )}
             </div>
           </div>
         </div>
@@ -845,10 +835,3 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     </div>
   );
 }
-  const handleLocationPrivacyChange = useCallback(
-    (checked: boolean) => {
-      if (!canKeepLocationPrivate) return;
-      setIsLocationPrivate(checked);
-    },
-    [canKeepLocationPrivate],
-  );
