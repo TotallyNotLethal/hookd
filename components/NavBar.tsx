@@ -70,29 +70,50 @@ export default function NavBar() {
             <span className="text-xl font-semibold tracking-tight">Hook&apos;d</span>
           </Link>
 
-          {/* Desktop actions */}
-          <div className="hidden sm:flex items-center gap-3">
-            <Link href="/map" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Map</Link>
-            <Link href="/chat" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Chat</Link>
-            <Link href="/tools/fish-identifier" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Fish ID</Link>
-            {!user ? (
-              <>
-                <Link href="/login" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Log in</Link>
-                <Link href="/login" className="btn-primary">Sign up</Link>
-              </>
-            ) : (
-              <>
-                <Link href="/feed" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Feed</Link>
-                <button
-                  onClick={() => signOut(getAuth(app))}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-                >
-                  <LogOut className="w-4 h-4" /> Logout
-                </button>
+          <div className="flex items-center gap-3">
+            {/* Desktop actions */}
+            <div className="hidden sm:flex items-center gap-3">
+              <Link href="/map" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Map</Link>
+              <Link href="/chat" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Chat</Link>
+              <Link href="/tools/fish-identifier" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Fish ID</Link>
+              {!user ? (
+                <>
+                  <Link href="/login" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Log in</Link>
+                  <Link href="/login" className="btn-primary">Sign up</Link>
+                </>
+              ) : (
+                <>
+                  <Link href="/feed" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Feed</Link>
+                  <button
+                    onClick={() => signOut(getAuth(app))}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                  >
+                    <LogOut className="w-4 h-4" /> Logout
+                  </button>
+                  <Link
+                    href="/profile"
+                    aria-label="Profile"
+                    className="inline-flex rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                  >
+                    <Image
+                      src={profile?.photoURL || user?.photoURL || '/logo.svg'}
+                      alt={profile?.displayName || user?.displayName || 'Account avatar'}
+                      width={32}
+                      height={32}
+                      className="rounded-full"
+                    />
+                  </Link>
+                </>
+              )}
+            </div>
+
+            {/* Mobile actions */}
+            <div className="flex items-center gap-2 sm:hidden">
+              {user ? (
                 <Link
                   href="/profile"
                   aria-label="Profile"
-                  className="inline-flex rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                  className="inline-flex rounded-full border border-white/15 p-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
                 >
                   <Image
                     src={profile?.photoURL || user?.photoURL || '/logo.svg'}
@@ -102,19 +123,17 @@ export default function NavBar() {
                     className="rounded-full"
                   />
                 </Link>
-              </>
-            )}
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setIsMobileMenuOpen(true)}
+                className="inline-flex items-center justify-center rounded-xl border border-white/15 p-2 text-white hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                aria-label="Open navigation menu"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+            </div>
           </div>
-
-          {/* Mobile menu trigger */}
-          <button
-            type="button"
-            onClick={() => setIsMobileMenuOpen(true)}
-            className="sm:hidden inline-flex items-center justify-center rounded-xl border border-white/15 p-2 text-white hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-            aria-label="Open navigation menu"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
         </div>
 
         {/* Mobile drawer menu */}
