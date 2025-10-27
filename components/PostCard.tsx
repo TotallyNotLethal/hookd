@@ -13,6 +13,7 @@ import {
 } from '@/lib/firestore';
 import { Heart, MessageSquare, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import ProBadge from './ProBadge';
 
 
 export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any) => void }) {
@@ -92,6 +93,14 @@ export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any
     }
   };
 
+  const isProMember = Boolean(
+    post?.isPro ||
+      post?.user?.isPro ||
+      post?.userIsPro ||
+      post?.user?.membership === 'pro' ||
+      post?.membership === 'pro',
+  );
+
   return (
     <div
       onClick={() => onOpen?.(post)}
@@ -101,7 +110,10 @@ export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any
         <div className="flex items-center gap-2">
           {post.userPhoto && <img src={post.userPhoto} className="w-8 h-8 rounded-full" alt="" />}
           <div>
-            <p className="font-semibold">{post.displayName}</p>
+            <div className="flex items-center gap-2">
+              <p className="font-semibold">{post.displayName}</p>
+              {isProMember && <ProBadge className="text-[10px]" />}
+            </div>
             {canShowLocation ? (
               <p className="text-xs opacity-70">{post.location}</p>
             ) : locationIsPrivate ? (
