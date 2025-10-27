@@ -2,6 +2,7 @@
 
 import NavBar from "@/components/NavBar";
 import ProfileView from "@/components/ProfileView";
+import { summarizeCatchMetrics } from "@/lib/catchStats";
 import { app } from "@/lib/firebaseClient";
 import {
   subscribeToUser,
@@ -244,6 +245,7 @@ export default function Page() {
   const [profile, setProfile] = useState<any>(null);
   const [catches, setCatches] = useState<any[]>([]);
   const [editing, setEditing] = useState(false);
+  const catchSummary = useMemo(() => summarizeCatchMetrics(catches), [catches]);
 
   useEffect(() => {
     const auth = getAuth(app);
@@ -301,7 +303,13 @@ export default function Page() {
     <main>
       <NavBar />
       <section className="container pt-28 pb-10">
-        <ProfileView profile={profile} catches={catches} isOwner onEditProfile={() => setEditing(true)} />
+        <ProfileView
+          profile={profile}
+          catches={catches}
+          isOwner
+          onEditProfile={() => setEditing(true)}
+          catchSummary={catchSummary}
+        />
       </section>
 
       {editing && <EditProfileModal user={{ ...profile, uid: authUser.uid }} onClose={() => setEditing(false)} />}
