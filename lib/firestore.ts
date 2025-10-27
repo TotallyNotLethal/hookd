@@ -122,6 +122,8 @@ export type CatchInput = {
 export type CatchWithCoordinates = {
   id: string;
   species: string;
+  uid?: string | null;
+  userId?: string | null;
   weight?: string | null;
   location?: string | null;
   caption?: string | null;
@@ -129,9 +131,16 @@ export type CatchWithCoordinates = {
   userPhoto?: string | null;
   coordinates: { lat: number; lng: number };
   locationPrivate?: boolean | null;
-  createdAt?: Date | null;
-  capturedAt?: Date | null;
+  createdAt?: Timestamp | null;
+  createdAtDate?: Date | null;
+  capturedAt?: Timestamp | null;
+  capturedAtDate?: Date | null;
   imageUrl?: string | null;
+  likesCount?: number | null;
+  commentsCount?: number | null;
+  trophy?: boolean | null;
+  hashtags?: string[] | null;
+  user?: Record<string, unknown> | null;
 };
 
 /** ---------- Users ---------- */
@@ -477,28 +486,39 @@ export function subscribeToCatchesWithCoordinates(cb: (arr: CatchWithCoordinates
       const coords = data.coordinates;
       if (!(coords instanceof GeoPoint)) return;
 
-      const createdAt = data.createdAt instanceof Timestamp ? data.createdAt.toDate() : null;
-      const capturedAt = data.capturedAt instanceof Timestamp ? data.capturedAt.toDate() : null;
+      const createdAtTimestamp = data.createdAt instanceof Timestamp ? data.createdAt : null;
+      const capturedAtTimestamp = data.capturedAt instanceof Timestamp ? data.capturedAt : null;
 
       arr.push({
         id: docSnap.id,
         species: data.species || "",
+        uid: data.uid ?? data.userId ?? null,
+        userId: data.userId ?? data.uid ?? null,
         weight: data.weight ?? null,
         location: data.location ?? null,
         caption: data.caption ?? null,
-        displayName: data.displayName ?? null,
+        displayName: data.displayName ?? data.user?.name ?? null,
         userPhoto: data.userPhoto ?? null,
         coordinates: { lat: coords.latitude, lng: coords.longitude },
         locationPrivate: data.locationPrivate ?? null,
-        createdAt,
-        capturedAt,
+        createdAt: createdAtTimestamp,
+        createdAtDate: createdAtTimestamp ? createdAtTimestamp.toDate() : null,
+        capturedAt: capturedAtTimestamp,
+        capturedAtDate: capturedAtTimestamp ? capturedAtTimestamp.toDate() : null,
         imageUrl: data.imageUrl ?? null,
+        likesCount: typeof data.likesCount === "number" ? data.likesCount : null,
+        commentsCount: typeof data.commentsCount === "number" ? data.commentsCount : null,
+        trophy: typeof data.trophy === "boolean" ? data.trophy : null,
+        hashtags: Array.isArray(data.hashtags) ? data.hashtags : null,
+        user: typeof data.user === "object" && data.user !== null ? data.user : null,
       });
     });
 
     arr.sort((a, b) => {
-      const aTime = (a.capturedAt ?? a.createdAt)?.getTime() ?? 0;
-      const bTime = (b.capturedAt ?? b.createdAt)?.getTime() ?? 0;
+      const aDate = a.capturedAtDate ?? a.createdAtDate ?? null;
+      const bDate = b.capturedAtDate ?? b.createdAtDate ?? null;
+      const aTime = aDate ? aDate.getTime() : 0;
+      const bTime = bDate ? bDate.getTime() : 0;
       return bTime - aTime;
     });
 
