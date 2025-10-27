@@ -84,7 +84,7 @@ export default function Page() {
 
       if (shouldUseRedirect()) {
         try {
-          await setPersistence(auth, browserLocalPersistence);
+          await setPersistence(auth, indexedDBLocalPersistence);
         } catch (err) {
           console.warn('Falling back to IndexedDB persistence for auth', err);
           await setPersistence(auth, indexedDBLocalPersistence);
