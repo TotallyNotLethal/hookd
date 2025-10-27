@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getAuth, onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { app } from '@/lib/firebaseClient';
+import { HookdUser, subscribeToUser } from '@/lib/firestore';
 import {
   Home,
   PlusCircle,
@@ -23,10 +24,35 @@ export default function NavBar() {
   const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [profile, setProfile] = useState<HookdUser | null>(null);
 
   useEffect(() => {
     const auth = getAuth(app);
-    return onAuthStateChanged(auth, (u) => setUser(u));
+    let unsubscribeProfile: (() => void) | undefined;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+        unsubscribeProfile = undefined;
+      }
+
+      if (u) {
+        unsubscribeProfile = subscribeToUser(u.uid, (data) => {
+          setProfile(data);
+        });
+      } else {
+        setProfile(null);
+      }
+    });
+
+    return () => {
+      if (unsubscribeProfile) {
+        unsubscribeProfile();
+      }
+      unsubscribeAuth();
+    };
   }, []);
 
   const tabs = [
@@ -71,8 +97,8 @@ export default function NavBar() {
                   <LogOut className="w-4 h-4" /> Logout
                 </button>
                 <Image
-                  src={user.photoURL || '/logo.svg'}
-                  alt="Account avatar"
+                  src={profile?.photoURL || user?.photoURL || '/logo.svg'}
+                  alt={profile?.displayName || user?.displayName || 'Account avatar'}
                   width={32}
                   height={32}
                   className="rounded-full"
