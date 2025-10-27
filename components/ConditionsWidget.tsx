@@ -1,14 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-interface ConditionsData {
-  temperature: number | null;
-  windSpeed: number | null;
-  sunrise: string | null;
-  sunset: string | null;
-  fetchedAt: Date;
-}
+import { useProAccess } from "@/hooks/useProAccess";
+import type { BitePrediction, BiteSignalDocument } from "@/lib/biteClock";
+import { getOrRefreshBiteSignal } from "@/lib/biteClock";
+import { deriveLocationKey } from "@/lib/location";
 
 interface ConditionsWidgetProps {
   fallbackLocation: {
@@ -20,99 +17,147 @@ interface ConditionsWidgetProps {
   className?: string;
 }
 
-const formatTime = (value: string | null) => {
-  if (!value) return "--";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "--";
-  }
-  return date.toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+type LocationState = {
+  name: string;
+  latitude: number;
+  longitude: number;
+  timezone?: string;
 };
+
+type LocationStatus = "idle" | "locating" | "fallback" | "resolved" | "error";
+
+type PredictionView = BitePrediction & { key: string };
+
+const arrowForDirection: Record<BitePrediction["direction"], string> = {
+  up: "↑",
+  flat: "→",
+  down: "↓",
+};
+
+function formatConfidence(value: number) {
+  if (!Number.isFinite(value)) return "--";
+  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
+}
+
+function formatUpdatedAt(signal: BiteSignalDocument | null) {
+  if (!signal?.updatedAt) return null;
+  const date = signal.updatedAt.toDate();
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function buildPredictions(signal: BiteSignalDocument | null): PredictionView[] {
+  if (!signal?.predictions || signal.predictions.length === 0) return [];
+  return signal.predictions.slice(0, 3).map((prediction) => ({
+    ...prediction,
+    key: `${prediction.offsetHours}-${prediction.direction}-${prediction.environment.captureUtc}`,
+  }));
+}
+
+async function resolveLocationName(lat: number, lng: number, fallback: string) {
+  try {
+    const params = new URLSearchParams({
+      latitude: lat.toString(),
+      longitude: lng.toString(),
+      language: "en",
+      count: "1",
+    });
+    const response = await fetch(`/api/open-meteo/reverse?${params.toString()}`);
+    if (!response.ok) {
+      throw new Error(`Reverse lookup failed with status ${response.status}`);
+    }
+    const data = await response.json();
+    const result = data?.results?.[0];
+    if (!result?.name) return fallback;
+    const admin = [result.admin1, result.admin2, result.country_code].filter(Boolean).join(", ");
+    return admin ? `${result.name}, ${admin}` : result.name;
+  } catch (error) {
+    console.warn("Unable to reverse geocode location", error);
+    return fallback;
+  }
+}
 
 export default function ConditionsWidget({
   fallbackLocation,
   className = "",
 }: ConditionsWidgetProps) {
-  const [conditions, setConditions] = useState<ConditionsData | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [location, setLocation] = useState(fallbackLocation);
-  const [usingFallback, setUsingFallback] = useState<boolean>(true);
-  const [isLocating, setIsLocating] = useState<boolean>(false);
+  const { isPro, loading: proLoading } = useProAccess();
+  const [location, setLocation] = useState<LocationState>(fallbackLocation);
+  const [locationStatus, setLocationStatus] = useState<LocationStatus>("idle");
+  const [usingFallback, setUsingFallback] = useState(true);
+  const [signal, setSignal] = useState<BiteSignalDocument | null>(null);
+  const [signalError, setSignalError] = useState<string | null>(null);
+  const [signalLoading, setSignalLoading] = useState(false);
+  const [geolocationError, setGeolocationError] = useState<string | null>(null);
+
+  const locationKey = useMemo(() => {
+    if (!location?.latitude || !location?.longitude) return null;
+    return deriveLocationKey({
+      coordinates: { lat: location.latitude, lng: location.longitude },
+      locationName: location.name,
+    });
+  }, [location.latitude, location.longitude, location.name]);
+
+  const predictionViews = useMemo(() => buildPredictions(signal), [signal]);
+  const lastUpdatedLabel = useMemo(() => formatUpdatedAt(signal), [signal]);
+
+  const fetchSignal = useCallback(async () => {
+    if (!isPro || !locationKey || !location) return;
+    setSignalLoading(true);
+    setSignalError(null);
+    try {
+      const refreshed = await getOrRefreshBiteSignal({
+        locationKey,
+        coordinates: { lat: location.latitude, lng: location.longitude },
+      });
+      setSignal(refreshed);
+      if (!refreshed) {
+        setSignalError(null);
+      }
+    } catch (error) {
+      console.error('Unable to load bite signal', error);
+      setSignalError('Unable to load bite signal right now.');
+    } finally {
+      setSignalLoading(false);
+    }
+  }, [isPro, locationKey, location]);
 
   useEffect(() => {
     let isMounted = true;
-
-    async function resolveLocation(latitude: number, longitude: number) {
-      const normalizedLongitude =
-        ((longitude + 180) % 360 + 360) % 360 - 180;
-      let locationName = fallbackLocation.name;
-      try {
-        const params = new URLSearchParams({
-          latitude: latitude.toString(),
-          longitude: normalizedLongitude.toString(),
-          language: "en",
-          count: "1",
-        });
-        const response = await fetch(
-          `/api/open-meteo/reverse?${params.toString()}`,
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          const result = data.results?.[0];
-          if (result?.name) {
-            const admin = [result.admin1, result.admin2, result.country_code]
-              .filter(Boolean)
-              .join(", ");
-            locationName = admin ? `${result.name}, ${admin}` : result.name;
-          }
-        }
-      } catch (err) {
-        console.warn("Unable to reverse geocode location", err);
-      }
-
-      if (!isMounted) return;
-
-      setLocation({
-        name: locationName,
-        latitude,
-        longitude: normalizedLongitude,
-        timezone:
-          Intl.DateTimeFormat().resolvedOptions().timeZone ||
-          fallbackLocation.timezone,
-      });
-      setUsingFallback(false);
-      setIsLocating(false);
-    }
-
-    setLocation(fallbackLocation);
+    setLocationStatus("locating");
     setUsingFallback(true);
-    setIsLocating(true);
+    setGeolocationError(null);
 
     if (typeof window === "undefined" || !navigator.geolocation) {
-      setLocation(fallbackLocation);
-      setUsingFallback(true);
-      setIsLocating(false);
+      setLocationStatus("fallback");
       return () => {
         isMounted = false;
       };
     }
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      async (position) => {
         if (!isMounted) return;
-        resolveLocation(position.coords.latitude, position.coords.longitude);
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        const name = await resolveLocationName(latitude, longitude, fallbackLocation.name);
+        if (!isMounted) return;
+        setLocation({
+          name,
+          latitude,
+          longitude,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? fallbackLocation.timezone,
+        });
+        setUsingFallback(false);
+        setLocationStatus("resolved");
       },
-      (geoError) => {
-        console.warn("Geolocation unavailable", geoError);
+      (error) => {
+        console.warn("Unable to detect geolocation", error);
         if (!isMounted) return;
         setLocation(fallbackLocation);
         setUsingFallback(true);
-        setIsLocating(false);
+        setGeolocationError('Location services unavailable. Using default spot.');
+        setLocationStatus("fallback");
       },
       {
         enableHighAccuracy: true,
@@ -126,155 +171,91 @@ export default function ConditionsWidget({
   }, [fallbackLocation]);
 
   useEffect(() => {
-    let isMounted = true;
+    if (!isPro || !locationKey) return;
+    fetchSignal();
+  }, [fetchSignal, isPro, locationKey]);
 
-    async function fetchForecast() {
-      if (!location?.latitude || !location?.longitude) {
-        return;
-      }
-      setIsLoading(true);
-      setError(null);
-      try {
-        const params = new URLSearchParams({
-          latitude: String(location.latitude),
-          longitude: String(location.longitude),
-          timezone: location.timezone ?? "auto",
-          current: "temperature_2m,wind_speed_10m",
-          daily: "sunrise,sunset",
-          temperature_unit: "fahrenheit",
-          wind_speed_unit: "mph",
-        });
+  const insufficient = signal?.insufficient || predictionViews.length === 0;
 
-        const response = await fetch(
-          `https://api.open-meteo.com/v1/forecast?${params.toString()}`,
-        );
+  if (proLoading) {
+    return (
+      <div className={`card p-4 flex flex-col gap-4 ${className}`}>
+        <div className="h-4 w-32 rounded bg-white/10 animate-pulse" />
+        <div className="h-16 w-full rounded bg-white/10 animate-pulse" />
+      </div>
+    );
+  }
 
-        if (!response.ok) {
-          throw new Error("Unable to load forecast right now.");
-        }
-
-        const forecast = await response.json();
-        const sunrise = forecast.daily?.sunrise?.[0] ?? null;
-        const sunset = forecast.daily?.sunset?.[0] ?? null;
-
-        if (isMounted) {
-          setConditions({
-            temperature: forecast.current?.temperature_2m ?? null,
-            windSpeed: forecast.current?.wind_speed_10m ?? null,
-            sunrise,
-            sunset,
-            fetchedAt: new Date(),
-          });
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError(
-            err instanceof Error ? err.message : "Something went wrong fetching the forecast.",
-          );
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    fetchForecast();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [location.latitude, location.longitude, location.timezone]);
-
-  const bestWindow = useMemo(() => {
-    if (!conditions?.sunrise) return null;
-    const sunriseDate = new Date(conditions.sunrise);
-    if (Number.isNaN(sunriseDate.getTime())) return null;
-    const windowEnd = new Date(sunriseDate.getTime() + 2 * 60 * 60 * 1000);
-    const start = sunriseDate.toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-    const end = windowEnd.toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-    return `${start} – ${end}`;
-  }, [conditions?.sunrise]);
-
-  const locationStatus = isLocating
-    ? "Detecting your location…"
-    : usingFallback
-      ? "Using default spot (enable location for local updates)"
-      : "Based on your current location";
+  if (!isPro) {
+    return (
+      <div className={`card p-4 flex flex-col gap-3 ${className}`}>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-white/50">Hook&apos;d Pro</p>
+          <h3 className="font-semibold text-lg text-white">Bite Signals</h3>
+        </div>
+        <p className="text-sm text-white/70">
+          Upgrade to Hook&apos;d Pro to unlock localized bite predictions powered by community catches and live conditions.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className={`card p-4 flex flex-col gap-4 ${className}`}>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs uppercase tracking-wide text-white/50">Conditions</p>
+          <p className="text-xs uppercase tracking-wide text-white/50">Bite Signals</p>
           <h3 className="font-semibold text-lg text-white">{location.name}</h3>
-          <p className="text-[11px] text-white/40 mt-1">{locationStatus}</p>
-        </div>
-        {!isLoading && !error && (
-          <p className="text-xs text-white/40">
-            Updated {conditions?.fetchedAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+          <p className="text-[11px] text-white/40 mt-1">
+            {locationStatus === "locating"
+              ? "Detecting your location…"
+              : usingFallback
+                ? geolocationError ?? "Using default spot. Enable location for local intel."
+                : "Based on your current location"}
           </p>
+        </div>
+        {lastUpdatedLabel && !signalLoading && (
+          <p className="text-xs text-white/40">Updated {lastUpdatedLabel}</p>
         )}
       </div>
 
-      {error ? (
-        <div className="rounded-2xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-200">
-          {error}
+      {signalError && !signalLoading ? (
+        <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+          {signalError}
+        </div>
+      ) : null}
+
+      {signalLoading ? (
+        <div className="grid grid-cols-3 gap-3 text-sm text-white/60">
+          {[0, 1, 2].map((item) => (
+            <div key={item} className="rounded-2xl bg-white/10 px-4 py-3 animate-pulse" />
+          ))}
+        </div>
+      ) : insufficient ? (
+        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+          Not enough recent catches here to chart the bite. Log a few more trips to build the signal.
         </div>
       ) : (
         <div className="space-y-3">
-          {isLoading ? (
-            <div className="space-y-2 text-sm text-white/50">
-              <div className="h-3 w-24 rounded-full bg-white/10 animate-pulse" />
-              <div className="h-3 w-32 rounded-full bg-white/10 animate-pulse" />
-              <div className="h-3 w-20 rounded-full bg-white/10 animate-pulse" />
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="rounded-2xl bg-white/5 px-4 py-3 flex flex-col gap-1">
-                  <span className="text-lg">🌡️</span>
-                  <p className="text-xl font-semibold text-white">
-                    {conditions?.temperature != null ? `${Math.round(conditions.temperature)}°F` : "--"}
-                  </p>
-                  <p className="text-xs uppercase tracking-wide text-white/50">Air temp</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {predictionViews.map((prediction) => (
+              <div key={prediction.key} className="rounded-2xl bg-white/5 px-4 py-3 flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-lg">{arrowForDirection[prediction.direction]}</span>
+                  <span className="text-xs text-white/50">{prediction.label}</span>
                 </div>
-                <div className="rounded-2xl bg-white/5 px-4 py-3 flex flex-col gap-1">
-                  <span className="text-lg">💨</span>
-                  <p className="text-xl font-semibold text-white">
-                    {conditions?.windSpeed != null ? `${Math.round(conditions.windSpeed)} mph` : "--"}
-                  </p>
-                  <p className="text-xs uppercase tracking-wide text-white/50">Wind</p>
-                </div>
-                <div className="rounded-2xl bg-white/5 px-4 py-3 flex flex-col gap-1">
-                  <span className="text-lg">🌅</span>
-                  <p className="text-sm text-white">
-                    Rise {formatTime(conditions?.sunrise)}
-                  </p>
-                  <p className="text-sm text-white">
-                    Set {formatTime(conditions?.sunset)}
-                  </p>
-                </div>
-              </div>
-
-              <div className="rounded-2xl bg-brand-500/10 border border-brand-500/40 px-4 py-3">
-                <p className="text-sm text-brand-200 font-medium">
-                  {bestWindow
-                    ? `Best bite window ${bestWindow}`
-                    : "Watch for calm pockets right after sunrise."}
-                </p>
-                <p className="text-xs text-white/60 mt-1">
-                  Dial in your presentation during stable light changes for higher strike rates.
+                <p className="text-xl font-semibold text-white">{formatConfidence(prediction.confidence)}</p>
+                <p className="text-xs uppercase tracking-wide text-white/50">
+                  {prediction.bands.timeOfDay} · {prediction.bands.moonPhase} moon · {prediction.bands.pressure}
                 </p>
               </div>
-            </>
-          )}
+            ))}
+          </div>
+          {signal?.sampleSize ? (
+            <p className="text-[11px] text-white/40">
+              Aggregated from {signal.sampleSize} recent catches weighted by angler trust.
+            </p>
+          ) : null}
         </div>
       )}
     </div>

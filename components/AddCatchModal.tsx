@@ -19,6 +19,8 @@ import {
   subscribeToActiveTournaments,
   subscribeToUser,
 } from '@/lib/firestore';
+import type { EnvironmentBands, EnvironmentSnapshot } from '@/lib/environmentTypes';
+import { deriveLocationKey } from '@/lib/location';
 import FishSelector from './FishSelector';
 import WeightPicker, { type WeightValue } from './WeightPicker';
 
@@ -231,6 +233,17 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [captureDate, setCaptureDate] = useState('');
   const [captureTime, setCaptureTime] = useState('');
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
+  const initialCaptureRef = useRef<{ date: string; time: string } | null>(null);
+  const [captureWasCorrected, setCaptureWasCorrected] = useState(false);
+  const [environmentSnapshot, setEnvironmentSnapshot] = useState<EnvironmentSnapshot | null>(null);
+  const [environmentBands, setEnvironmentBands] = useState<EnvironmentBands | null>(null);
+  const [environmentLoading, setEnvironmentLoading] = useState(false);
+  const [environmentError, setEnvironmentError] = useState<string | null>(null);
+  const capturedAt = useMemo(() => {
+    if (!captureDate || !captureTime) return null;
+    const candidate = new Date(`${captureDate}T${captureTime}`);
+    return Number.isNaN(candidate.getTime()) ? null : candidate;
+  }, [captureDate, captureTime]);
   const [mapZoom, setMapZoomState] = useState(4);
   const mapZoomRef = useRef(mapZoom);
   const userAdjustedZoomRef = useRef(false);
@@ -542,6 +555,12 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       setCaptureDate('');
       setCaptureTime('');
       setCoordinates(null);
+      initialCaptureRef.current = null;
+      setCaptureWasCorrected(false);
+      setEnvironmentSnapshot(null);
+      setEnvironmentBands(null);
+      setEnvironmentError(null);
+      setEnvironmentLoading(false);
       updateMapZoom(4);
       userAdjustedZoomRef.current = false;
       setLocation('');
@@ -581,6 +600,11 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
             .slice(0, 16);
           setCaptureDate(iso.slice(0, 10));
           setCaptureTime(iso.slice(11, 16));
+          initialCaptureRef.current = {
+            date: iso.slice(0, 10),
+            time: iso.slice(11, 16),
+          };
+          setCaptureWasCorrected(false);
         }
 
         const rawLat = toDecimalDegrees(metadata?.GPSLatitude);
@@ -628,6 +652,31 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     [handleFileSelection],
   );
 
+  const markCaptureManualChange = useCallback((nextDate: string, nextTime: string) => {
+    const initial = initialCaptureRef.current;
+    if (!initial) {
+      setCaptureWasCorrected(Boolean(nextDate || nextTime));
+      return;
+    }
+    setCaptureWasCorrected(initial.date !== nextDate || initial.time !== nextTime);
+  }, []);
+
+  const handleCaptureDateChange = useCallback(
+    (value: string) => {
+      setCaptureDate(value);
+      markCaptureManualChange(value, captureTime);
+    },
+    [captureTime, markCaptureManualChange],
+  );
+
+  const handleCaptureTimeChange = useCallback(
+    (value: string) => {
+      setCaptureTime(value);
+      markCaptureManualChange(captureDate, value);
+    },
+    [captureDate, markCaptureManualChange],
+  );
+
   const handleOriginalFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files && files[0]) {
@@ -666,6 +715,69 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     },
     [lookupLocationName, updateMapZoom],
   );
+
+  useEffect(() => {
+    if (!coordinates || !capturedAt) {
+      setEnvironmentSnapshot(null);
+      setEnvironmentBands(null);
+      setEnvironmentError(null);
+      setEnvironmentLoading(false);
+      return;
+    }
+
+    let isActive = true;
+    const controller = new AbortController();
+
+    async function loadEnvironmentSnapshot() {
+      setEnvironmentLoading(true);
+      setEnvironmentError(null);
+      try {
+        const params = new URLSearchParams({
+          lat: coordinates.lat.toString(),
+          lng: coordinates.lng.toString(),
+          timestamp: capturedAt.toISOString(),
+          forwardHours: '0',
+        });
+        const response = await fetch(`/api/environment?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error('Unable to fetch environment data.');
+        }
+        const body = await response.json();
+        const snapshot: EnvironmentSnapshot | undefined =
+          body.capture ?? body.slices?.[0]?.snapshot;
+        if (!snapshot) {
+          throw new Error('Environment data unavailable.');
+        }
+        if (isActive) {
+          setEnvironmentSnapshot(snapshot);
+          setEnvironmentBands({
+            timeOfDay: snapshot.timeOfDayBand,
+            moonPhase: snapshot.moonPhaseBand,
+            pressure: snapshot.pressureBand,
+          });
+        }
+      } catch (error) {
+        if (!controller.signal.aborted && isActive) {
+          setEnvironmentError(
+            error instanceof Error ? error.message : 'Unable to fetch environment data.',
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted && isActive) {
+          setEnvironmentLoading(false);
+        }
+      }
+    }
+
+    loadEnvironmentSnapshot();
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
+  }, [coordinates?.lat, coordinates?.lng, capturedAt?.getTime()]);
 
   useEffect(() => {
     if (!locationDirty) return;
@@ -839,8 +951,10 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     let shouldRollbackCatch = Boolean(tournament);
 
     try {
-      const hasCaptureDetails = captureDate && captureTime;
-      const capturedAt = hasCaptureDetails ? new Date(`${captureDate}T${captureTime}`) : null;
+      const capturedAtDate = capturedAt && !Number.isNaN(capturedAt.getTime()) ? capturedAt : null;
+      const captureNormalizedAt = capturedAtDate
+        ? new Date(Math.floor(capturedAtDate.getTime() / (60 * 60 * 1000)) * 60 * 60 * 1000)
+        : null;
       createdCatchId = await createCatch({
         uid: user.uid,
         displayName: profile?.displayName || user.displayName || 'Angler',
@@ -854,7 +968,18 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         file,
         captureDate: captureDate || null,
         captureTime: captureTime || null,
-        capturedAt: capturedAt && !Number.isNaN(capturedAt.getTime()) ? capturedAt : null,
+        capturedAt: capturedAtDate,
+        captureWasCorrected,
+        captureManualEntry: captureWasCorrected
+          ? {
+              captureDate: captureDate || null,
+              captureTime: captureTime || null,
+            }
+          : null,
+        captureNormalizedAt,
+        environmentSnapshot,
+        environmentBands,
+        locationKey: deriveLocationKey({ coordinates, locationName: finalLocation }),
         coordinates,
       });
 
@@ -1102,7 +1227,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
                 type="date"
                 className="input"
                 value={captureDate}
-                onChange={(event) => setCaptureDate(event.target.value)}
+                onChange={(event) => handleCaptureDateChange(event.target.value)}
               />
             </div>
             <div className="space-y-1">
@@ -1114,9 +1239,24 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
                 type="time"
                 className="input"
                 value={captureTime}
-                onChange={(event) => setCaptureTime(event.target.value)}
+                onChange={(event) => handleCaptureTimeChange(event.target.value)}
               />
             </div>
+          </div>
+          <div className="text-xs text-white/60 space-y-1">
+            {environmentLoading && <p>Pulling moon and pressure tags…</p>}
+            {!environmentLoading && environmentSnapshot && (
+              <p>
+                Tagged as {environmentSnapshot.timeOfDayBand} · {environmentSnapshot.moonPhaseBand} moon ·{' '}
+                {environmentSnapshot.pressureBand} pressure
+              </p>
+            )}
+            {environmentError && !environmentLoading && (
+              <p className="text-amber-300">Environment data unavailable: {environmentError}</p>
+            )}
+            {captureWasCorrected && (
+              <p className="text-brand-200">Manual time correction noted.</p>
+            )}
           </div>
 
           {/* Map + Location */}
