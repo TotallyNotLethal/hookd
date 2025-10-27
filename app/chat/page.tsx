@@ -12,7 +12,15 @@ import {
   ChatMessage,
   sendChatMessage,
   subscribeToChatMessages,
+  subscribeToUser,
 } from '@/lib/firestore';
+
+type UserProfile = {
+  uid: string;
+  displayName?: string | null;
+  photoURL?: string | null;
+  [key: string]: unknown;
+};
 
 export default function ChatPage() {
   const [user] = useAuthState(auth);
@@ -22,6 +30,7 @@ export default function ChatPage() {
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -45,6 +54,21 @@ export default function ChatPage() {
     endRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length]);
 
+  useEffect(() => {
+    if (!user?.uid) {
+      setUserProfile(null);
+      return;
+    }
+
+    const unsubscribe = subscribeToUser(user.uid, (data) => {
+      setUserProfile(data);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [user?.uid]);
+
   const formattedMessages = useMemo(() => {
     const formatter = new Intl.DateTimeFormat(undefined, {
       month: 'short',
@@ -55,6 +79,10 @@ export default function ChatPage() {
 
     return messages.map((message) => ({
       ...message,
+      displayName: typeof message.displayName === 'string' && message.displayName.trim()
+        ? message.displayName
+        : 'Angler',
+      photoURL: message.photoURL || null,
       timestampLabel: message.createdAt ? formatter.format(message.createdAt) : 'Sending…',
     }));
   }, [messages]);
@@ -75,11 +103,18 @@ export default function ChatPage() {
 
     try {
       setIsSending(true);
+      const displayName = userProfile?.displayName && userProfile.displayName.trim()
+        ? userProfile.displayName.trim()
+        : 'Angler';
+      const photoURL = userProfile?.photoURL && typeof userProfile.photoURL === 'string'
+        ? userProfile.photoURL
+        : null;
+
       await sendChatMessage({
         uid: user.uid,
-        displayName: user.displayName || 'Angler',
+        displayName,
         text: trimmed,
-        photoURL: user.photoURL || null,
+        photoURL,
       });
       setInput('');
     } catch (err) {
@@ -149,7 +184,7 @@ export default function ChatPage() {
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center text-xs uppercase text-white/70">
-                          {message.displayName.slice(0, 2)}
+                          {message.displayName.slice(0, 2).toUpperCase()}
                         </div>
                       )}
                     </div>
