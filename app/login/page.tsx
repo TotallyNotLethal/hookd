@@ -9,6 +9,9 @@ import {
   getRedirectResult,
   onAuthStateChanged,
   User,
+  setPersistence,
+  browserLocalPersistence,
+  indexedDBLocalPersistence,
 } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { ensureUserProfile } from '@/lib/firestore';
@@ -80,6 +83,12 @@ export default function Page() {
       const provider = new GoogleAuthProvider();
 
       if (shouldUseRedirect()) {
+        try {
+          await setPersistence(auth, browserLocalPersistence);
+        } catch (err) {
+          console.warn('Falling back to IndexedDB persistence for auth', err);
+          await setPersistence(auth, indexedDBLocalPersistence);
+        }
         await signInWithRedirect(auth, provider);
         return;
       }
