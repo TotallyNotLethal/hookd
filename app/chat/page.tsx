@@ -1,0 +1,225 @@
+'use client';
+
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
+import Link from 'next/link';
+import { useAuthState } from 'react-firebase-hooks/auth';
+import { Loader2, MessageSquare } from 'lucide-react';
+
+import NavBar from '@/components/NavBar';
+import { auth } from '@/lib/firebaseClient';
+import {
+  ChatMessage,
+  sendChatMessage,
+  subscribeToChatMessages,
+} from '@/lib/firestore';
+
+export default function ChatPage() {
+  const [user] = useAuthState(auth);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [input, setInput] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const endRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToChatMessages((incoming) => {
+      setMessages(incoming);
+      setIsLoading(false);
+    }, {
+      onError: (err) => {
+        setError('We could not load the chat right now. Please try again.');
+        console.error(err);
+      },
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!endRef.current) return;
+    endRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages.length]);
+
+  const formattedMessages = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+
+    return messages.map((message) => ({
+      ...message,
+      timestampLabel: message.createdAt ? formatter.format(message.createdAt) : 'Sending…',
+    }));
+  }, [messages]);
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setSendError(null);
+
+    if (!user) {
+      setSendError('Sign in to share a message with the community.');
+      return;
+    }
+
+    const trimmed = input.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    try {
+      setIsSending(true);
+      await sendChatMessage({
+        uid: user.uid,
+        displayName: user.displayName || 'Angler',
+        text: trimmed,
+        photoURL: user.photoURL || null,
+      });
+      setInput('');
+    } catch (err) {
+      console.error('Failed to send chat message', err);
+      setSendError('Unable to send that message. Please try again.');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  return (
+    <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-white">
+      <NavBar />
+      <section className="container pt-28 pb-16">
+        <div className="flex flex-col gap-6">
+          <header className="flex flex-col gap-2">
+            <div className="flex items-center gap-2 text-sm uppercase tracking-[0.2em] text-white/60">
+              <MessageSquare className="h-4 w-4" />
+              <span>Community Board</span>
+            </div>
+            <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">Live Chat</h1>
+            <p className="text-white/70 max-w-2xl">
+              Share quick updates, celebrate catches, and plan your next trip with the Hook&apos;d crew. Messages update in real time
+              so you&apos;re always in the loop.
+            </p>
+          </header>
+
+          <div className="glass border border-white/10 rounded-3xl p-0 overflow-hidden shadow-2xl shadow-slate-950/50">
+            <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-white/5 px-6 py-4">
+              <div>
+                <h2 className="text-lg font-medium">General Channel</h2>
+                <p className="text-xs text-white/60">Seamless, community-wide conversations</p>
+              </div>
+              <div className="text-xs text-white/50">
+                {isLoading ? 'Loading…' : `${messages.length} message${messages.length === 1 ? '' : 's'}`}
+              </div>
+            </div>
+
+            <div className="flex h-[60vh] flex-col">
+              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-slate-950/40" aria-live="polite">
+                {error ? (
+                  <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200">
+                    {error}
+                  </div>
+                ) : null}
+
+                {!error && isLoading ? (
+                  <div className="flex items-center gap-3 text-sm text-white/70">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Connecting anglers…
+                  </div>
+                ) : null}
+
+                {!error && !isLoading && formattedMessages.length === 0 ? (
+                  <p className="text-sm text-white/60">Be the first to start the conversation!</p>
+                ) : null}
+
+                {formattedMessages.map((message) => (
+                  <article key={message.id} className="flex items-start gap-3 text-sm">
+                    <div className="relative h-10 w-10 flex-none overflow-hidden rounded-full border border-white/10 bg-slate-800">
+                      {message.photoURL ? (
+                        <Image
+                          src={message.photoURL}
+                          alt={message.displayName}
+                          fill
+                          className="object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center text-xs uppercase text-white/70">
+                          {message.displayName.slice(0, 2)}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-white/60">
+                        <span className="font-medium text-white">{message.displayName}</span>
+                        <span>{message.timestampLabel}</span>
+                      </div>
+                      <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-white/90">
+                        {message.text}
+                      </p>
+                    </div>
+                  </article>
+                ))}
+                <div ref={endRef} />
+              </div>
+
+              <div className="border-t border-white/10 bg-slate-950/60 p-4">
+                {!user ? (
+                  <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
+                    <p>Sign in to join the conversation and sync your messages across devices.</p>
+                    <div>
+                      <Link href="/login" className="btn-primary inline-flex items-center justify-center px-4 py-2 text-sm">
+                        Log in to chat
+                      </Link>
+                    </div>
+                  </div>
+                ) : null}
+
+                <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-3">
+                  <label htmlFor="chat-input" className="text-xs uppercase tracking-[0.2em] text-white/50">
+                    Message
+                  </label>
+                  <textarea
+                    id="chat-input"
+                    name="message"
+                    value={input}
+                    onChange={(event) => setInput(event.target.value)}
+                    placeholder={user ? 'Share a fishing report, plan a meetup, or drop a quick hello…' : 'Sign in to share a message.'}
+                    className="min-h-[96px] w-full resize-y rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-300/40 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={!user || isSending}
+                    maxLength={2000}
+                    required
+                  />
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="text-xs text-white/40">Messages update instantly for everyone online.</span>
+                    <button
+                      type="submit"
+                      className="btn-primary inline-flex items-center justify-center px-5 py-2 text-sm disabled:opacity-60"
+                      disabled={!user || isSending}
+                    >
+                      {isSending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Sending…
+                        </>
+                      ) : (
+                        'Send message'
+                      )}
+                    </button>
+                  </div>
+                  {sendError ? (
+                    <p className="text-xs text-red-300">{sendError}</p>
+                  ) : null}
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}

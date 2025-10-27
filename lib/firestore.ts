@@ -63,6 +63,15 @@ export type ProfileTheme = {
   featuredCatchId?: string | null;
 };
 
+export type ChatMessage = {
+  id: string;
+  text: string;
+  uid: string;
+  displayName: string;
+  photoURL?: string | null;
+  createdAt: Date | null;
+};
+
 export type CatchInput = {
   uid: string;
   displayName: string;
@@ -514,6 +523,71 @@ export function subscribeToChallengeCatches(cb: (arr: any[]) => void) {
     snap.forEach((d) => arr.push({ id: d.id, ...d.data() }));
     arr.sort((a, b) => timestampToMillis(b.createdAt) - timestampToMillis(a.createdAt));
     cb(arr.slice(0, 6));
+  });
+}
+
+/** ---------- Chat Board ---------- */
+export function subscribeToChatMessages(
+  cb: (messages: ChatMessage[]) => void,
+  options: { limit?: number; onError?: (error: Error) => void } = {},
+) {
+  const { limit: limitCount = 150, onError } = options;
+  const q = query(
+    collection(db, 'chatMessages'),
+    orderBy('createdAt', 'desc'),
+    limit(limitCount),
+  );
+
+  return onSnapshot(q, (snap) => {
+    const items: ChatMessage[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as Record<string, any>;
+      const createdAt = data.createdAt instanceof Timestamp
+        ? data.createdAt.toDate()
+        : data.createdAt && typeof data.createdAt.toDate === 'function'
+          ? data.createdAt.toDate()
+          : null;
+
+      items.push({
+        id: docSnap.id,
+        text: typeof data.text === 'string' ? data.text : '',
+        uid: data.uid || '',
+        displayName: typeof data.displayName === 'string' ? data.displayName : 'Angler',
+        photoURL: data.photoURL ?? null,
+        createdAt,
+      });
+    });
+
+    items.sort((a, b) => {
+      const aTime = a.createdAt?.getTime() ?? 0;
+      const bTime = b.createdAt?.getTime() ?? 0;
+      return aTime - bTime;
+    });
+
+    cb(items);
+  }, (error) => {
+    console.error('Failed to subscribe to chat messages', error);
+    if (onError) onError(error);
+  });
+}
+
+export async function sendChatMessage(data: {
+  uid: string;
+  displayName: string;
+  text: string;
+  photoURL?: string | null;
+}) {
+  const normalized = data.text.trim();
+  if (!normalized) {
+    throw new Error('Message cannot be empty');
+  }
+
+  await addDoc(collection(db, 'chatMessages'), {
+    uid: data.uid,
+    displayName: data.displayName,
+    text: normalized.slice(0, 2000),
+    photoURL: data.photoURL ?? null,
+    createdAt: serverTimestamp(),
   });
 }
 
