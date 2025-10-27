@@ -207,7 +207,9 @@ function FeedContent() {
           }}
         />
       )}
-      {active && <PostDetailModal post={active} onClose={() => setActive(null)} />}
+      {active && (
+        <PostDetailModal post={active} onClose={() => setActive(null)} size="wide" />
+      )}
     </main>
   );
 }
