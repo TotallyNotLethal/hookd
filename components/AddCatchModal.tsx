@@ -7,7 +7,18 @@ import type { LeafletEvent } from 'leaflet';
 import { parse } from 'exifr';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth } from '@/lib/firebaseClient';
-import { HookdUser, createCatch, subscribeToUser } from '@/lib/firestore';
+import {
+  HookdUser,
+  Tournament,
+  TournamentLengthUnit,
+  TournamentMeasurementMode,
+  TournamentWeightUnit,
+  createCatch,
+  deleteCatch,
+  getActiveTournaments,
+  subscribeToActiveTournaments,
+  subscribeToUser,
+} from '@/lib/firestore';
 import FishSelector from './FishSelector';
 import WeightPicker, { type WeightValue } from './WeightPicker';
 
@@ -208,6 +219,9 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [species, setSpecies] = useState('');
   const [weight, setWeight] = useState<WeightValue>({ pounds: 0, ounces: 0 });
+  const [verifiedWeight, setVerifiedWeight] = useState<WeightValue | null>(null);
+  const [verifiedLength, setVerifiedLength] = useState('');
+  const [originalFile, setOriginalFile] = useState<File | null>(null);
   const [location, setLocation] = useState('');
   const [isLocationPrivate, setIsLocationPrivate] = useState(false);
   const [caption, setCaption] = useState('');
@@ -232,8 +246,64 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const searchRequestId = useRef(0);
   const [user] = useAuthState(auth);
   const [profile, setProfile] = useState<HookdUser | null>(null);
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [selectedTournamentId, setSelectedTournamentId] = useState('');
+  const [tournamentsLoading, setTournamentsLoading] = useState(false);
+  const [tournamentError, setTournamentError] = useState<string | null>(null);
   const formattedWeight = useMemo(() => formatWeight(weight), [weight]);
+  const selectedTournament = useMemo(
+    () => tournaments.find((item) => item.id === selectedTournamentId) ?? null,
+    [selectedTournamentId, tournaments],
+  );
+  const tournamentMeasurementMode: TournamentMeasurementMode | null = selectedTournament
+    ? selectedTournament.measurement.mode
+    : null;
+  const requiresWeight =
+    tournamentMeasurementMode === 'weight' || tournamentMeasurementMode === 'combined';
+  const requiresLength =
+    tournamentMeasurementMode === 'length' || tournamentMeasurementMode === 'combined';
+  const measurementWeightUnit: TournamentWeightUnit =
+    selectedTournament?.measurement.weightUnit ?? 'lb';
+  const measurementLengthUnit: TournamentLengthUnit =
+    selectedTournament?.measurement.lengthUnit ?? 'in';
+  const verifiedWeightDisplay = useMemo(() => {
+    if (!requiresWeight) return '';
+    const source = verifiedWeight ?? weight;
+    return formatWeight(source);
+  }, [requiresWeight, verifiedWeight, weight]);
+  const lengthUnitLabel = measurementLengthUnit === 'cm' ? 'cm' : 'in';
+  const measurementWeightUnitLabel =
+    measurementWeightUnit === 'kg' ? 'kilograms' : 'pounds';
+  const measurementLengthUnitLabel =
+    measurementLengthUnit === 'cm' ? 'centimeters' : 'inches';
+  const tournamentMeasurementSummary = useMemo(() => {
+    if (!selectedTournament) return '';
+    const segments: string[] = [];
+    if (requiresWeight) {
+      segments.push(`Weight (${measurementWeightUnitLabel})`);
+    }
+    if (requiresLength) {
+      segments.push(`Length (${measurementLengthUnitLabel})`);
+    }
+    return segments.join(' • ');
+  }, [measurementLengthUnitLabel, measurementWeightUnitLabel, requiresLength, requiresWeight, selectedTournament]);
+  const lengthPlaceholder = measurementLengthUnit === 'cm' ? 'e.g. 75' : 'e.g. 24';
+  const tournamentHashtags = selectedTournament?.requiredHashtags ?? [];
+  const tournamentAntiCheat = selectedTournament?.antiCheat;
+  const tournamentsAvailable = tournaments.length > 0;
+  const originalFileName = originalFile ? originalFile.name : '';
+  const missingTournamentHashtags = useMemo(() => {
+    if (!selectedTournament || tournamentHashtags.length === 0) {
+      return [] as string[];
+    }
+    const normalizedCaption = caption.toLowerCase();
+    return tournamentHashtags.filter((tag) => !normalizedCaption.includes(tag.toLowerCase()));
+  }, [caption, selectedTournament, tournamentHashtags]);
   const handleWeightChange = useCallback((next: WeightValue) => setWeight(next), []);
+  const handleVerifiedWeightChange = useCallback(
+    (next: WeightValue) => setVerifiedWeight(next),
+    [],
+  );
 
   useEffect(() => {
     if (!user?.uid) {
@@ -249,6 +319,78 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       unsubscribe();
     };
   }, [user?.uid]);
+
+  useEffect(() => {
+    let isMounted = true;
+    setTournamentsLoading(true);
+    setTournamentError(null);
+
+    getActiveTournaments()
+      .then((events) => {
+        if (!isMounted) return;
+        setTournaments(events);
+        setTournamentsLoading(false);
+      })
+      .catch((error) => {
+        console.warn('Unable to load tournaments', error);
+        if (!isMounted) return;
+        setTournamentError('Unable to load active tournaments right now.');
+        setTournamentsLoading(false);
+      });
+
+    let unsubscribe: (() => void) | undefined;
+    try {
+      unsubscribe = subscribeToActiveTournaments((events) => {
+        if (!isMounted) return;
+        setTournaments(events);
+        setTournamentError(null);
+        setTournamentsLoading(false);
+      });
+    } catch (error) {
+      console.warn('Unable to subscribe to tournaments', error);
+    }
+
+    return () => {
+      isMounted = false;
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (selectedTournamentId) {
+      const exists = tournaments.some((event) => event.id === selectedTournamentId);
+      if (!exists) {
+        setSelectedTournamentId('');
+      }
+      return;
+    }
+
+    if (!selectedTournamentId && tournaments.length === 1) {
+      setSelectedTournamentId(tournaments[0]!.id);
+    }
+  }, [selectedTournamentId, tournaments]);
+
+  useEffect(() => {
+    setVerifiedWeight(null);
+    setVerifiedLength('');
+  }, [selectedTournamentId]);
+
+  useEffect(() => {
+    if (!requiresWeight) {
+      setVerifiedWeight(null);
+      return;
+    }
+
+    setVerifiedWeight((previous) => previous ?? weight);
+  }, [requiresWeight, weight]);
+
+  useEffect(() => {
+    if (!requiresLength) {
+      setVerifiedLength('');
+    }
+  }, [requiresLength]);
 
   const handleLocationPrivacyChange = useCallback((checked: boolean) => {
     setIsLocationPrivate(checked);
@@ -391,6 +533,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const handleFileSelection = useCallback(
     async (selectedFile: File) => {
       setFile(selectedFile);
+      setOriginalFile(selectedFile);
       setReadingMetadata(true);
       setCaptureDate('');
       setCaptureTime('');
@@ -480,6 +623,15 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     },
     [handleFileSelection],
   );
+
+  const handleOriginalFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (files && files[0]) {
+      setOriginalFile(files[0]);
+    } else {
+      setOriginalFile(null);
+    }
+  }, []);
 
   const handleCoordinatesChange = useCallback(
     (latLng: Coordinates) => {
@@ -627,11 +779,65 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       return;
     }
 
+    const tournament = selectedTournament;
+    let weightScorePounds: number | null = null;
+    let weightValueForUnit: number | null = null;
+    let lengthScoreInches: number | null = null;
+    let verifiedLengthValue: number | null = null;
+    let weightForTournament: WeightValue | null = null;
+
+    const normalizeNumber = (value: number, decimals: number) =>
+      Number.isFinite(value) ? Number.parseFloat(value.toFixed(decimals)) : value;
+
+    if (tournament) {
+      if (requiresWeight) {
+        weightForTournament = verifiedWeight ?? weight;
+        const pounds = (weightForTournament.pounds || 0) + (weightForTournament.ounces || 0) / 16;
+        if (!pounds) {
+          alert('Enter a verified tournament weight.');
+          return;
+        }
+        weightScorePounds = normalizeNumber(pounds, 3);
+        weightValueForUnit =
+          measurementWeightUnit === 'kg'
+            ? normalizeNumber(pounds * 0.45359237, 3)
+            : weightScorePounds;
+      }
+
+      if (requiresLength) {
+        const parsed = Number.parseFloat(verifiedLength);
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+          alert(`Enter a valid verified length in ${lengthUnitLabel}.`);
+          return;
+        }
+        verifiedLengthValue = normalizeNumber(parsed, 2);
+        lengthScoreInches =
+          measurementLengthUnit === 'cm'
+            ? normalizeNumber(parsed / 2.54, 2)
+            : verifiedLengthValue;
+      }
+
+      if (!originalFile) {
+        alert('Please upload the original, unedited photo for tournament validation.');
+        return;
+      }
+
+      if (missingTournamentHashtags.length > 0) {
+        alert(
+          `Add the required tournament hashtags before submitting: ${missingTournamentHashtags.join(', ')}`,
+        );
+        return;
+      }
+    }
+
     setUploading(true);
+    let createdCatchId: string | null = null;
+    let shouldRollbackCatch = Boolean(tournament);
+
     try {
       const hasCaptureDetails = captureDate && captureTime;
       const capturedAt = hasCaptureDetails ? new Date(`${captureDate}T${captureTime}`) : null;
-      await createCatch({
+      createdCatchId = await createCatch({
         uid: user.uid,
         displayName: profile?.displayName || user.displayName || 'Angler',
         userPhoto: profile?.photoURL || user.photoURL || undefined,
@@ -648,11 +854,79 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         coordinates,
       });
 
+      if (tournament) {
+        const formData = new FormData();
+        formData.append('tournamentId', tournament.id);
+        formData.append('catchId', createdCatchId);
+        formData.append('userId', user.uid);
+        formData.append('userDisplayName', profile?.displayName || user.displayName || 'Angler');
+        formData.append('tournamentTitle', tournament.title);
+        formData.append('measurementMode', tournament.measurement.mode);
+        formData.append('weightUnit', measurementWeightUnit);
+        formData.append('lengthUnit', measurementLengthUnit);
+        formData.append('measurementSummary', tournamentMeasurementSummary);
+        formData.append('species', trimmedSpecies);
+        formData.append('caption', caption);
+        formData.append('ruleset', tournament.ruleset);
+        formData.append('requiredHashtags', JSON.stringify(tournamentHashtags));
+        if (requiresWeight && weightForTournament && weightScorePounds !== null) {
+          formData.append('verifiedWeightDisplay', formatWeight(weightForTournament));
+          formData.append('verifiedWeightInPounds', weightScorePounds.toString());
+          if (weightValueForUnit !== null) {
+            formData.append('verifiedWeightValue', weightValueForUnit.toString());
+          }
+        }
+        if (requiresLength && verifiedLengthValue !== null && lengthScoreInches !== null) {
+          formData.append('verifiedLengthValue', verifiedLengthValue.toString());
+          formData.append('verifiedLengthInInches', lengthScoreInches.toString());
+          formData.append('verifiedLengthDisplay', `${verifiedLengthValue} ${lengthUnitLabel}`);
+        }
+        if (coordinates) {
+          formData.append('latitude', coordinates.lat.toString());
+          formData.append('longitude', coordinates.lng.toString());
+        }
+        if (captureDate) {
+          formData.append('captureDate', captureDate);
+        }
+        if (captureTime) {
+          formData.append('captureTime', captureTime);
+        }
+
+        formData.append('originalPhoto', originalFile);
+
+        const response = await fetch('/api/tournaments/submit', {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          let message = 'Tournament submission failed.';
+          try {
+            const errorBody = await response.json();
+            if (typeof errorBody?.error === 'string') {
+              message = errorBody.error;
+            }
+          } catch (error) {
+            console.warn('Unable to parse tournament submission error body', error);
+          }
+          throw new Error(message);
+        }
+
+        shouldRollbackCatch = false;
+      }
+
       alert('Catch uploaded!');
       onClose();
     } catch (err) {
       console.error(err);
-      alert('Error uploading catch');
+      if (createdCatchId && shouldRollbackCatch) {
+        try {
+          await deleteCatch(createdCatchId);
+        } catch (cleanupError) {
+          console.error('Failed to roll back catch after tournament submission error', cleanupError);
+        }
+      }
+      alert(err instanceof Error ? err.message : 'Error uploading catch');
     } finally {
       setUploading(false);
     }
@@ -697,6 +971,122 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
               <p className="text-xs text-white/60">Selected weight: {formattedWeight}</p>
             </div>
           </div>
+
+          <div className="space-y-2">
+            <label className="text-sm text-white/70" htmlFor="tournament-select">
+              Active tournament
+            </label>
+            <select
+              id="tournament-select"
+              className="input"
+              value={selectedTournamentId}
+              onChange={(event) => setSelectedTournamentId(event.target.value)}
+            >
+              <option value="">No tournament</option>
+              {tournaments.map((event) => (
+                <option key={event.id} value={event.id}>
+                  {event.title}
+                </option>
+              ))}
+            </select>
+            {tournamentsLoading && (
+              <p className="text-xs text-white/60">Loading tournaments…</p>
+            )}
+            {tournamentError && (
+              <p className="text-xs text-red-400">{tournamentError}</p>
+            )}
+            {!tournamentsLoading && !tournamentError && !tournamentsAvailable && (
+              <p className="text-xs text-white/50">No active tournaments right now.</p>
+            )}
+          </div>
+
+          {selectedTournament && (
+            <div className="space-y-3 rounded-2xl border border-brand-500/40 bg-brand-500/10 p-4">
+              <div>
+                <p className="text-sm font-semibold text-white">{selectedTournament.title}</p>
+                {tournamentMeasurementSummary && (
+                  <p className="text-xs text-white/60">{tournamentMeasurementSummary}</p>
+                )}
+              </div>
+              {selectedTournament.description && (
+                <p className="text-xs text-white/60">{selectedTournament.description}</p>
+              )}
+              {selectedTournament.ruleset && (
+                <p className="text-xs text-brand-200">{selectedTournament.ruleset}</p>
+              )}
+              {requiresWeight && (
+                <div className="space-y-1">
+                  <span className="text-sm text-white/70">
+                    Verified weight ({measurementWeightUnitLabel})
+                  </span>
+                  <WeightPicker
+                    value={verifiedWeight ?? weight}
+                    onChange={handleVerifiedWeightChange}
+                  />
+                  <p className="text-xs text-white/60">
+                    Tournament submission: {verifiedWeightDisplay || '0 lb'}
+                  </p>
+                </div>
+              )}
+              {requiresLength && (
+                <div className="space-y-1">
+                  <label className="text-sm text-white/70" htmlFor="verified-length">
+                    Verified length ({lengthUnitLabel})
+                  </label>
+                  <input
+                    id="verified-length"
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    className="input"
+                    placeholder={lengthPlaceholder}
+                    value={verifiedLength}
+                    onChange={(event) => setVerifiedLength(event.target.value)}
+                  />
+                </div>
+              )}
+              <div className="space-y-1">
+                <label className="text-sm text-white/70" htmlFor="original-photo">
+                  Original photo for validation
+                </label>
+                <input
+                  id="original-photo"
+                  type="file"
+                  accept="image/*"
+                  className="input file:mr-3 file:rounded-lg file:border-0 file:bg-brand-400 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
+                  onChange={handleOriginalFileChange}
+                />
+                <p className="text-xs text-white/60">
+                  {originalFileName ? `Selected: ${originalFileName}` : 'Defaults to your uploaded catch photo.'}
+                </p>
+              </div>
+              {tournamentHashtags.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-brand-200">Required hashtags</p>
+                  <div className="flex flex-wrap gap-2">
+                    {tournamentHashtags.map((tag) => (
+                      <span key={tag} className="rounded-full bg-brand-500/20 px-2 py-1 text-xs text-brand-100">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                  {missingTournamentHashtags.length > 0 && (
+                    <p className="text-xs text-amber-300">
+                      Missing: {missingTournamentHashtags.join(', ')}
+                    </p>
+                  )}
+                </div>
+              )}
+              {tournamentAntiCheat && (
+                <ul className="space-y-1 text-xs text-white/60">
+                  {tournamentAntiCheat.requireExif && <li>• EXIF metadata must be intact.</li>}
+                  {tournamentAntiCheat.requireOriginalPhoto && <li>• Original photo required.</li>}
+                  {tournamentAntiCheat.enforcePose && <li>• Pose heuristics will be reviewed.</li>}
+                </ul>
+              )}
+            </div>
+          )}
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1">
