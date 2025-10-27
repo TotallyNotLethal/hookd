@@ -852,8 +852,12 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     [lookupLocationName, updateMapZoom],
   );
 
+  const environmentLat = coordinates?.lat;
+  const environmentLng = coordinates?.lng;
+  const environmentTimestampIso = capturedAt ? capturedAt.toISOString() : null;
+
   useEffect(() => {
-    if (!coordinates || !capturedAt) {
+    if (environmentLat == null || environmentLng == null || !environmentTimestampIso) {
       setEnvironmentSnapshot(null);
       setEnvironmentBands(null);
       setEnvironmentError(null);
@@ -869,9 +873,9 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       setEnvironmentError(null);
       try {
         const params = new URLSearchParams({
-          lat: coordinates.lat.toString(),
-          lng: coordinates.lng.toString(),
-          timestamp: capturedAt.toISOString(),
+          lat: environmentLat.toString(),
+          lng: environmentLng.toString(),
+          timestamp: environmentTimestampIso,
           forwardHours: '0',
         });
         const response = await fetch(`/api/environment?${params.toString()}`, {
@@ -913,7 +917,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       isActive = false;
       controller.abort();
     };
-  }, [coordinates?.lat, coordinates?.lng, capturedAt?.getTime()]);
+  }, [environmentLat, environmentLng, environmentTimestampIso]);
 
   useEffect(() => {
     if (!locationDirty) return;

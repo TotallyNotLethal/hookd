@@ -621,31 +621,29 @@ function ConfidenceBaitsWidget({ stats, isProMember }: ConfidenceBaitsWidgetProp
     return SEASON_FILTER_ORDER.filter((key) => values.has(key));
   }, [stats]);
 
-  useEffect(() => {
-    if (speciesFilter !== 'all' && !speciesOptions.includes(speciesFilter)) {
-      setSpeciesFilter('all');
-    }
+  const resolvedSpeciesFilter = useMemo(() => {
+    if (speciesFilter === 'all') return 'all';
+    return speciesOptions.includes(speciesFilter) ? speciesFilter : 'all';
   }, [speciesFilter, speciesOptions]);
 
-  useEffect(() => {
-    if (seasonFilter !== 'all' && !seasonOptions.includes(seasonFilter)) {
-      setSeasonFilter('all');
-    }
+  const resolvedSeasonFilter = useMemo<SeasonKey | 'all'>(() => {
+    if (seasonFilter === 'all') return 'all';
+    return seasonOptions.includes(seasonFilter) ? seasonFilter : 'all';
   }, [seasonFilter, seasonOptions]);
 
   const filteredEntries = useMemo(() => {
     if (!stats?.entries?.length) return [] as typeof stats.entries;
     return stats.entries
       .filter((entry) => {
-        if (speciesFilter !== 'all') {
+        if (resolvedSpeciesFilter !== 'all') {
           const counts = entry.speciesCounts ?? {};
-          if ((counts[speciesFilter] ?? 0) <= 0) {
+          if ((counts[resolvedSpeciesFilter] ?? 0) <= 0) {
             return false;
           }
         }
-        if (seasonFilter !== 'all') {
+        if (resolvedSeasonFilter !== 'all') {
           const counts = entry.seasonCounts ?? {};
-          if ((counts[seasonFilter] ?? 0) <= 0) {
+          if ((counts[resolvedSeasonFilter] ?? 0) <= 0) {
             return false;
           }
         }
@@ -660,7 +658,7 @@ function ConfidenceBaitsWidget({ stats, isProMember }: ConfidenceBaitsWidgetProp
         }
         return (b.totalCatches ?? 0) - (a.totalCatches ?? 0);
       });
-  }, [stats, speciesFilter, seasonFilter]);
+  }, [stats, resolvedSpeciesFilter, resolvedSeasonFilter]);
 
   const hasStats = Boolean(stats?.entries?.length);
   const totalSamples = stats?.totalCatches ?? 0;
@@ -721,7 +719,7 @@ function ConfidenceBaitsWidget({ stats, isProMember }: ConfidenceBaitsWidgetProp
                   <span className="text-[10px] uppercase tracking-wide text-white/40">Species filter</span>
                   <select
                     className="input bg-black/40 text-xs"
-                    value={speciesFilter}
+                    value={resolvedSpeciesFilter}
                     onChange={(event) => setSpeciesFilter(event.target.value)}
                   >
                     <option value="all">All species</option>
@@ -738,7 +736,7 @@ function ConfidenceBaitsWidget({ stats, isProMember }: ConfidenceBaitsWidgetProp
                   <span className="text-[10px] uppercase tracking-wide text-white/40">Season filter</span>
                   <select
                     className="input bg-black/40 text-xs"
-                    value={seasonFilter}
+                    value={resolvedSeasonFilter}
                     onChange={(event) => setSeasonFilter(event.target.value as SeasonKey | 'all')}
                   >
                     <option value="all">All seasons</option>
@@ -750,7 +748,7 @@ function ConfidenceBaitsWidget({ stats, isProMember }: ConfidenceBaitsWidgetProp
                   </select>
                 </label>
               )}
-              {(speciesFilter !== 'all' || seasonFilter !== 'all') && (
+              {(resolvedSpeciesFilter !== 'all' || resolvedSeasonFilter !== 'all') && (
                 <button
                   type="button"
                   onClick={() => {
@@ -766,11 +764,11 @@ function ConfidenceBaitsWidget({ stats, isProMember }: ConfidenceBaitsWidgetProp
             {filteredEntries.length ? (
               <div className="mt-4 space-y-3">
                 {filteredEntries.slice(0, 5).map((entry) => {
-                  const activeSpecies = speciesFilter !== 'all'
-                    ? speciesFilter
+                  const activeSpecies = resolvedSpeciesFilter !== 'all'
+                    ? resolvedSpeciesFilter
                     : resolveTopSpecies(entry.speciesCounts);
-                  const activeSeasonKey = seasonFilter !== 'all'
-                    ? seasonFilter
+                  const activeSeasonKey = resolvedSeasonFilter !== 'all'
+                    ? resolvedSeasonFilter
                     : resolveTopSeason(entry.seasonCounts);
                   const activeSeasonLabel = activeSeasonKey ? SEASON_LABELS[activeSeasonKey] : null;
                   const secondaryLine = [entry.color, entry.rigging]
