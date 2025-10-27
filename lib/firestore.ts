@@ -1135,14 +1135,14 @@ export async function getChallengeCatches() {
 /** ---------- Tournaments ---------- */
 export async function getActiveTournaments(now: Date = new Date()): Promise<Tournament[]> {
   const tournamentsRef = collection(db, TOURNAMENTS_COLLECTION);
-  const constraints = [
-    orderBy('endAt', 'asc'),
-  ];
-
   const nowTimestamp = Timestamp.fromDate(now);
-  constraints.unshift(where('endAt', '>=', nowTimestamp));
-
-  const snap = await getDocs(query(tournamentsRef, ...constraints));
+  const snap = await getDocs(
+    query(
+      tournamentsRef,
+      where('endAt', '>=', nowTimestamp),
+      orderBy('endAt', 'asc')
+    )
+  );
   const active: Tournament[] = [];
 
   snap.forEach((docSnap) => {
