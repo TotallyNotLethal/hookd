@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { type KeyboardEvent, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Fish, Medal, MessageCircle, Scale, Sparkles } from 'lucide-react';
+import { BookOpen, Fish, Medal, MessageCircle, Scale, Sparkles } from 'lucide-react';
 import rehypeSanitize from 'rehype-sanitize';
 import type { Components as MarkdownComponents } from 'react-markdown';
 import type { Options as RehypeSanitizeOptions } from 'rehype-sanitize';
@@ -79,6 +79,7 @@ type ProfileViewProps = {
   catches: Catch[];
   isOwner?: boolean;
   onEditProfile?: () => void;
+  onOpenLogbook?: () => void;
   isFollowing?: boolean;
   onToggleFollow?: () => void;
   followPending?: boolean;
@@ -91,6 +92,7 @@ export default function ProfileView({
   catches,
   isOwner = false,
   onEditProfile,
+  onOpenLogbook,
   isFollowing = false,
   onToggleFollow,
   followPending = false,
@@ -236,6 +238,16 @@ export default function ProfileView({
                     onClick={onEditProfile}
                   >
                     Edit Profile
+                  </button>
+                )}
+                {isOwner && onOpenLogbook && (
+                  <button
+                    type="button"
+                    onClick={onOpenLogbook}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)]"
+                  >
+                    <BookOpen className="h-4 w-4" />
+                    Manage Logbook
                   </button>
                 )}
               </div>

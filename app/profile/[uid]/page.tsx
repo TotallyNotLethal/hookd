@@ -6,6 +6,7 @@ import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 
 import NavBar from '@/components/NavBar';
 import ProfileView from '@/components/ProfileView';
+import LogbookModal from '@/components/logbook/LogbookModal';
 import { summarizeCatchMetrics } from '@/lib/catchStats';
 import { app } from '@/lib/firebaseClient';
 import { followUser, subscribeToUser, subscribeToUserCatches, unfollowUser } from '@/lib/firestore';
@@ -51,6 +52,7 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [followPending, setFollowPending] = useState(false);
   const [activeCatch, setActiveCatch] = useState<CatchData | null>(null);
+  const [isLogbookModalOpen, setIsLogbookModalOpen] = useState(false);
   const catchSummary = useMemo(() => summarizeCatchMetrics(catches), [catches]);
 
   useEffect(() => {
@@ -114,6 +116,7 @@ export default function ProfilePage() {
             profile={profile}
             catches={catches}
             isOwner={isOwner}
+            onOpenLogbook={isOwner ? () => setIsLogbookModalOpen(true) : undefined}
             isFollowing={isFollowing}
             onToggleFollow={!isOwner && authUser ? handleToggleFollow : undefined}
             followPending={followPending}
@@ -129,6 +132,9 @@ export default function ProfilePage() {
       {activeCatch && (
         <PostDetailModal post={activeCatch} onClose={() => setActiveCatch(null)} />
       )}
+      {isOwner ? (
+        <LogbookModal open={isLogbookModalOpen} onClose={() => setIsLogbookModalOpen(false)} />
+      ) : null}
     </main>
   );
 }

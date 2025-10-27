@@ -4,9 +4,11 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useAuthState } from 'react-firebase-hooks/auth';
-import { Loader2, MessageSquare } from 'lucide-react';
+import { Loader2, MessageCircle, MessageSquare, MessageSquarePlus, X } from 'lucide-react';
 
 import NavBar from '@/components/NavBar';
+import DirectMessageThreadsList from '@/components/direct-messages/DirectMessageThreadsList';
+import Modal from '@/components/ui/Modal';
 import { auth } from '@/lib/firebaseClient';
 import {
   ChatMessage,
@@ -35,6 +37,7 @@ export default function ChatPage() {
   const [sendError, setSendError] = useState<string | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [presenceCount, setPresenceCount] = useState<number | null>(null);
+  const [isDmModalOpen, setIsDmModalOpen] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -174,7 +177,8 @@ export default function ChatPage() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-white">
+    <>
+      <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-white">
       <NavBar />
       <section className="container pt-28 pb-16">
         <div className="flex flex-col gap-6">
@@ -191,19 +195,29 @@ export default function ChatPage() {
           </header>
 
           <div className="glass border border-white/10 rounded-3xl p-0 overflow-hidden shadow-2xl shadow-slate-950/50">
-            <div className="flex items-center justify-between gap-3 border-b border-white/10 bg-white/5 px-6 py-4">
+            <div className="flex flex-col gap-4 border-b border-white/10 bg-white/5 px-6 py-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <h2 className="text-lg font-medium">General Channel</h2>
                 <p className="text-xs text-white/60">Seamless, community-wide conversations</p>
               </div>
-              <div className="text-right text-xs text-white/50">
-                <div>
-                  {isLoading ? 'Loading…' : `${messages.length} message${messages.length === 1 ? '' : 's'}`}
-                </div>
-                <div className="text-white/60">
-                  {presenceCount === null
-                    ? '— anglers online'
-                    : `${presenceCount} angler${presenceCount === 1 ? '' : 's'} online`}
+              <div className="flex flex-col items-end gap-3 md:flex-row md:items-center md:gap-6">
+                <button
+                  type="button"
+                  onClick={() => setIsDmModalOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  Direct messages
+                </button>
+                <div className="text-right text-xs text-white/50">
+                  <div>
+                    {isLoading ? 'Loading…' : `${messages.length} message${messages.length === 1 ? '' : 's'}`}
+                  </div>
+                  <div className="text-white/60">
+                    {presenceCount === null
+                      ? '— anglers online'
+                      : `${presenceCount} angler${presenceCount === 1 ? '' : 's'} online`}
+                  </div>
                 </div>
               </div>
             </div>
@@ -322,5 +336,48 @@ export default function ChatPage() {
         </div>
       </section>
     </main>
+      <Modal
+        open={isDmModalOpen}
+        onClose={() => setIsDmModalOpen(false)}
+        labelledBy="direct-messages-modal-title"
+        contentClassName="max-w-2xl"
+      >
+        <div className="flex flex-col gap-4 p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 id="direct-messages-modal-title" className="text-xl font-semibold text-white">
+                Direct Messages
+              </h2>
+              <p className="text-sm text-white/60">Check private conversations without leaving chat.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsDmModalOpen(false)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+              aria-label="Close direct messages"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="max-h-[65vh] overflow-y-auto pr-1">
+            {user ? (
+              <DirectMessageThreadsList
+                currentUserId={user.uid}
+                className="space-y-4"
+                onThreadNavigate={() => setIsDmModalOpen(false)}
+              />
+            ) : (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-white/70">
+                <p className="mb-3">Sign in to view and send private messages.</p>
+                <Link href="/login" className="btn-primary inline-flex items-center justify-center gap-2 px-4 py-2 text-sm">
+                  <MessageSquarePlus className="h-4 w-4" />
+                  Log in to message anglers
+                </Link>
+              </div>
+            )}
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }
