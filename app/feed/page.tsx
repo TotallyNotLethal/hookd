@@ -10,6 +10,7 @@ import {
   subscribeToTeamFeedCatches,
   subscribeToTeamMembership,
   subscribeToUser,
+  type HookdUser,
   type Team,
   type TeamMembership,
 } from "@/lib/firestore";
@@ -48,6 +49,7 @@ function FeedContent() {
   const [followingIds, setFollowingIds] = useState<string[]>([]);
   const [teamMembership, setTeamMembership] = useState<TeamMembership | null>(null);
   const [team, setTeam] = useState<Team | null>(null);
+  const [viewerProfile, setViewerProfile] = useState<HookdUser | null>(null);
   const sp = useSearchParams();
   const router = useRouter();
   const [user] = useAuthState(auth);
@@ -78,19 +80,67 @@ function FeedContent() {
     return entries;
   }, [team]);
 
+  const blockedSet = useMemo(() => {
+    const ids = new Set<string>();
+    const blocked = Array.isArray(viewerProfile?.blockedUserIds) ? viewerProfile.blockedUserIds : [];
+    const blockedBy = Array.isArray(viewerProfile?.blockedByUserIds) ? viewerProfile.blockedByUserIds : [];
+
+    for (const value of blocked) {
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed) ids.add(trimmed);
+      }
+    }
+
+    for (const value of blockedBy) {
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed) ids.add(trimmed);
+      }
+    }
+
+    return ids;
+  }, [viewerProfile]);
+
+  const filterPosts = useCallback(
+    (posts: any[]) => {
+      if (!Array.isArray(posts) || posts.length === 0 || blockedSet.size === 0) {
+        return posts;
+      }
+
+      return posts.filter((post) => {
+        const ownerUid = typeof post?.uid === "string"
+          ? post.uid
+          : typeof post?.userId === "string"
+            ? post.userId
+            : null;
+        if (!ownerUid) return true;
+        return !blockedSet.has(ownerUid);
+      });
+    },
+    [blockedSet],
+  );
+
   useEffect(() => {
     if (!user?.uid) {
+      defer(() => {
+        setViewerProfile(null);
+        setFollowingIds([]);
+      });
       return;
     }
     const unsubscribe = subscribeToUser(user.uid, (data) => {
-      if (!data) {
-        defer(() => setFollowingIds([]));
-        return;
-      }
-      const following = Array.isArray(data.following)
-        ? data.following.filter((id: unknown): id is string => typeof id === "string")
-        : [];
-      defer(() => setFollowingIds(following));
+      defer(() => {
+        setViewerProfile(data);
+        if (!data) {
+          setFollowingIds([]);
+          return;
+        }
+        const following = Array.isArray(data.following)
+          ? data.following.filter((id: unknown): id is string => typeof id === "string")
+          : [];
+        setFollowingIds(following);
+      });
     });
     return () => unsubscribe();
   }, [defer, user?.uid]);
@@ -135,18 +185,24 @@ function FeedContent() {
     let unsubscribe: (() => void) | undefined;
 
     if (filter === "all") {
-      unsubscribe = subscribeToFeedCatches(setItems);
+      unsubscribe = subscribeToFeedCatches((posts) => {
+        setItems(filterPosts(posts));
+      });
     } else if (filter === "following") {
       if (!user?.uid || effectiveFollowingIds.length === 0) {
         defer(() => setItems([]));
       } else {
-        unsubscribe = subscribeToFollowingFeedCatches(effectiveFollowingIds, setItems);
+        unsubscribe = subscribeToFollowingFeedCatches(effectiveFollowingIds, (posts) => {
+          setItems(filterPosts(posts));
+        });
       }
     } else if (filter === "local") {
       if (!location) {
         defer(() => setItems([]));
       } else {
-        unsubscribe = subscribeToLocalFeedCatches(location, 50, setItems);
+        unsubscribe = subscribeToLocalFeedCatches(location, 50, (posts) => {
+          setItems(filterPosts(posts));
+        });
       }
     } else if (filter === "team") {
       if (!user?.uid || !team) {
@@ -154,14 +210,16 @@ function FeedContent() {
       } else if (teamMemberUids.length === 0) {
         defer(() => setItems([]));
       } else {
-        unsubscribe = subscribeToTeamFeedCatches(teamMemberUids, setItems);
+        unsubscribe = subscribeToTeamFeedCatches(teamMemberUids, (posts) => {
+          setItems(filterPosts(posts));
+        });
       }
     }
 
     return () => {
       unsubscribe?.();
     };
-  }, [defer, effectiveFollowingIds, filter, location, team, teamMemberUids, user?.uid]);
+  }, [defer, effectiveFollowingIds, filter, filterPosts, location, team, teamMemberUids, user?.uid]);
 
   useEffect(() => {
     if (sp.get("compose") === "1") {

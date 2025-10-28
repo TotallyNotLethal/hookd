@@ -30,6 +30,8 @@ type UserProfile = {
   displayName?: string | null;
   username?: string | null;
   photoURL?: string | null;
+  blockedUserIds?: string[];
+  blockedByUserIds?: string[];
   [key: string]: unknown;
 };
 
@@ -100,6 +102,51 @@ export default function DirectMessagePage() {
     };
   }, [otherUid]);
 
+  const viewerUid = user?.uid ?? null;
+  const otherUserUid = otherUid ?? null;
+
+  const viewerBlockedOther = useMemo(() => {
+    if (!viewerUid || !otherUserUid) return false;
+    const blocked = Array.isArray(userProfile?.blockedUserIds) ? userProfile.blockedUserIds : [];
+    return blocked.includes(otherUserUid);
+  }, [viewerUid, otherUserUid, userProfile?.blockedUserIds]);
+
+  const viewerBlockedByOther = useMemo(() => {
+    if (!viewerUid || !otherUserUid) return false;
+    const blockedBy = Array.isArray(userProfile?.blockedByUserIds) ? userProfile.blockedByUserIds : [];
+    return blockedBy.includes(otherUserUid);
+  }, [viewerUid, otherUserUid, userProfile?.blockedByUserIds]);
+
+  const otherBlockedViewer = useMemo(() => {
+    if (!viewerUid || !otherUserUid) return false;
+    const blocked = Array.isArray(otherProfile?.blockedUserIds) ? otherProfile.blockedUserIds : [];
+    return blocked.includes(viewerUid);
+  }, [viewerUid, otherUserUid, otherProfile?.blockedUserIds]);
+
+  const otherBlockedByViewer = useMemo(() => {
+    if (!viewerUid || !otherUserUid) return false;
+    const blockedBy = Array.isArray(otherProfile?.blockedByUserIds) ? otherProfile.blockedByUserIds : [];
+    return blockedBy.includes(viewerUid);
+  }, [viewerUid, otherUserUid, otherProfile?.blockedByUserIds]);
+
+  const conversationBlocked = useMemo(
+    () => Boolean(viewerBlockedOther || viewerBlockedByOther || otherBlockedViewer || otherBlockedByViewer),
+    [viewerBlockedOther, viewerBlockedByOther, otherBlockedViewer, otherBlockedByViewer],
+  );
+
+  const mutualBlock = viewerBlockedOther && (viewerBlockedByOther || otherBlockedViewer);
+
+  const blockNotice = useMemo(() => {
+    if (!conversationBlocked) return null;
+    if (mutualBlock) {
+      return 'You and this angler have blocked each other. Unblock them from your profiles to resume chatting.';
+    }
+    if (viewerBlockedOther) {
+      return 'You have blocked this angler. Unblock them from their profile to continue messaging.';
+    }
+    return 'This angler has blocked you. Messaging is disabled.';
+  }, [conversationBlocked, mutualBlock, viewerBlockedOther]);
+
   useEffect(() => {
     if (!user?.uid || !otherUid) {
       setError(null);
@@ -110,6 +157,13 @@ export default function DirectMessagePage() {
 
     if (user.uid === otherUid) {
       setError('You cannot send a private message to yourself.');
+      setIsLoading(false);
+      setMessages([]);
+      return;
+    }
+
+    if (conversationBlocked) {
+      setError(null);
       setIsLoading(false);
       setMessages([]);
       return;
@@ -132,7 +186,7 @@ export default function DirectMessagePage() {
     return () => {
       unsubscribe();
     };
-  }, [user?.uid, otherUid]);
+  }, [conversationBlocked, otherUid, user?.uid]);
 
   useEffect(() => {
     if (!endRef.current) return;
@@ -161,6 +215,11 @@ export default function DirectMessagePage() {
 
     if (!otherUid || user.uid === otherUid) {
       setSendError('Unable to send this message.');
+      return;
+    }
+
+    if (conversationBlocked) {
+      setSendError('Messaging is disabled for this conversation.');
       return;
     }
 
@@ -253,6 +312,11 @@ export default function DirectMessagePage() {
                 </div>
 
                 <div className="flex-1 space-y-4 overflow-y-auto bg-slate-950/40 px-6 py-4" aria-live="polite">
+                  {blockNotice ? (
+                    <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200">
+                      {blockNotice}
+                    </div>
+                  ) : null}
                   {error ? (
                     <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200">{error}</div>
                   ) : null}
@@ -270,7 +334,7 @@ export default function DirectMessagePage() {
                     </div>
                   ) : null}
 
-                  {!error && !isLoading && formattedMessages.length === 0 ? (
+                  {!error && !isLoading && !conversationBlocked && formattedMessages.length === 0 ? (
                     <p className="text-sm text-white/60">Say hello to start your private chat.</p>
                   ) : null}
 
@@ -304,18 +368,22 @@ export default function DirectMessagePage() {
                       name="message"
                       value={input}
                       onChange={(event) => setInput(event.target.value)}
-                      placeholder={`Write a private note to ${otherDisplayName}…`}
+                      placeholder={conversationBlocked ? 'Messaging is disabled.' : `Write a private note to ${otherDisplayName}…`}
                       className="min-h-[120px] w-full resize-y rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-300/40 disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={isSending}
+                      disabled={isSending || conversationBlocked}
                       maxLength={2000}
                       required
                     />
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <span className="text-xs text-white/40">Only you and {otherDisplayName} can see this chat.</span>
+                      <span className="text-xs text-white/40">
+                        {conversationBlocked
+                          ? 'Messaging is currently disabled for this conversation.'
+                          : `Only you and ${otherDisplayName} can see this chat.`}
+                      </span>
                       <button
                         type="submit"
                         className="btn-primary inline-flex items-center justify-center px-5 py-2 text-sm disabled:opacity-60"
-                        disabled={isSending}
+                        disabled={isSending || conversationBlocked}
                       >
                         {isSending ? (
                           <>
