@@ -137,7 +137,7 @@ export default function TeamOverviewPage() {
                 </p>
                 <h1 className="mt-2 text-3xl font-semibold tracking-tight md:text-4xl">{team.name}</h1>
                 <p className="mt-2 text-sm text-white/60">
-                  {team.memberUids.length} anglers • Captained by {formatMemberDisplay(profiles[team.ownerUid], 'your captain')}
+                  {(team.memberCount ?? team.memberUids.length)} anglers • Captained by {formatMemberDisplay(profiles[team.ownerUid], 'your captain')}
                 </p>
                 {isCaptain ? (
                   <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-brand-300/40 bg-brand-500/10 px-4 py-2 text-xs text-brand-100">

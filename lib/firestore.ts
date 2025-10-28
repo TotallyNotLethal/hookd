@@ -203,6 +203,7 @@ export type Team = {
   name: string;
   ownerUid: string;
   memberUids: string[];
+  memberCount: number;
   pendingInviteUids: string[];
   logoURL?: string | null;
   chatChannelId: string;
@@ -270,6 +271,7 @@ export function addPendingInviteToTeamArrays(team: TeamArrays, inviteeUid: strin
 export function applyAcceptedMemberToTeamArrays(team: TeamArrays, memberUid: string): {
   memberUids: string[];
   pendingInviteUids: string[];
+  memberCount: number;
 } {
   const memberSet = new Set<string>(
     Array.isArray(team.memberUids) ? team.memberUids.filter((item): item is string => typeof item === "string") : [],
@@ -284,6 +286,7 @@ export function applyAcceptedMemberToTeamArrays(team: TeamArrays, memberUid: str
   return {
     memberUids: Array.from(memberSet),
     pendingInviteUids: Array.from(pendingSet),
+    memberCount: memberSet.size,
   };
 }
 
@@ -307,6 +310,12 @@ function deserializeTeam(docId: string, data: Record<string, any>): Team {
     memberUids: Array.isArray(data.memberUids)
       ? data.memberUids.filter((value): value is string => typeof value === "string")
       : [],
+    memberCount:
+      typeof data.memberCount === "number" && Number.isFinite(data.memberCount)
+        ? data.memberCount
+        : Array.isArray(data.memberUids)
+          ? data.memberUids.filter((value): value is string => typeof value === "string").length
+          : 0,
     pendingInviteUids: Array.isArray(data.pendingInviteUids)
       ? data.pendingInviteUids.filter((value): value is string => typeof value === "string")
       : [],
@@ -920,10 +929,12 @@ export async function createTeam({
 }): Promise<Team> {
   const trimmedName = normalizeTeamName(name);
   const teamRef = doc(collection(db, 'teams'));
+  const membershipRef = doc(db, 'teamMemberships', ownerUid);
 
   await runTransaction(db, async (tx) => {
     const ownerRef = doc(db, 'users', ownerUid);
     const ownerSnap = await tx.get(ownerRef);
+    const membershipSnap = await tx.get(membershipRef);
 
     if (!ownerSnap.exists()) {
       throw new Error('We could not find your profile.');
@@ -932,13 +943,24 @@ export async function createTeam({
     const ownerData = ownerSnap.data() as HookdUser;
     ensureProAccess(ownerData);
 
+    if (membershipSnap.exists()) {
+      throw new Error('You are already part of a team.');
+    }
+
     tx.set(teamRef, {
       name: trimmedName,
       ownerUid,
       memberUids: [ownerUid],
+      memberCount: 1,
       pendingInviteUids: [],
       logoURL: null,
       chatChannelId: teamRef.id,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    tx.set(membershipRef, {
+      teamId: teamRef.id,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -1024,12 +1046,14 @@ export async function inviteUserToTeam({
   const inviteRef = doc(db, 'teamInvites', `${teamId}__${inviteeUid}`);
   const teamRef = doc(db, 'teams', teamId);
   const inviterRef = doc(db, 'users', inviterUid);
+  const membershipRef = doc(db, 'teamMemberships', inviteeUid);
 
   await runTransaction(db, async (tx) => {
-    const [teamSnap, inviterSnap, inviteSnap] = await Promise.all([
+    const [teamSnap, inviterSnap, inviteSnap, membershipSnap] = await Promise.all([
       tx.get(teamRef),
       tx.get(inviterRef),
       tx.get(inviteRef),
+      tx.get(membershipRef),
     ]);
 
     if (!teamSnap.exists()) {
@@ -1042,8 +1066,17 @@ export async function inviteUserToTeam({
 
     const teamData = teamSnap.data() as Record<string, any>;
     const inviterData = inviterSnap.data() as HookdUser;
+    const membershipData = membershipSnap.exists() ? membershipSnap.data() as Record<string, any> : null;
 
     ensureProAccess(inviterData);
+
+    const activeTeamId = typeof membershipData?.teamId === 'string' ? membershipData.teamId : null;
+    if (activeTeamId && activeTeamId !== teamId) {
+      throw new Error('That angler is already part of another team.');
+    }
+    if (activeTeamId === teamId) {
+      throw new Error('That angler is already on your team.');
+    }
 
     const members = Array.isArray(teamData.memberUids)
       ? teamData.memberUids.filter((value): value is string => typeof value === 'string')
@@ -1170,12 +1203,14 @@ export async function acceptTeamInvite({
   const inviteRef = doc(db, 'teamInvites', `${teamId}__${inviteeUid}`);
   const teamRef = doc(db, 'teams', teamId);
   const inviteeRef = doc(db, 'users', inviteeUid);
+  const membershipRef = doc(db, 'teamMemberships', inviteeUid);
 
   await runTransaction(db, async (tx) => {
-    const [inviteSnap, teamSnap, inviteeSnap] = await Promise.all([
+    const [inviteSnap, teamSnap, inviteeSnap, membershipSnap] = await Promise.all([
       tx.get(inviteRef),
       tx.get(teamRef),
       tx.get(inviteeRef),
+      tx.get(membershipRef),
     ]);
 
     if (!inviteSnap.exists()) {
@@ -1199,18 +1234,37 @@ export async function acceptTeamInvite({
       throw new Error('This invite is assigned to a different angler.');
     }
 
+    if (membershipSnap.exists()) {
+      const membershipData = membershipSnap.data() as Record<string, any>;
+      const existingTeamId = typeof membershipData.teamId === 'string' ? membershipData.teamId : null;
+      if (existingTeamId && existingTeamId !== teamId) {
+        throw new Error('You are already part of another team.');
+      }
+      if (existingTeamId === teamId) {
+        throw new Error('You are already on this team.');
+      }
+      throw new Error('You are already part of a team.');
+    }
+
     const teamData = teamSnap.data() as Record<string, any>;
-    const { memberUids, pendingInviteUids } = applyAcceptedMemberToTeamArrays(teamData, inviteeUid);
+    const { memberUids, pendingInviteUids, memberCount } = applyAcceptedMemberToTeamArrays(teamData, inviteeUid);
     const now = serverTimestamp();
 
     tx.update(teamRef, {
       memberUids,
       pendingInviteUids,
+      memberCount,
       updatedAt: now,
     });
 
     tx.update(inviteRef, {
       status: 'accepted',
+      updatedAt: now,
+    });
+
+    tx.set(membershipRef, {
+      teamId,
+      createdAt: now,
       updatedAt: now,
     });
   });
@@ -1274,6 +1328,16 @@ export function subscribeToTeamInvites(teamId: string, cb: (invites: TeamInvite[
     invites.sort((a, b) => (a.inviteeUsername ?? '').localeCompare(b.inviteeUsername ?? ''));
     cb(invites);
   });
+}
+
+export async function fetchTopTeams(limitCount = 6): Promise<Team[]> {
+  const q = query(collection(db, 'teams'), orderBy('memberCount', 'desc'), limit(limitCount));
+  const snap = await getDocs(q);
+  const teams: Team[] = [];
+  snap.forEach((docSnap) => {
+    teams.push(deserializeTeam(docSnap.id, docSnap.data() as Record<string, any>));
+  });
+  return teams;
 }
 
 export function subscribeToTeamChatMessages(

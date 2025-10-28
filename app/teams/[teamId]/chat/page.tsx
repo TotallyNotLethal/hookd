@@ -189,7 +189,7 @@ export default function TeamChatPage() {
               <div>
                 <h2 className="text-lg font-medium text-white">{team.name}</h2>
                 <p className="text-sm text-white/60">
-                  {team.memberUids.length} members • Private team chat
+                  {(team.memberCount ?? team.memberUids.length)} members • Private team chat
                 </p>
               </div>
               <Link

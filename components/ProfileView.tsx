@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { type JSX, type KeyboardEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { BookOpen, Fish, Medal, MessageCircle, Scale, Sparkles } from 'lucide-react';
+import { BookOpen, Fish, Medal, MessageCircle, Scale, Sparkles, Users } from 'lucide-react';
 import rehypeSanitize from 'rehype-sanitize';
 import type { Components as MarkdownComponents } from 'react-markdown';
 import type { Options as RehypeSanitizeOptions } from 'rehype-sanitize';
@@ -322,6 +322,7 @@ export default function ProfileView({
     () => Boolean(isOwner && isProMember && onOpenLogbook),
     [isOwner, isProMember, onOpenLogbook],
   );
+  const canOpenTeams = useMemo(() => Boolean(isOwner && isProMember), [isOwner, isProMember]);
 
   const handleCatchKeyDown = (event: KeyboardEvent<HTMLDivElement>, catchItem: Catch) => {
     if (!onCatchSelect) return;
@@ -447,9 +448,19 @@ export default function ProfileView({
                     Manage Logbook
                   </button>
                 )}
+                {canOpenTeams && (
+                  <Link
+                    href="/teams"
+                    prefetch={false}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)]"
+                  >
+                    <Users className="h-4 w-4" />
+                    Manage Team
+                  </Link>
+                )}
                 {isOwner && !isProMember && (
                   <span className="text-xs font-medium uppercase tracking-wide text-amber-300">
-                    Go Pro to unlock the logbook
+                    Go Pro to unlock teams and the logbook
                   </span>
                 )}
               </div>
