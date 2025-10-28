@@ -1,0 +1,48 @@
+{
+  "metadata": {
+    "coordinates": {
+      "latitude": 10,
+      "longitude": 20
+    },
+    "capturedAt": "2024-05-05T12:00:00Z",
+    "source": "https://api.open-meteo.com/"
+  },
+  "forecast": {
+    "timezone": "UTC",
+    "utcOffsetSeconds": 0,
+    "hourly": {
+      "startIso": "2024-05-05T12:00:00Z",
+      "intervalSeconds": 3600,
+      "variables": [
+        { "name": "surface_pressure", "values": [1012.3, 1013.1] },
+        { "name": "temperature_2m", "values": [12.5, 12.8] },
+        { "name": "weather_code", "values": [63, 63] },
+        { "name": "wind_speed_10m", "values": [3.1, 3.3] },
+        { "name": "wind_direction_10m", "values": [180, 182] }
+      ]
+    }
+  },
+  "astronomy": {
+    "timezone": "UTC",
+    "utcOffsetSeconds": 0,
+    "daily": {
+      "startIso": "2024-05-05T00:00:00Z",
+      "intervalSeconds": 86400,
+      "variables": [
+        { "name": "moon_phase", "values": [0.52] },
+        { "name": "moon_illumination", "values": [0.6] }
+      ]
+    }
+  },
+  "marine": {
+    "timezone": "UTC",
+    "utcOffsetSeconds": 0,
+    "hourly": {
+      "startIso": "2024-05-05T12:00:00Z",
+      "intervalSeconds": 3600,
+      "variables": [
+        { "name": "water_temperature", "values": [9.5] }
+      ]
+    }
+  }
+}
