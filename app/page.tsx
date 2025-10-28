@@ -16,6 +16,7 @@ import {
   subscribeToUser,
 } from "@/lib/firestore";
 import type { HookdUser, Tournament, TournamentLeaderboardEntry } from "@/lib/firestore";
+import { reverseGeocodeLocation } from "@/lib/location";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthState } from "react-firebase-hooks/auth";
 import PostDetailModal from "@/app/feed/PostDetailModal";
@@ -38,7 +39,7 @@ export default function Page() {
       Promise.resolve().then(fn);
     }
   }, []);
-  const fallbackConditionsLocation = useMemo(
+  const defaultConditionsLocation = useMemo(
     () => ({
       name: "Canton, OH",
       latitude: 40.7989,
@@ -47,6 +48,7 @@ export default function Page() {
     }),
     [],
   );
+  const [fallbackConditionsLocation, setFallbackConditionsLocation] = useState(defaultConditionsLocation);
   const topWeightLeaders = useMemo(
     () => weightLeaders.filter((entry) => (entry.weightScore ?? 0) > 0).slice(0, 3),
     [weightLeaders],
@@ -77,6 +79,115 @@ export default function Page() {
 
     return ids;
   }, [profile]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const storageKey = "hookd:last-known-location";
+
+    const applyLocation = (payload: {
+      name: string;
+      latitude: number;
+      longitude: number;
+      timezone: string | undefined;
+    }) => {
+      setFallbackConditionsLocation({
+        name: payload.name,
+        latitude: payload.latitude,
+        longitude: payload.longitude,
+        timezone: payload.timezone ?? defaultConditionsLocation.timezone,
+      });
+
+      try {
+        window.localStorage.setItem(
+          storageKey,
+          JSON.stringify({
+            name: payload.name,
+            latitude: payload.latitude,
+            longitude: payload.longitude,
+            timezone: payload.timezone ?? defaultConditionsLocation.timezone,
+          }),
+        );
+      } catch (error) {
+        console.warn("Unable to persist location fallback", error);
+      }
+    };
+
+    try {
+      const cached = window.localStorage.getItem(storageKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const latitude = Number(parsed?.latitude);
+        const longitude = Number(parsed?.longitude);
+        const name = typeof parsed?.name === "string" ? parsed.name : null;
+        if (name && Number.isFinite(latitude) && Number.isFinite(longitude)) {
+          applyLocation({
+            name,
+            latitude,
+            longitude,
+            timezone:
+              typeof parsed?.timezone === "string" && parsed.timezone
+                ? parsed.timezone
+                : defaultConditionsLocation.timezone,
+          });
+        }
+      }
+    } catch (error) {
+      console.warn("Unable to load cached location", error);
+    }
+
+    if (!navigator.geolocation) {
+      return;
+    }
+
+    let active = true;
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        if (!active) return;
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+          return;
+        }
+
+        const timezone =
+          Intl.DateTimeFormat().resolvedOptions().timeZone ?? defaultConditionsLocation.timezone;
+
+        try {
+          const name = await reverseGeocodeLocation(
+            latitude,
+            longitude,
+            defaultConditionsLocation.name,
+          );
+          if (!active) return;
+          applyLocation({ name, latitude, longitude, timezone });
+        } catch (error) {
+          console.warn("Unable to resolve detected location", error);
+          if (!active) return;
+          applyLocation({
+            name: defaultConditionsLocation.name,
+            latitude,
+            longitude,
+            timezone,
+          });
+        }
+      },
+      (error) => {
+        console.warn("Unable to determine geolocation", error);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 8000,
+      },
+    );
+
+    return () => {
+      active = false;
+    };
+  }, [defaultConditionsLocation]);
 
   const filterPosts = useCallback(
     (posts: any[]) => {
