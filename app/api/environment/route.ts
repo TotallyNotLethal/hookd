@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { TtlCache } from '@/lib/server/ttlCache';
+import { MAX_LEAD_LAG_DAYS } from '@/lib/environmentLimits';
 
 import type {
   EnvironmentSnapshot,
@@ -15,7 +16,6 @@ const PRESSURE_TREND_THRESHOLD = 0.3;
 const MAX_FORWARD_HOURS = 6;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 64;
-export const MAX_LEAD_LAG_DAYS = 16;
 const MAX_LEAD_LAG_MS = MAX_LEAD_LAG_DAYS * 24 * 60 * 60 * 1000;
 
 type EnvironmentCachePayload = {

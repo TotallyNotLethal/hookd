@@ -1,7 +1,8 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
-import { GET, MAX_LEAD_LAG_DAYS } from '@/app/api/environment/route';
+import { GET } from '@/app/api/environment/route';
+import { MAX_LEAD_LAG_DAYS } from '@/lib/environmentLimits';
 
 test('GET returns 422 when timestamp is outside supported lead/lag', async () => {
   const originalFetch = globalThis.fetch;
