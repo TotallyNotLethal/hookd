@@ -207,7 +207,8 @@ export type NotificationVerb =
   | 'comment'
   | 'team_invite_accepted'
   | 'team_invite_canceled'
-  | 'chat_mention';
+  | 'chat_mention'
+  | 'followed_catch';
 
 export type NotificationResource =
   | { type: 'user'; uid: string }
@@ -753,6 +754,9 @@ export type CatchWithCoordinates = {
   user?: Record<string, unknown> | null;
   tackle?: CatchTackle | null;
 };
+
+const MAX_FOLLOWER_NOTIFICATIONS_PER_CATCH = 200;
+const CREATE_CATCH_NOTIFICATION_BATCH_SIZE = 20;
 
 function sanitizeTackle(input: CatchTackleInput | null | undefined): CatchTackle | null {
   if (!input) return null;
@@ -2096,6 +2100,67 @@ export async function createCatch(input: CatchInput) {
       .catch((error) => {
         console.warn('Unable to refresh bite signal for catch', error);
       });
+  }
+
+  const posterSnap = await getDoc(doc(db, 'users', input.uid));
+  const posterData = posterSnap.exists() ? (posterSnap.data() as Partial<HookdUser>) : null;
+
+  const rawFollowers = Array.isArray(posterData?.followers) ? posterData?.followers : [];
+  const followerUids: string[] = [];
+  for (const followerUid of rawFollowers) {
+    if (typeof followerUid !== 'string') continue;
+    const trimmed = followerUid.trim();
+    if (!trimmed || trimmed === input.uid) continue;
+    followerUids.push(trimmed);
+    if (followerUids.length >= MAX_FOLLOWER_NOTIFICATIONS_PER_CATCH) {
+      break;
+    }
+  }
+
+  if (followerUids.length > 0) {
+    const actorDisplayName = typeof posterData?.displayName === 'string' && posterData.displayName.trim()
+      ? posterData.displayName.trim()
+      : (typeof input.displayName === 'string' && input.displayName.trim() ? input.displayName.trim() : null);
+    const actorUsername = typeof posterData?.username === 'string' && posterData.username.trim()
+      ? posterData.username.trim()
+      : null;
+    const actorPhotoURL = typeof posterData?.photoURL === 'string' && posterData.photoURL.trim()
+      ? posterData.photoURL.trim()
+      : (typeof input.userPhoto === 'string' && input.userPhoto.trim() ? input.userPhoto.trim() : null);
+
+    const previewText = (() => {
+      const caption = typeof input.caption === 'string' ? input.caption.trim() : '';
+      if (caption) {
+        return caption.length > 200 ? `${caption.slice(0, 197)}…` : caption;
+      }
+      const species = typeof input.species === 'string' ? input.species.trim() : '';
+      if (!species) return null;
+      const location = input.locationPrivate ? '' : (typeof input.location === 'string' ? input.location.trim() : '');
+      if (location) {
+        return `${species} • ${location}`;
+      }
+      return species;
+    })();
+
+    const baseMetadata: Record<string, unknown> = previewText
+      ? { catchId: cRef.id, preview: previewText }
+      : { catchId: cRef.id };
+
+    const notificationPayloads = followerUids.map((recipientUid) => ({
+      recipientUid,
+      actorUid: input.uid,
+      actorDisplayName: actorDisplayName ?? null,
+      actorUsername: actorUsername ?? null,
+      actorPhotoURL: actorPhotoURL ?? null,
+      verb: 'followed_catch' as const,
+      resource: { type: 'catch', catchId: cRef.id, ownerUid: input.uid } as const,
+      metadata: { ...baseMetadata },
+    } satisfies Parameters<typeof createNotification>[0]));
+
+    for (let i = 0; i < notificationPayloads.length; i += CREATE_CATCH_NOTIFICATION_BATCH_SIZE) {
+      const chunk = notificationPayloads.slice(i, i + CREATE_CATCH_NOTIFICATION_BATCH_SIZE);
+      await Promise.all(chunk.map((payload) => createNotification(payload)));
+    }
   }
 
   return cRef.id;
