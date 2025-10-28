@@ -67,7 +67,7 @@ const DEFAULT_BADGE_STYLE = 'border-white/20 bg-white/10 text-white/80';
 const BADGE_STYLE_MAP: Record<string, { className: string; label?: string }> = {
   pro: {
     className: 'border-amber-300/60 bg-amber-500/15 text-amber-200',
-    label: 'Pro member',
+    label: 'Pro',
   },
   [LIL_ANGLER_BADGE]: {
     className: 'border-sky-300/50 bg-sky-500/20 text-sky-100',
