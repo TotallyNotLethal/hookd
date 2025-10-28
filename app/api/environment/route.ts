@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 
+import { fetchWeatherApi } from 'openmeteo';
+import type { VariablesWithTime } from '@openmeteo/sdk/variables-with-time';
+import { Variable } from '@openmeteo/sdk/variable.js';
+
 import { TtlCache } from '@/lib/server/ttlCache';
 import { MAX_LEAD_LAG_DAYS } from '@/lib/environmentLimits';
 
@@ -200,6 +204,108 @@ function findNearestIndex(times: string[], targetKey: string) {
   return nearest;
 }
 
+function toHourlyIsoString(date: Date) {
+  return `${date.toISOString().slice(0, 13)}:00`;
+}
+
+function toDailyIsoDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function computeSeriesLength(series: VariablesWithTime | null | undefined) {
+  if (!series) return 0;
+  const start = Number(series.time());
+  const end = Number(series.timeEnd());
+  const interval = series.interval();
+  let length = 0;
+  if (
+    Number.isFinite(start) &&
+    Number.isFinite(end) &&
+    Number.isFinite(interval) &&
+    interval > 0 &&
+    end >= start
+  ) {
+    length = Math.round((end - start) / interval);
+  }
+  if (length <= 0) {
+    const firstVariable = series.variables(0);
+    if (firstVariable) {
+      const valuesArray = firstVariable.valuesArray();
+      if (valuesArray) {
+        length = valuesArray.length;
+      } else {
+        const valuesLength = firstVariable.valuesLength();
+        if (Number.isFinite(valuesLength) && valuesLength > 0) {
+          length = valuesLength;
+        }
+      }
+    }
+  }
+  return length > 0 ? length : 0;
+}
+
+function buildSeriesTimes(
+  series: VariablesWithTime | null | undefined,
+  utcOffsetSeconds: number,
+  formatter: (date: Date) => string,
+) {
+  if (!series) return [] as string[];
+  const length = computeSeriesLength(series);
+  if (length <= 0) return [];
+  const start = Number(series.time());
+  const interval = series.interval();
+  if (!Number.isFinite(start) || !Number.isFinite(interval) || interval <= 0) {
+    return [];
+  }
+  const times: string[] = [];
+  for (let i = 0; i < length; i += 1) {
+    const timestampSeconds = start + i * interval;
+    const date = new Date((timestampSeconds + utcOffsetSeconds) * 1000);
+    times.push(formatter(date));
+  }
+  return times;
+}
+
+function getVariableValues(series: VariablesWithTime | null | undefined, index: number) {
+  if (!series || index < 0 || index >= series.variablesLength()) return [] as number[];
+  const variable = series.variables(index);
+  if (!variable) return [] as number[];
+  const valuesArray = variable.valuesArray();
+  if (valuesArray) return Array.from(valuesArray);
+  const length = variable.valuesLength();
+  if (!Number.isFinite(length) || length <= 0) return [] as number[];
+  const values: number[] = [];
+  for (let i = 0; i < length; i += 1) {
+    const value = variable.values(i);
+    values.push(value ?? Number.NaN);
+  }
+  return values;
+}
+
+function findVariableValuesByEnum(
+  series: VariablesWithTime | null | undefined,
+  allowedVariables: Variable[],
+) {
+  if (!series || allowedVariables.length === 0) return [] as number[];
+  for (let i = 0; i < series.variablesLength(); i += 1) {
+    const variable = series.variables(i);
+    if (!variable) continue;
+    if (allowedVariables.includes(variable.variable())) {
+      const valuesArray = variable.valuesArray();
+      if (valuesArray) return Array.from(valuesArray);
+      const length = variable.valuesLength();
+      if (!Number.isFinite(length) || length <= 0) return [] as number[];
+      const values: number[] = [];
+      for (let j = 0; j < length; j += 1) {
+        const value = variable.values(j);
+        values.push(value ?? Number.NaN);
+      }
+      return values;
+    }
+  }
+  return [] as number[];
+}
+
 function buildSnapshot({
   target,
   utcOffsetSeconds,
@@ -336,83 +442,100 @@ export async function GET(request: Request) {
   }
 
   try {
-    const forecastParams = new URLSearchParams({
+    const forecastParams = {
       latitude: latitude.toString(),
       longitude: longitude.toString(),
       hourly: 'surface_pressure,temperature_2m,weather_code,wind_speed_10m,wind_direction_10m',
       timezone: 'auto',
       start_date: startDate,
       end_date: endDate,
-    });
+    };
 
-    const marineParams = new URLSearchParams({
+    const marineParams = {
       latitude: latitude.toString(),
       longitude: longitude.toString(),
       hourly: 'water_temperature',
       timezone: 'auto',
       start_date: startDate,
       end_date: endDate,
-    });
+    };
 
-    const astronomyParams = new URLSearchParams({
+    const astronomyParams = {
       latitude: latitude.toString(),
       longitude: longitude.toString(),
       daily: 'moon_phase,moon_illumination',
       timezone: 'auto',
       start_date: startDate,
       end_date: endDate,
-    });
+    };
 
-    const marinePromise: Promise<Response | null> = fetch(
-      `https://marine-api.open-meteo.com/v1/marine?${marineParams.toString()}`,
-    ).catch((error) => {
-      console.warn('Failed to fetch marine water temperature', error);
-      return null;
-    });
+    const marinePromise = fetchWeatherApi('https://marine-api.open-meteo.com/v1/marine', marineParams)
+      .then((responses) => responses[0] ?? null)
+      .catch((error) => {
+        console.warn('Failed to fetch marine water temperature', error);
+        return null;
+      });
 
-    const [forecastRes, astronomyRes, marineRes] = await Promise.all([
-      fetch(`https://api.open-meteo.com/v1/forecast?${forecastParams.toString()}`),
-      fetch(`https://api.open-meteo.com/v1/astronomy?${astronomyParams.toString()}`),
+    const [forecastResponses, astronomyResponses, marineResponse] = await Promise.all([
+      fetchWeatherApi('https://api.open-meteo.com/v1/forecast', forecastParams),
+      fetchWeatherApi('https://api.open-meteo.com/v1/astronomy', astronomyParams),
       marinePromise,
     ]);
 
-    if (!forecastRes.ok || !astronomyRes.ok) {
-      const status = !forecastRes.ok ? forecastRes.status : astronomyRes.status;
-      throw new Error(`Upstream error ${status}`);
+    const forecastResponse = forecastResponses?.[0] ?? null;
+    const astronomyResponse = astronomyResponses?.[0] ?? null;
+
+    if (!forecastResponse || !astronomyResponse) {
+      throw new Error('Unable to load required forecast data');
     }
 
-    const forecast = await forecastRes.json();
-    const astronomy = await astronomyRes.json();
-    let marine: any = null;
-    if (marineRes?.ok) {
-      marine = await marineRes.json();
-    } else if (marineRes && !marineRes.ok) {
-      console.warn('Marine API responded with status', marineRes.status);
-    }
+    const forecastHourly = forecastResponse.hourly();
+    const astronomyDaily = astronomyResponse.daily();
+    const marineHourly = marineResponse?.hourly() ?? null;
 
-    const hourlyTimes: string[] = forecast?.hourly?.time ?? [];
-    const hourlyPressures: number[] = forecast?.hourly?.surface_pressure ?? [];
-    const hourlyWeatherCodes: number[] =
-      forecast?.hourly?.weather_code ?? forecast?.hourly?.weathercode ?? [];
-    const hourlyAirTemperatures: number[] = forecast?.hourly?.temperature_2m ?? [];
-    const hourlyWaterTemperatures: number[] =
-      forecast?.hourly?.water_temperature ?? forecast?.hourly?.lake_temperature ?? [];
-    const hourlyWindSpeeds: number[] = forecast?.hourly?.wind_speed_10m ?? [];
-    const hourlyWindDirections: number[] = forecast?.hourly?.wind_direction_10m ?? [];
-    const marineTimes: string[] = marine?.hourly?.time ?? [];
-    const marineWaterTemperatures: number[] = marine?.hourly?.water_temperature ?? [];
-    const marineUtcOffsetSeconds: number | null = marine?.utc_offset_seconds ?? null;
-    const marineTimezone: string | null = marine?.timezone ?? null;
+    const forecastUtcOffsetSeconds = forecastResponse.utcOffsetSeconds();
+    const astronomyUtcOffsetSeconds = astronomyResponse.utcOffsetSeconds();
+    const marineUtcOffsetSeconds = marineResponse?.utcOffsetSeconds() ?? null;
+    const marineTimezone = marineResponse?.timezone() ?? null;
     const utcOffsetSeconds =
-      forecast?.utc_offset_seconds ??
-      astronomy?.utc_offset_seconds ??
+      forecastUtcOffsetSeconds ??
+      astronomyUtcOffsetSeconds ??
       marineUtcOffsetSeconds ??
       0;
-    const timezone = forecast?.timezone ?? astronomy?.timezone ?? marineTimezone ?? 'UTC';
+    const timezone =
+      forecastResponse.timezone() ??
+      astronomyResponse.timezone() ??
+      marineTimezone ??
+      'UTC';
 
-    const dailyTimes: string[] = astronomy?.daily?.time ?? [];
-    const dailyMoonPhase: number[] = astronomy?.daily?.moon_phase ?? [];
-    const dailyMoonIllumination: number[] = astronomy?.daily?.moon_illumination ?? [];
+    const hourlyTimes = buildSeriesTimes(
+      forecastHourly,
+      forecastUtcOffsetSeconds ?? utcOffsetSeconds,
+      toHourlyIsoString,
+    );
+    const hourlyPressures = getVariableValues(forecastHourly, 0);
+    const hourlyAirTemperatures = getVariableValues(forecastHourly, 1);
+    const hourlyWeatherCodes = getVariableValues(forecastHourly, 2);
+    const hourlyWindSpeeds = getVariableValues(forecastHourly, 3);
+    const hourlyWindDirections = getVariableValues(forecastHourly, 4);
+    const hourlyWaterTemperatures = findVariableValuesByEnum(forecastHourly, [
+      Variable.sea_surface_temperature,
+    ]);
+
+    const marineTimes =
+      marineResponse != null
+        ? buildSeriesTimes(marineHourly, marineUtcOffsetSeconds ?? utcOffsetSeconds, toHourlyIsoString)
+        : [];
+    const marineWaterTemperatures =
+      marineResponse != null ? getVariableValues(marineHourly, 0) : [];
+
+    const dailyTimes = buildSeriesTimes(
+      astronomyDaily,
+      astronomyUtcOffsetSeconds ?? utcOffsetSeconds,
+      toDailyIsoDate,
+    );
+    const dailyMoonPhase = getVariableValues(astronomyDaily, 0);
+    const dailyMoonIllumination = getVariableValues(astronomyDaily, 1);
 
     const slices = targets.map((target, index) => {
       const localDateKey = new Date(target.getTime() + utcOffsetSeconds * 1000)
