@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import {
   addComment,
   deleteCatch,
+  deleteComment,
   subscribeToComments,
   subscribeToUserLike,
   toggleLike,
@@ -38,6 +39,7 @@ export default function PostDetailModal({ post, onClose, size = 'default' }: Pos
   const [text, setText] = useState('');
   const [liked, setLiked] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [commentActionBusy, setCommentActionBusy] = useState<string | null>(null);
   const locationIsPrivate = Boolean(post?.locationPrivate);
   const canShowLocation =
     post?.location && (!locationIsPrivate || (user && user.uid === post.uid));
@@ -73,6 +75,31 @@ export default function PostDetailModal({ post, onClose, size = 'default' }: Pos
       onClose();
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleDeleteComment(commentId: string) {
+    if (!post?.id || !user?.uid || commentActionBusy) return;
+    const target = comments.find((comment) => comment.id === commentId);
+    if (!target) return;
+
+    const canDelete = target.uid === user.uid || isOwner;
+    if (!canDelete) return;
+
+    if (!confirm('Delete this comment?')) return;
+
+    const previousComments = comments;
+    setCommentActionBusy(commentId);
+    setComments((prev) => prev.filter((comment) => comment.id !== commentId));
+
+    try {
+      await deleteComment(post.id, commentId, user.uid);
+    } catch (error) {
+      console.error('Failed to delete comment', error);
+      setComments(previousComments);
+      alert('Failed to delete comment. Please try again.');
+    } finally {
+      setCommentActionBusy(null);
     }
   }
 
@@ -209,27 +236,45 @@ export default function PostDetailModal({ post, onClose, size = 'default' }: Pos
                 </div>
 
                 <div className="space-y-3 overflow-y-auto max-h-[320px] pr-2 pb-16 flex-1">
-                  {comments.map((c) => (
-                    <div
-                      key={c.id}
-                      className="text-sm flex flex-col border-b border-white/5 pb-2"
-                    >
-                      <div>
-                        <span
-                          className="font-medium text-blue-400 hover:underline cursor-pointer"
-                          onClick={() => router.push(`/profile/${c.uid}`)}
-                        >
-                          {c.displayName}
-                        </span>{' '}
-                        {c.text}
+                  {comments.map((c) => {
+                    const canDeleteComment = user && (c.uid === user.uid || isOwner);
+                    const isDeletingComment = commentActionBusy === c.id;
+                    return (
+                      <div
+                        key={c.id}
+                        className="text-sm flex flex-col border-b border-white/5 pb-2"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1">
+                            <span
+                              className="font-medium text-blue-400 hover:underline cursor-pointer"
+                              onClick={() => router.push(`/profile/${c.uid}`)}
+                            >
+                              {c.displayName}
+                            </span>{' '}
+                            {c.text}
+                          </div>
+                          {canDeleteComment && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteComment(c.id)}
+                              disabled={isDeletingComment}
+                              className="opacity-50 hover:opacity-100 transition disabled:opacity-30"
+                              title="Delete comment"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              <span className="sr-only">Delete comment</span>
+                            </button>
+                          )}
+                        </div>
+                        {c.createdAt?.seconds && (
+                          <span className="text-xs opacity-50 mt-0.5">
+                            {timeAgo(c.createdAt.seconds * 1000)}
+                          </span>
+                        )}
                       </div>
-                      {c.createdAt?.seconds && (
-                        <span className="text-xs opacity-50 mt-0.5">
-                          {timeAgo(c.createdAt.seconds * 1000)}
-                        </span>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
 
                   {comments.length === 0 && (
                     <p className="opacity-60 text-sm text-center">

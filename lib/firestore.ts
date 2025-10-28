@@ -2885,6 +2885,112 @@ export async function addComment(
   }
 }
 
+async function removeCommentNotification(ownerUid: string, catchId: string, commentId: string) {
+  if (!ownerUid || !catchId || !commentId) {
+    return;
+  }
+
+  try {
+    const notificationsRef = notificationsCollectionFor(ownerUid);
+    const snapshot = await getDocs(
+      query(
+        notificationsRef,
+        where('verb', '==', 'comment'),
+        where('metadata.commentId', '==', commentId),
+      ),
+    );
+
+    if (snapshot.empty) {
+      return;
+    }
+
+    const docs = snapshot.docs.filter((docSnap) => {
+      const data = docSnap.data() as NotificationDocData;
+      const metadata = data.metadata ?? {};
+      return metadata && typeof metadata === 'object' && metadata['catchId'] === catchId;
+    });
+
+    if (!docs.length) {
+      return;
+    }
+
+    let unreadToRemove = 0;
+    docs.forEach((docSnap) => {
+      const data = docSnap.data() as NotificationDocData;
+      if (!data.isRead) {
+        unreadToRemove += 1;
+      }
+    });
+
+    await runTransaction(db, async (tx) => {
+      const userRef = doc(db, 'users', ownerUid);
+      const userSnap = await tx.get(userRef);
+
+      if (userSnap.exists() && unreadToRemove > 0) {
+        const userData = userSnap.data() as HookdUser;
+        const currentUnread = typeof userData.unreadNotificationsCount === 'number'
+          ? userData.unreadNotificationsCount
+          : 0;
+        const nextUnread = Math.max(0, currentUnread - unreadToRemove);
+        tx.update(userRef, { unreadNotificationsCount: nextUnread });
+      }
+
+      docs.forEach((docSnap) => {
+        tx.delete(docSnap.ref);
+      });
+    });
+  } catch (error) {
+    console.error('Failed to remove comment notification', error);
+  }
+}
+
+export async function deleteComment(catchId: string, commentId: string, requesterUid: string) {
+  if (!catchId || !commentId || !requesterUid) {
+    throw new Error('Missing required parameters to delete a comment.');
+  }
+
+  const commentRef = doc(db, 'catches', catchId, 'comments', commentId);
+  const catchRef = doc(db, 'catches', catchId);
+
+  let commentAuthorUid: string | null = null;
+  let catchOwnerUid: string | null = null;
+
+  await runTransaction(db, async (tx) => {
+    const [commentSnap, catchSnap] = await Promise.all([
+      tx.get(commentRef),
+      tx.get(catchRef),
+    ]);
+
+    if (!commentSnap.exists()) {
+      throw new Error('Comment not found.');
+    }
+
+    if (!catchSnap.exists()) {
+      throw new Error('Catch not found.');
+    }
+
+    const commentData = commentSnap.data() as Record<string, any>;
+    const catchData = catchSnap.data() as Record<string, any>;
+
+    commentAuthorUid = typeof commentData.uid === 'string' ? commentData.uid : null;
+    catchOwnerUid = typeof catchData.uid === 'string' ? catchData.uid : null;
+
+    if (requesterUid !== commentAuthorUid && requesterUid !== catchOwnerUid) {
+      throw new Error('You do not have permission to delete this comment.');
+    }
+
+    tx.delete(commentRef);
+
+    const currentCount = typeof catchData.commentsCount === 'number' ? catchData.commentsCount : 0;
+    const nextCount = Math.max(0, currentCount - 1);
+    tx.update(catchRef, { commentsCount: nextCount });
+  });
+
+  if (catchOwnerUid) {
+    await removeCommentNotification(catchOwnerUid, catchId, commentId);
+  }
+}
+
 export function subscribeToComments(catchId: string, cb: (arr: any[]) => void) {
   const q = query(collection(db, 'catches', catchId, 'comments'), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snap) => {
