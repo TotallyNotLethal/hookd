@@ -33,7 +33,12 @@ const baseSnapshot: EnvironmentSnapshot = {
 
 test("buildFallbackEnvironmentDetails formats live condition snapshot", () => {
   const details = buildFallbackEnvironmentDetails(baseSnapshot);
-  assert.equal(details.length, 4);
+  assert.equal(details.length, 5);
+
+  const weather = details.find((detail) => detail.key === "weather");
+  assert.ok(weather);
+  assert.equal(weather.value, "Mainly clear");
+  assert.equal(weather.description, "Local 8:00 AM · Day hours");
 
   const pressure = details.find((detail) => detail.key === "pressure");
   assert.ok(pressure);
@@ -42,7 +47,7 @@ test("buildFallbackEnvironmentDetails formats live condition snapshot", () => {
 
   const wind = details.find((detail) => detail.key === "wind");
   assert.ok(wind);
-  assert.equal(wind.value, "7 mph SE");
+  assert.equal(wind.value, "7 mph · SE");
   assert.equal(wind.description, "135°");
 
   const temperature = details.find((detail) => detail.key === "temperature");

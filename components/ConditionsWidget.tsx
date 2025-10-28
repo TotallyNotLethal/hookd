@@ -29,6 +29,28 @@ type LocationStatus = "idle" | "locating" | "fallback" | "resolved" | "error";
 
 type PredictionView = BitePrediction & { key: string };
 
+type EnvironmentSlice = {
+  offsetHours: number;
+  timestampUtc: string;
+  snapshot: EnvironmentSnapshot;
+};
+
+type EnvironmentPayload = {
+  capture: EnvironmentSnapshot | null;
+  slices: EnvironmentSlice[];
+};
+
+type ForecastView = {
+  key: string;
+  label: string;
+  localTime: string | null;
+  weather: string;
+  temperature: string;
+  temperatureDetail: string | null;
+  wind: string | null;
+  windDetail: string | null;
+};
+
 const arrowForDirection: Record<BitePrediction["direction"], string> = {
   up: "↑",
   flat: "→",
@@ -90,76 +112,205 @@ export type FallbackConditionDetail = {
   description: string | null;
 };
 
-export function buildFallbackEnvironmentDetails(
-  snapshot: EnvironmentSnapshot | null,
-): FallbackConditionDetail[] {
-  const pressureValue = snapshot?.surfacePressure != null && Number.isFinite(snapshot.surfacePressure)
-    ? `${Math.round(snapshot.surfacePressure)} hPa`
-    : "—";
-  const pressureDescription = joinDetails([
+function formatLocalTime(snapshot: EnvironmentSnapshot | null) {
+  if (!snapshot?.captureUtc) return null;
+  const date = new Date(snapshot.captureUtc);
+  if (Number.isNaN(date.getTime())) return null;
+  if (snapshot.timezone) {
+    try {
+      return date.toLocaleTimeString([], {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: snapshot.timezone,
+      });
+    } catch (error) {
+      console.warn("Unable to format localized time", error);
+    }
+  }
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function formatPressureDetail(snapshot: EnvironmentSnapshot | null) {
+  const value = snapshot?.surfacePressure;
+  const label =
+    value != null && Number.isFinite(value) ? `${Math.round(value)} hPa` : "—";
+  const description = joinDetails([
     snapshot?.pressureTrend ? capitalize(snapshot.pressureTrend) : null,
     snapshot?.pressureBand ? `${capitalize(snapshot.pressureBand)} pressure` : null,
   ]);
+  return { value: label, description };
+}
 
-  const windSpeedMph = snapshot?.windSpeedMph;
-  const windSpeedMps = snapshot?.windSpeedMps;
-  const windValueParts: string[] = [];
-  if (windSpeedMph != null && Number.isFinite(windSpeedMph)) {
-    windValueParts.push(`${Math.round(windSpeedMph)} mph`);
-  } else if (windSpeedMps != null && Number.isFinite(windSpeedMps)) {
-    windValueParts.push(`${Math.round(windSpeedMps)} m/s`);
-  }
-  if (snapshot?.windDirectionCardinal) {
-    windValueParts.push(snapshot.windDirectionCardinal);
-  }
-  const windValue = windValueParts.length > 0 ? windValueParts.join(" ") : "—";
-  const windDescription = snapshot?.windDirectionDegrees != null && Number.isFinite(snapshot.windDirectionDegrees)
-    ? `${Math.round(snapshot.windDirectionDegrees)}°`
-    : null;
+function formatWindDetail(snapshot: EnvironmentSnapshot | null) {
+  const mph = snapshot?.windSpeedMph;
+  const mps = snapshot?.windSpeedMps;
+  const speed =
+    mph != null && Number.isFinite(mph)
+      ? `${Math.round(mph)} mph`
+      : mps != null && Number.isFinite(mps)
+        ? `${Math.round(mps)} m/s`
+        : null;
+  const direction = snapshot?.windDirectionCardinal ?? null;
+  const degrees =
+    snapshot?.windDirectionDegrees != null && Number.isFinite(snapshot.windDirectionDegrees)
+      ? `${Math.round(snapshot.windDirectionDegrees)}°`
+      : null;
+  const value = joinDetails([speed, direction]) ?? "—";
+  const description = degrees;
+  return { value, description };
+}
 
+function formatTemperatureDetail(snapshot: EnvironmentSnapshot | null) {
   const airValue = formatDegrees(snapshot?.airTemperatureF, snapshot?.airTemperatureC);
   const waterValue = formatDegrees(snapshot?.waterTemperatureF, snapshot?.waterTemperatureC);
-  let temperatureValue = airValue;
-  let temperatureDescription: string | null = waterValue !== "—" ? `Water ${waterValue}` : null;
-  if (temperatureValue === "—" && waterValue !== "—") {
-    temperatureValue = waterValue;
-    temperatureDescription = "Surface water";
+  let value = airValue;
+  let description: string | null = waterValue !== "—" ? `Water ${waterValue}` : null;
+  if (value === "—" && waterValue !== "—") {
+    value = waterValue;
+    description = "Surface water";
   }
+  return { value, description };
+}
 
-  const moonValue = snapshot?.moonPhaseBand ? `${capitalize(snapshot.moonPhaseBand)} moon` : "—";
-  const moonDescription = joinDetails([
+function formatMoonDetail(snapshot: EnvironmentSnapshot | null) {
+  const value = snapshot?.moonPhaseBand ? `${capitalize(snapshot.moonPhaseBand)} moon` : "—";
+  const description = joinDetails([
     formatMoonIllumination(snapshot?.moonIllumination),
     snapshot?.moonPhase != null && Number.isFinite(snapshot.moonPhase)
-      ? `Phase ${Math.round(((snapshot.moonPhase % 1) + 1) % 1 * 100)}%`
+      ? `Phase ${Math.round((((snapshot.moonPhase % 1) + 1) % 1) * 100)}%`
       : null,
   ]);
+  return { value, description };
+}
 
-  return [
+function formatWeatherDetail(snapshot: EnvironmentSnapshot | null): FallbackConditionDetail | null {
+  if (!snapshot) return null;
+  const weatherValue = snapshot.weatherDescription?.trim();
+  if (!weatherValue) return null;
+  const localTime = formatLocalTime(snapshot);
+  const description = joinDetails([
+    localTime ? `Local ${localTime}` : null,
+    snapshot.timeOfDayBand ? `${capitalize(snapshot.timeOfDayBand)} hours` : null,
+  ]);
+  return {
+    key: "weather",
+    label: "Weather",
+    value: weatherValue,
+    description,
+  };
+}
+
+export function buildFallbackEnvironmentDetails(
+  snapshot: EnvironmentSnapshot | null,
+): FallbackConditionDetail[] {
+  const pressure = formatPressureDetail(snapshot);
+  const wind = formatWindDetail(snapshot);
+  const temperature = formatTemperatureDetail(snapshot);
+  const moon = formatMoonDetail(snapshot);
+  const weather = formatWeatherDetail(snapshot);
+
+  const details: FallbackConditionDetail[] = [];
+  if (weather) {
+    details.push(weather);
+  }
+  details.push(
     {
       key: "pressure",
       label: "Pressure",
-      value: pressureValue,
-      description: pressureDescription,
+      value: pressure.value,
+      description: pressure.description,
     },
     {
       key: "wind",
       label: "Wind",
-      value: windValue,
-      description: windDescription,
+      value: wind.value,
+      description: wind.description,
     },
     {
       key: "temperature",
       label: "Temperature",
-      value: temperatureValue,
-      description: temperatureDescription,
+      value: temperature.value,
+      description: temperature.description,
     },
     {
       key: "moon",
       label: "Moon",
-      value: moonValue,
-      description: moonDescription,
+      value: moon.value,
+      description: moon.description,
     },
-  ];
+  );
+
+  return details;
+}
+
+function normalizeEnvironmentSlice(entry: any): EnvironmentSlice | null {
+  if (!entry || typeof entry !== "object") return null;
+  const snapshot = entry.snapshot as EnvironmentSnapshot | undefined;
+  if (!snapshot || typeof snapshot !== "object") return null;
+  const offset = typeof entry.offsetHours === "number" ? entry.offsetHours : Number(entry.offsetHours);
+  if (!Number.isFinite(offset)) return null;
+  const timestamp =
+    typeof entry.timestampUtc === "string" && entry.timestampUtc
+      ? entry.timestampUtc
+      : typeof snapshot.captureUtc === "string"
+        ? snapshot.captureUtc
+        : null;
+  if (!timestamp) return null;
+  return {
+    offsetHours: offset,
+    timestampUtc: timestamp,
+    snapshot,
+  };
+}
+
+function parseEnvironmentPayload(body: any): EnvironmentPayload | null {
+  const rawCapture =
+    body && typeof body === "object" && body.capture && typeof body.capture === "object"
+      ? (body.capture as EnvironmentSnapshot)
+      : null;
+  const rawSlices = Array.isArray(body?.slices) ? body.slices : [];
+  const slices = rawSlices
+    .map((entry) => normalizeEnvironmentSlice(entry))
+    .filter((entry): entry is EnvironmentSlice => Boolean(entry))
+    .sort((a, b) => a.offsetHours - b.offsetHours);
+  const capture = rawCapture ?? slices[0]?.snapshot ?? null;
+  if (!capture && slices.length === 0) {
+    return null;
+  }
+  return {
+    capture,
+    slices,
+  };
+}
+
+function buildForecastViews(slices: EnvironmentSlice[]): ForecastView[] {
+  if (!Array.isArray(slices) || slices.length === 0) {
+    return [];
+  }
+
+  return slices
+    .filter((slice) => slice.offsetHours > 0)
+    .slice(0, 4)
+    .map((slice) => {
+      const temperature = formatTemperatureDetail(slice.snapshot);
+      const wind = formatWindDetail(slice.snapshot);
+      const label =
+        slice.offsetHours <= 0
+          ? "Now"
+          : slice.offsetHours === 1
+            ? "In 1 hr"
+            : `In ${slice.offsetHours} hrs`;
+      return {
+        key: `${slice.timestampUtc}-${slice.offsetHours}`,
+        label,
+        localTime: formatLocalTime(slice.snapshot),
+        weather: slice.snapshot.weatherDescription ?? "—",
+        temperature: temperature.value,
+        temperatureDetail: temperature.description,
+        wind: wind.value !== "—" ? wind.value : null,
+        windDetail: wind.description,
+      };
+    });
 }
 
 async function resolveLocationName(lat: number, lng: number, fallback: string) {
@@ -197,8 +348,8 @@ export default function ConditionsWidget({
   const [signalError, setSignalError] = useState<string | null>(null);
   const [signalLoading, setSignalLoading] = useState(false);
   const [geolocationError, setGeolocationError] = useState<string | null>(null);
-  const fallbackEnvironmentCache = useRef(new Map<string, EnvironmentSnapshot>());
-  const [fallbackEnvironment, setFallbackEnvironment] = useState<EnvironmentSnapshot | null>(null);
+  const fallbackEnvironmentCache = useRef(new Map<string, EnvironmentPayload>());
+  const [fallbackEnvironment, setFallbackEnvironment] = useState<EnvironmentPayload | null>(null);
   const [fallbackEnvironmentLoading, setFallbackEnvironmentLoading] = useState(false);
   const [fallbackEnvironmentError, setFallbackEnvironmentError] = useState<string | null>(null);
   const isMountedRef = useRef(true);
@@ -237,16 +388,19 @@ export default function ConditionsWidget({
   const predictionViews = useMemo(() => buildPredictions(signal), [signal]);
   const lastUpdatedLabel = useMemo(() => formatUpdatedAt(signal), [signal]);
   const insufficient = signal?.insufficient || predictionViews.length === 0;
+  const fallbackCapture = fallbackEnvironment?.capture ?? null;
   const fallbackDetails = useMemo(
-    () => buildFallbackEnvironmentDetails(fallbackEnvironment),
-    [fallbackEnvironment],
+    () => buildFallbackEnvironmentDetails(fallbackCapture),
+    [fallbackCapture],
   );
-  const fallbackUpdatedLabel = useMemo(() => {
-    if (!fallbackEnvironment?.captureUtc) return null;
-    const date = new Date(fallbackEnvironment.captureUtc);
-    if (Number.isNaN(date.getTime())) return null;
-    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  }, [fallbackEnvironment?.captureUtc]);
+  const fallbackForecastViews = useMemo(
+    () => buildForecastViews(fallbackEnvironment?.slices ?? []),
+    [fallbackEnvironment?.slices],
+  );
+  const fallbackUpdatedLabel = useMemo(
+    () => formatLocalTime(fallbackCapture),
+    [fallbackCapture?.captureUtc],
+  );
 
   const fetchSignal = useCallback(async () => {
     if (!isPro || !locationKey || !location) return;
@@ -378,6 +532,7 @@ export default function ConditionsWidget({
         const params = new URLSearchParams({
           lat: location.latitude.toString(),
           lng: location.longitude.toString(),
+          forwardHours: "3",
         });
         const response = await fetch(`/api/environment?${params.toString()}`, {
           signal: controller.signal,
@@ -394,13 +549,13 @@ export default function ConditionsWidget({
           throw new Error(`Environment request failed with status ${response.status}`);
         }
         const body = await response.json();
-        const snapshot: EnvironmentSnapshot | null = body?.capture ?? body?.slices?.[0]?.snapshot ?? null;
-        if (!snapshot) {
+        const payload = parseEnvironmentPayload(body);
+        if (!payload) {
           throw new Error("Live conditions unavailable.");
         }
         if (!isActive) return;
-        fallbackEnvironmentCache.current.set(locationKey, snapshot);
-        setFallbackEnvironment(snapshot);
+        fallbackEnvironmentCache.current.set(locationKey, payload);
+        setFallbackEnvironment(payload);
       } catch (error) {
         if (!isActive || controller.signal.aborted) {
           return;
@@ -503,7 +658,7 @@ export default function ConditionsWidget({
             </div>
           ) : fallbackEnvironmentError ? (
             <p className="text-xs text-amber-200">{fallbackEnvironmentError}</p>
-          ) : fallbackEnvironment ? (
+          ) : fallbackCapture ? (
             <div className="space-y-2">
               {fallbackUpdatedLabel ? (
                 <p className="text-[11px] uppercase tracking-wide text-white/40">
@@ -521,6 +676,34 @@ export default function ConditionsWidget({
                   </div>
                 ))}
               </div>
+              {fallbackForecastViews.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-[11px] uppercase tracking-wide text-white/40">Next forecast</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {fallbackForecastViews.map((forecast) => (
+                      <div key={forecast.key} className="rounded-2xl bg-white/5 px-4 py-3 text-white/80">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className="text-xs uppercase tracking-wide text-white/50">{forecast.label}</p>
+                          {forecast.localTime ? (
+                            <p className="text-[11px] text-white/40">{forecast.localTime}</p>
+                          ) : null}
+                        </div>
+                        <p className="text-sm font-semibold text-white">{forecast.weather}</p>
+                        <p className="text-xs text-white/70 mt-1">
+                          {forecast.temperature}
+                          {forecast.temperatureDetail ? ` · ${forecast.temperatureDetail}` : null}
+                        </p>
+                        {forecast.wind ? (
+                          <p className="text-[11px] text-white/60 mt-1">
+                            Wind {forecast.wind}
+                            {forecast.windDetail ? ` (${forecast.windDetail})` : null}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
