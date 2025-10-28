@@ -3,7 +3,7 @@
 import clsx from 'clsx';
 import Image from 'next/image';
 import Link from 'next/link';
-import { type KeyboardEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { type JSX, type KeyboardEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { BookOpen, Fish, Medal, MessageCircle, Scale, Sparkles } from 'lucide-react';
 import rehypeSanitize from 'rehype-sanitize';
@@ -22,7 +22,7 @@ import {
   PROFILE_LAYOUT_OPTIONS,
   coerceProfileTheme,
 } from '@/lib/profileThemeOptions';
-import type { ProfileTheme } from '@/lib/firestore';
+import { LIL_ANGLER_BADGE, sanitizeUserBadges, type ProfileTheme } from '@/lib/firestore';
 import type { EnvironmentSnapshot } from '@/lib/environmentTypes';
 import { SEASON_LABELS, type SeasonKey, type UserTackleStats } from '@/lib/tackleBox';
 
@@ -54,6 +54,36 @@ const ABOUT_MARKDOWN_COMPONENTS: MarkdownComponents = {
 
 const SEASON_FILTER_ORDER: SeasonKey[] = ['spring', 'summer', 'fall', 'winter'];
 
+type BadgeItem = {
+  key: string;
+  label: string;
+  className: string;
+  icon: JSX.Element;
+};
+
+const BADGE_BASE_CLASS =
+  'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide';
+const DEFAULT_BADGE_STYLE = 'border-white/20 bg-white/10 text-white/80';
+const BADGE_STYLE_MAP: Record<string, { className: string; label?: string }> = {
+  pro: {
+    className: 'border-amber-300/60 bg-amber-500/15 text-amber-200',
+    label: 'Pro member',
+  },
+  [LIL_ANGLER_BADGE]: {
+    className: 'border-sky-300/50 bg-sky-500/20 text-sky-100',
+    label: 'Lil Angler',
+  },
+};
+
+function formatBadgeLabel(key: string): string {
+  const fallback = key
+    .split(/[-_\s]+/g)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+  return fallback || 'Badge';
+}
+
 type Profile = {
   uid?: string;
   displayName?: string;
@@ -68,6 +98,8 @@ type Profile = {
   isPro?: boolean;
   about?: string;
   profileTheme?: Partial<ProfileTheme> | null;
+  age?: number | null;
+  badges?: string[];
 };
 
 type Catch = {
@@ -125,17 +157,49 @@ export default function ProfileView({
     return profile?.isTester ? `@hookd_${username}` : `@${username}`;
   }, [profile?.isTester, username]);
   const isProMember = useMemo(() => Boolean(profile?.isPro), [profile?.isPro]);
-  const proBadge = useMemo(
-    () =>
-      isProMember ? (
-        <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/60 bg-amber-500/15 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-300">
-          <Sparkles aria-hidden className="h-3.5 w-3.5" />
-          <span aria-hidden>Pro</span>
-          <span className="sr-only">Pro member</span>
-        </span>
-      ) : null,
-    [isProMember],
-  );
+  const badgeItems = useMemo<BadgeItem[]>(() => {
+    const items: BadgeItem[] = [];
+    const seen = new Set<string>();
+
+    if (isProMember) {
+      const { className, label } = BADGE_STYLE_MAP.pro;
+      items.push({
+        key: 'pro',
+        label: label ?? 'Pro member',
+        className,
+        icon: <Sparkles aria-hidden className="h-3.5 w-3.5" />,
+      });
+      seen.add('pro');
+    }
+
+    const additionalBadges = sanitizeUserBadges(profile?.badges);
+    for (const badge of additionalBadges) {
+      if (seen.has(badge)) continue;
+
+      const styleConfig = BADGE_STYLE_MAP[badge];
+      const className = styleConfig?.className ?? DEFAULT_BADGE_STYLE;
+      const label = styleConfig?.label ?? formatBadgeLabel(badge);
+      let icon: JSX.Element;
+
+      if (badge === LIL_ANGLER_BADGE) {
+        icon = <Fish aria-hidden className="h-3.5 w-3.5" />;
+      } else if (badge === 'pro') {
+        icon = <Sparkles aria-hidden className="h-3.5 w-3.5" />;
+      } else {
+        icon = <Medal aria-hidden className="h-3.5 w-3.5" />;
+      }
+
+      items.push({
+        key: badge,
+        label,
+        className,
+        icon,
+      });
+      seen.add(badge);
+    }
+
+    return items;
+  }, [isProMember, profile?.badges]);
 
   const theme = useMemo(() => {
     try {
@@ -281,7 +345,18 @@ export default function ProfileView({
               <div className="flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-2xl font-semibold">{displayName}</h1>
-                  {proBadge}
+                  {badgeItems.length > 0 && (
+                    <ul className="flex flex-wrap items-center gap-2" aria-label="Profile badges">
+                      {badgeItems.map((badge) => (
+                        <li key={badge.key}>
+                          <span className={clsx(BADGE_BASE_CLASS, badge.className)}>
+                            {badge.icon}
+                            <span>{badge.label}</span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
                 {usernameDisplay && (
                   <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/70">

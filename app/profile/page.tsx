@@ -27,12 +27,15 @@ import {
   isValidLayoutKey,
   isValidTextureKey,
 } from "@/lib/profileThemeOptions";
-import type {
-  HookdUser,
-  ProfileAccentKey,
-  ProfileLayoutKey,
-  ProfileTheme,
-  ProfileTextureKey,
+import {
+  MAX_PROFILE_AGE,
+  MIN_PROFILE_AGE,
+  normalizeUserAge,
+  type HookdUser,
+  type ProfileAccentKey,
+  type ProfileLayoutKey,
+  type ProfileTheme,
+  type ProfileTextureKey,
 } from "@/lib/firestore";
 import { useProAccess } from "@/hooks/useProAccess";
 
@@ -73,6 +76,10 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
   const [bio, setBio] = useState(user?.bio || "");
   const [username, setUserName] = useState(user?.username || "");
   const [about, setAbout] = useState(user?.about || "");
+  const [ageInput, setAgeInput] = useState(
+    user?.age != null && Number.isFinite(user.age) ? String(user.age) : "",
+  );
+  const [ageError, setAgeError] = useState<string | null>(null);
   const [theme, setTheme] = useState<ProfileTheme>(() => {
     try {
       return coerceProfileTheme(user?.profileTheme ?? null, DEFAULT_PROFILE_THEME);
@@ -236,6 +243,29 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
     }
   };
 
+  const handleAgeChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+    setAgeInput(value);
+
+    if (!value.trim()) {
+      setAgeError(null);
+      return;
+    }
+
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) {
+      setAgeError("Please enter a valid age.");
+      return;
+    }
+
+    if (numericValue < MIN_PROFILE_AGE || numericValue > MAX_PROFILE_AGE) {
+      setAgeError(`Please enter an age between ${MIN_PROFILE_AGE} and ${MAX_PROFILE_AGE}.`);
+      return;
+    }
+
+    setAgeError(null);
+  };
+
   async function save() {
     try {
       setSaving(true);
@@ -256,6 +286,11 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
         return;
       }
 
+      if (ageError) {
+        setError(ageError);
+        return;
+      }
+
       if (theme.featuredCatchId && !catchIdSet.has(theme.featuredCatchId)) {
         setError("The selected featured catch is no longer available.");
         return;
@@ -272,6 +307,28 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
           featuredCatchId: theme.featuredCatchId ?? null,
         },
       };
+
+      const trimmedAge = ageInput.trim();
+      if (trimmedAge) {
+        const normalizedAge = normalizeUserAge(trimmedAge);
+        if (normalizedAge === null) {
+          const message = `Please enter an age between ${MIN_PROFILE_AGE} and ${MAX_PROFILE_AGE}.`;
+          setAgeError(message);
+          setError(message);
+          return;
+        }
+        if (normalizedAge < MIN_PROFILE_AGE || normalizedAge > MAX_PROFILE_AGE) {
+          const message = `Please enter an age between ${MIN_PROFILE_AGE} and ${MAX_PROFILE_AGE}.`;
+          setAgeError(message);
+          setError(message);
+          return;
+        }
+        setAgeError(null);
+        updates.age = normalizedAge;
+      } else {
+        updates.age = null;
+        setAgeError(null);
+      }
 
       if (avatarFile) {
         setStatusMessage("Uploading avatar…");
@@ -342,6 +399,27 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
             >
               {usernameError ??
                 `Use at least ${USERNAME_MIN_LENGTH} characters. Letters, numbers, and underscores only.`}
+            </p>
+          </div>
+          <div className="grid gap-1">
+            <label className="text-sm text-white/70" htmlFor="age-input">
+              Age (optional)
+            </label>
+            <input
+              id="age-input"
+              className="input"
+              type="number"
+              inputMode="numeric"
+              min={MIN_PROFILE_AGE}
+              max={MAX_PROFILE_AGE}
+              value={ageInput}
+              onChange={handleAgeChange}
+              placeholder="Add your age"
+              aria-invalid={ageError ? "true" : "false"}
+            />
+            <p className={clsx("text-xs", ageError ? "text-red-400" : "text-white/50")}
+            >
+              {ageError ?? `Enter a whole number between ${MIN_PROFILE_AGE} and ${MAX_PROFILE_AGE}.`}
             </p>
           </div>
           <textarea
