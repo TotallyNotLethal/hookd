@@ -391,12 +391,13 @@ export default function ProfileView({
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-white/60">
                     <span className="uppercase tracking-[0.2em] text-white/40">Teams</span>
                     {teamAffiliations.map((team) => (
-                      <span
+                      <Link
                         key={team.id}
-                        className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/70"
+                        href={`/teams/${team.id}`}
+                        className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/70 transition hover:border-brand-300 hover:text-brand-200"
                       >
                         {team.name}
-                      </span>
+                      </Link>
                     ))}
                   </div>
                 ) : null}

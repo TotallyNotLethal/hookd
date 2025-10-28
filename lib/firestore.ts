@@ -987,6 +987,10 @@ export async function updateTeamLogo(teamId: string, actorUid: string, file: Fil
     if (!members.includes(actorUid)) {
       throw new Error('Only team members can update the logo.');
     }
+
+    if (teamData.ownerUid !== actorUid) {
+      throw new Error('Only the team captain can update the logo.');
+    }
   });
 
   const logoURL = await uploadTeamAsset(teamId, file);
@@ -1047,6 +1051,10 @@ export async function inviteUserToTeam({
 
     if (!members.includes(inviterUid)) {
       throw new Error('Only team members can send invites.');
+    }
+
+    if (teamData.ownerUid !== inviterUid) {
+      throw new Error('Only the team captain can send invites.');
     }
 
     if (members.includes(inviteeUid)) {
@@ -1119,9 +1127,6 @@ export async function cancelTeamInvite({
 
     const inviteData = inviteSnap.data() as Record<string, any>;
     const teamData = teamSnap.data() as Record<string, any>;
-    const actorData = actorSnap.data() as HookdUser;
-
-    ensureProAccess(actorData);
 
     if (inviteData.status !== 'pending') {
       return;
@@ -1193,9 +1198,6 @@ export async function acceptTeamInvite({
     if (inviteData.inviteeUid !== inviteeUid) {
       throw new Error('This invite is assigned to a different angler.');
     }
-
-    const inviteeData = inviteeSnap.data() as HookdUser;
-    ensureProAccess(inviteeData);
 
     const teamData = teamSnap.data() as Record<string, any>;
     const { memberUids, pendingInviteUids } = applyAcceptedMemberToTeamArrays(teamData, inviteeUid);
