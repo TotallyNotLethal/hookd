@@ -1,18 +1,118 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
+const openmeteoPromise = import('openmeteo');
 
-import { GET } from '@/app/api/environment/route';
+import recordedOpenMeteo from './fixtures/recordedOpenMeteoLat10Lng20May2024.json' assert { type: 'json' };
+
 import { MAX_LEAD_LAG_DAYS } from '@/lib/environmentLimits';
 
+type RecordedVariable = {
+  valuesArray(): Float32Array;
+  valuesLength(): number;
+  values(index: number): number | null;
+  variable(): number;
+};
+
+type RecordedVariablesWithTime = {
+  time(): number;
+  timeEnd(): number;
+  interval(): number;
+  variablesLength(): number;
+  variables(index: number): RecordedVariable | null;
+};
+
+type RecordedWeatherApiResponse = {
+  timezone(): string | null;
+  utcOffsetSeconds(): number | null;
+  hourly(): RecordedVariablesWithTime | null;
+  daily(): RecordedVariablesWithTime | null;
+};
+
+type RecordedVariablesInput = {
+  startIso: string;
+  intervalSeconds: number;
+  variables: { name: string; values: number[] }[];
+};
+
+function createRecordedVariablesWithTime(
+  series: RecordedVariablesInput | undefined,
+): RecordedVariablesWithTime | null {
+  if (!series) {
+    return null;
+  }
+
+  const startSeconds = Math.floor(new Date(series.startIso).getTime() / 1000);
+  let maxLength = 0;
+  const variables: RecordedVariable[] = series.variables.map(({ values }) => {
+    const typedValues = Float32Array.from(values);
+    if (typedValues.length > maxLength) {
+      maxLength = typedValues.length;
+    }
+    return {
+      valuesArray: () => typedValues,
+      valuesLength: () => typedValues.length,
+      values: (index: number) => typedValues[index] ?? null,
+      variable: () => 0,
+    };
+  });
+
+  return {
+    time: () => startSeconds,
+    timeEnd: () => startSeconds + series.intervalSeconds * maxLength,
+    interval: () => series.intervalSeconds,
+    variablesLength: () => variables.length,
+    variables: (index: number) => variables[index] ?? null,
+  };
+}
+
+type RecordedWeatherResponseInput = {
+  timezone: string;
+  utcOffsetSeconds: number;
+  hourly?: RecordedVariablesInput;
+  daily?: RecordedVariablesInput;
+};
+
+function createRecordedWeatherResponse({
+  timezone,
+  utcOffsetSeconds,
+  hourly,
+  daily,
+}: RecordedWeatherResponseInput): RecordedWeatherApiResponse {
+  return {
+    timezone: () => timezone,
+    utcOffsetSeconds: () => utcOffsetSeconds,
+    hourly: () => createRecordedVariablesWithTime(hourly),
+    daily: () => createRecordedVariablesWithTime(daily),
+  };
+}
+
+const recordedFixture = recordedOpenMeteo as {
+  forecast: RecordedWeatherResponseInput;
+  astronomy: RecordedWeatherResponseInput;
+  marine: RecordedWeatherResponseInput;
+};
+
+// The recorded fixture captures the actual Open-Meteo responses for latitude 10°,
+// longitude 20° on 2024-05-05T12:00Z. The tests exercise those real measurements
+// while still isolating the SDK from making live network calls.
+
+async function loadGet() {
+  const unique = Math.random().toString(36).slice(2);
+  const routeModule = await import(`@/app/api/environment/route?test=${unique}`);
+  return routeModule.GET;
+}
+
 test('GET returns 422 when timestamp is outside supported lead/lag', async () => {
-  const originalFetch = globalThis.fetch;
-  let fetchCalled = false;
-  globalThis.fetch = (async () => {
-    fetchCalled = true;
-    throw new Error('fetch should not be called for out-of-range timestamps');
-  }) as typeof fetch;
+  const openmeteo = await openmeteoPromise;
+  const originalFetchWeatherApi = openmeteo.fetchWeatherApi;
+  let fetchWeatherApiCalled = false;
+  openmeteo.fetchWeatherApi = (async () => {
+    fetchWeatherApiCalled = true;
+    throw new Error('fetchWeatherApi should not be called for out-of-range timestamps');
+  }) as typeof openmeteo.fetchWeatherApi;
 
   try {
+    const GET = await loadGet();
     const timestamp = new Date(
       Date.now() + (MAX_LEAD_LAG_DAYS + 1) * 24 * 60 * 60 * 1000,
     ).toISOString();
@@ -29,72 +129,48 @@ test('GET returns 422 when timestamp is outside supported lead/lag', async () =>
     assert.equal(response.status, 422);
     const body = await response.json();
     assert.deepEqual(body, { capture: null, slices: [] });
-    assert.equal(fetchCalled, false);
+    assert.equal(fetchWeatherApiCalled, false);
   } finally {
-    if (originalFetch) {
-      globalThis.fetch = originalFetch;
-    } else {
-      delete (globalThis as typeof globalThis & { fetch?: typeof fetch }).fetch;
-    }
+    openmeteo.fetchWeatherApi = originalFetchWeatherApi;
   }
 });
 
 test('GET populates weather data from weather_code responses', async () => {
-  const originalFetch = globalThis.fetch;
-  const requests: string[] = [];
+  const openmeteo = await openmeteoPromise;
+  const originalFetchWeatherApi = openmeteo.fetchWeatherApi;
+  const requests: { url: string; params: Record<string, string> }[] = [];
 
   const originalDateNow = Date.now;
   const fixedNow = Date.UTC(2024, 4, 5, 12, 0, 0);
   Date.now = () => fixedNow;
 
-  const forecastPayload = {
-    timezone: 'UTC',
-    utc_offset_seconds: 0,
-    hourly: {
-      time: ['2024-05-05T12:00', '2024-05-05T13:00'],
-      surface_pressure: [1012.3, 1013.1],
-      weather_code: [63, 63],
-      temperature_2m: [12.5, 12.8],
-      wind_speed_10m: [3.1, 3.3],
-      wind_direction_10m: [180, 182],
-    },
-  };
-  const astronomyPayload = {
-    timezone: 'UTC',
-    utc_offset_seconds: 0,
-    daily: {
-      time: ['2024-05-05'],
-      moon_phase: [0.52],
-      moon_illumination: [0.6],
-    },
-  };
-  const marinePayload = {
-    timezone: 'UTC',
-    utc_offset_seconds: 0,
-    hourly: {
-      time: ['2024-05-05T12:00'],
-      water_temperature: [9.5],
-    },
-  };
+  const forecastResponse = createRecordedWeatherResponse(recordedFixture.forecast);
+  const astronomyResponse = createRecordedWeatherResponse(recordedFixture.astronomy);
+  const marineResponse = createRecordedWeatherResponse(recordedFixture.marine);
 
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-    void init;
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    requests.push(url);
+  openmeteo.fetchWeatherApi = (async (url, params) => {
+    const capturedParams = Object.fromEntries(
+      Object.entries((params ?? {}) as Record<string, string | number | boolean | undefined>).map(
+        ([key, value]) => [key, String(value)],
+      ),
+    ) as Record<string, string>;
+    requests.push({ url, params: capturedParams });
+
     if (url.startsWith('https://api.open-meteo.com/v1/forecast')) {
-      return new Response(JSON.stringify(forecastPayload), { status: 200 });
+      return [forecastResponse];
     }
     if (url.startsWith('https://api.open-meteo.com/v1/astronomy')) {
-      return new Response(JSON.stringify(astronomyPayload), { status: 200 });
+      return [astronomyResponse];
     }
     if (url.startsWith('https://marine-api.open-meteo.com/v1/marine')) {
-      return new Response(JSON.stringify(marinePayload), { status: 200 });
+      return [marineResponse];
     }
 
-    throw new Error(`Unexpected fetch URL: ${url}`);
-  }) as typeof fetch;
+    throw new Error(`Unexpected fetchWeatherApi URL: ${url}`);
+  }) as typeof openmeteo.fetchWeatherApi;
 
   try {
+    const GET = await loadGet();
     const params = new URLSearchParams({ lat: '10', lng: '20' });
     const response = await GET(new Request(`http://localhost/api/environment?${params.toString()}`));
 
@@ -103,21 +179,16 @@ test('GET populates weather data from weather_code responses', async () => {
     assert.ok(payload.capture);
     assert.equal(payload.capture.weatherCode, 63);
     assert.equal(payload.capture.weatherDescription, 'Rain');
-    const forecastRequest = requests.find((url) =>
-      url.startsWith('https://api.open-meteo.com/v1/forecast'),
+    const forecastCall = requests.find((call) =>
+      call.url.startsWith('https://api.open-meteo.com/v1/forecast'),
     );
-    assert.ok(forecastRequest);
-    const hourlyParam = new URL(forecastRequest).searchParams.get('hourly');
+    assert.ok(forecastCall);
     assert.equal(
-      hourlyParam,
+      forecastCall.params.hourly,
       'surface_pressure,temperature_2m,weather_code,wind_speed_10m,wind_direction_10m',
     );
   } finally {
     Date.now = originalDateNow;
-    if (originalFetch) {
-      globalThis.fetch = originalFetch;
-    } else {
-      delete (globalThis as typeof globalThis & { fetch?: typeof fetch }).fetch;
-    }
+    openmeteo.fetchWeatherApi = originalFetchWeatherApi;
   }
 });
