@@ -102,6 +102,51 @@ export default function DirectMessagePage() {
     };
   }, [otherUid]);
 
+  const viewerUid = user?.uid ?? null;
+  const otherUserUid = otherUid ?? null;
+
+  const viewerBlockedOther = useMemo(() => {
+    if (!viewerUid || !otherUserUid) return false;
+    const blocked = Array.isArray(userProfile?.blockedUserIds) ? userProfile.blockedUserIds : [];
+    return blocked.includes(otherUserUid);
+  }, [viewerUid, otherUserUid, userProfile?.blockedUserIds]);
+
+  const viewerBlockedByOther = useMemo(() => {
+    if (!viewerUid || !otherUserUid) return false;
+    const blockedBy = Array.isArray(userProfile?.blockedByUserIds) ? userProfile.blockedByUserIds : [];
+    return blockedBy.includes(otherUserUid);
+  }, [viewerUid, otherUserUid, userProfile?.blockedByUserIds]);
+
+  const otherBlockedViewer = useMemo(() => {
+    if (!viewerUid || !otherUserUid) return false;
+    const blocked = Array.isArray(otherProfile?.blockedUserIds) ? otherProfile.blockedUserIds : [];
+    return blocked.includes(viewerUid);
+  }, [viewerUid, otherUserUid, otherProfile?.blockedUserIds]);
+
+  const otherBlockedByViewer = useMemo(() => {
+    if (!viewerUid || !otherUserUid) return false;
+    const blockedBy = Array.isArray(otherProfile?.blockedByUserIds) ? otherProfile.blockedByUserIds : [];
+    return blockedBy.includes(viewerUid);
+  }, [viewerUid, otherUserUid, otherProfile?.blockedByUserIds]);
+
+  const conversationBlocked = useMemo(
+    () => Boolean(viewerBlockedOther || viewerBlockedByOther || otherBlockedViewer || otherBlockedByViewer),
+    [viewerBlockedOther, viewerBlockedByOther, otherBlockedViewer, otherBlockedByViewer],
+  );
+
+  const mutualBlock = viewerBlockedOther && (viewerBlockedByOther || otherBlockedViewer);
+
+  const blockNotice = useMemo(() => {
+    if (!conversationBlocked) return null;
+    if (mutualBlock) {
+      return 'You and this angler have blocked each other. Unblock them from your profiles to resume chatting.';
+    }
+    if (viewerBlockedOther) {
+      return 'You have blocked this angler. Unblock them from their profile to continue messaging.';
+    }
+    return 'This angler has blocked you. Messaging is disabled.';
+  }, [conversationBlocked, mutualBlock, viewerBlockedOther]);
+
   useEffect(() => {
     if (!user?.uid || !otherUid) {
       setError(null);
@@ -158,50 +203,6 @@ export default function DirectMessagePage() {
 
   const otherDisplayName = deriveDisplayName(otherProfile, 'Angler') ?? 'Angler';
   const otherPhotoURL = derivePhotoURL(otherProfile, null);
-  const viewerUid = user?.uid ?? null;
-  const otherUserUid = otherUid ?? null;
-
-  const viewerBlockedOther = useMemo(() => {
-    if (!viewerUid || !otherUserUid) return false;
-    const blocked = Array.isArray(userProfile?.blockedUserIds) ? userProfile.blockedUserIds : [];
-    return blocked.includes(otherUserUid);
-  }, [viewerUid, otherUserUid, userProfile?.blockedUserIds]);
-
-  const viewerBlockedByOther = useMemo(() => {
-    if (!viewerUid || !otherUserUid) return false;
-    const blockedBy = Array.isArray(userProfile?.blockedByUserIds) ? userProfile.blockedByUserIds : [];
-    return blockedBy.includes(otherUserUid);
-  }, [viewerUid, otherUserUid, userProfile?.blockedByUserIds]);
-
-  const otherBlockedViewer = useMemo(() => {
-    if (!viewerUid || !otherUserUid) return false;
-    const blocked = Array.isArray(otherProfile?.blockedUserIds) ? otherProfile.blockedUserIds : [];
-    return blocked.includes(viewerUid);
-  }, [viewerUid, otherUserUid, otherProfile?.blockedUserIds]);
-
-  const otherBlockedByViewer = useMemo(() => {
-    if (!viewerUid || !otherUserUid) return false;
-    const blockedBy = Array.isArray(otherProfile?.blockedByUserIds) ? otherProfile.blockedByUserIds : [];
-    return blockedBy.includes(viewerUid);
-  }, [viewerUid, otherUserUid, otherProfile?.blockedByUserIds]);
-
-  const conversationBlocked = useMemo(
-    () => Boolean(viewerBlockedOther || viewerBlockedByOther || otherBlockedViewer || otherBlockedByViewer),
-    [viewerBlockedOther, viewerBlockedByOther, otherBlockedViewer, otherBlockedByViewer],
-  );
-
-  const mutualBlock = viewerBlockedOther && (viewerBlockedByOther || otherBlockedViewer);
-
-  const blockNotice = useMemo(() => {
-    if (!conversationBlocked) return null;
-    if (mutualBlock) {
-      return 'You and this angler have blocked each other. Unblock them from your profiles to resume chatting.';
-    }
-    if (viewerBlockedOther) {
-      return 'You have blocked this angler. Unblock them from their profile to continue messaging.';
-    }
-    return 'This angler has blocked you. Messaging is disabled.';
-  }, [conversationBlocked, mutualBlock, viewerBlockedOther]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
