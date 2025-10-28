@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer, Circle, CircleMarker, useMap } from "react-leaflet";
 import L from "leaflet";
 import { useRouter } from "next/navigation";
+import clsx from "clsx";
 import { fishingSpots } from "@/lib/fishingSpots";
 import { subscribeToCatchesWithCoordinates, type CatchWithCoordinates } from "@/lib/firestore";
 import {
@@ -15,6 +16,13 @@ import {
 import { Check, MapPin, ShieldAlert } from "lucide-react";
 
 const DEFAULT_POSITION: [number, number] = [40.7989, -81.3784];
+
+type FishingMapProps = {
+  allowedUids?: string[];
+  includeReferenceSpots?: boolean;
+  className?: string;
+  showRegulationsToggle?: boolean;
+};
 
 const icon = new L.Icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -39,13 +47,24 @@ function MapRelocator({ position }: { position: [number, number] }) {
   return null;
 }
 
-export default function FishingMap() {
+export default function FishingMap({
+  allowedUids,
+  includeReferenceSpots = true,
+  className,
+  showRegulationsToggle = true,
+}: FishingMapProps) {
   const router = useRouter();
   const [userPosition, setUserPosition] = useState<[number, number]>(DEFAULT_POSITION);
   const [catchDocuments, setCatchDocuments] = useState<CatchWithCoordinates[]>([]);
-  const [speciesFilters, setSpeciesFilters] = useState<SpeciesFilters>(() =>
-    buildSpeciesFilters(aggregateSpots(fishingSpots, [])),
+  const baseSpots = useMemo(
+    () => (includeReferenceSpots ? fishingSpots : [] as typeof fishingSpots),
+    [includeReferenceSpots],
   );
+  const initialSpeciesFilters = useMemo(
+    () => buildSpeciesFilters(aggregateSpots(baseSpots, [])),
+    [baseSpots],
+  );
+  const [speciesFilters, setSpeciesFilters] = useState<SpeciesFilters>(initialSpeciesFilters);
   const defer = useCallback((fn: () => void) => {
     if (typeof queueMicrotask === "function") {
       queueMicrotask(fn);
@@ -53,7 +72,16 @@ export default function FishingMap() {
       Promise.resolve().then(fn);
     }
   }, []);
-  const [showRegulations, setShowRegulations] = useState(true);
+  const allowRegulationOverlay = includeReferenceSpots && showRegulationsToggle;
+  const [showRegulations, setShowRegulations] = useState(allowRegulationOverlay);
+
+  useEffect(() => {
+    setSpeciesFilters(initialSpeciesFilters);
+  }, [initialSpeciesFilters]);
+
+  useEffect(() => {
+    setShowRegulations(allowRegulationOverlay);
+  }, [allowRegulationOverlay]);
 
   useEffect(() => {
     if (!navigator.geolocation) return;
@@ -69,15 +97,18 @@ export default function FishingMap() {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = subscribeToCatchesWithCoordinates((catches) => {
-      setCatchDocuments(catches);
-    });
+    const unsubscribe = subscribeToCatchesWithCoordinates(
+      (catches) => {
+        setCatchDocuments(catches);
+      },
+      { allowedUids },
+    );
     return () => unsubscribe();
-  }, []);
+  }, [allowedUids]);
 
   const aggregatedSpots = useMemo(
-    () => aggregateSpots(fishingSpots, catchDocuments),
-    [catchDocuments],
+    () => aggregateSpots(baseSpots, catchDocuments),
+    [baseSpots, catchDocuments],
   );
 
   useEffect(() => {
@@ -125,7 +156,7 @@ export default function FishingMap() {
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+    <div className={clsx("grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]", className)}>
       <div className="overflow-hidden rounded-3xl border border-white/10">
         <MapContainer
           center={userPosition}
@@ -206,7 +237,7 @@ export default function FishingMap() {
               </Fragment>
             );
           })}
-          {showRegulations && (
+          {showRegulations && allowRegulationOverlay && (
             <>
               {filteredSpots
                 .filter((spot) => spot.fromStatic)
@@ -250,21 +281,23 @@ export default function FishingMap() {
           </div>
         </div>
 
-        <div>
-          <label className="flex items-center gap-2 text-sm text-white/80">
-            <input
-              type="checkbox"
-              className="h-4 w-4 rounded border-white/30 bg-white/10"
-              checked={showRegulations}
-              onChange={(event) => setShowRegulations(event.target.checked)}
-            />
-            Show public access & regulation overlay
-          </label>
-          <p className="mt-2 flex items-center gap-2 text-xs text-white/60">
-            <ShieldAlert className="h-4 w-4 text-brand-200" />
-            Blue halos indicate water with known access rules and bag limits.
-          </p>
-        </div>
+        {allowRegulationOverlay ? (
+          <div>
+            <label className="flex items-center gap-2 text-sm text-white/80">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-white/30 bg-white/10"
+                checked={showRegulations}
+                onChange={(event) => setShowRegulations(event.target.checked)}
+              />
+              Show public access & regulation overlay
+            </label>
+            <p className="mt-2 flex items-center gap-2 text-xs text-white/60">
+              <ShieldAlert className="h-4 w-4 text-brand-200" />
+              Blue halos indicate water with known access rules and bag limits.
+            </p>
+          </div>
+        ) : null}
 
         <div>
           <h3 className="text-lg font-semibold text-white">Nearby waters</h3>
