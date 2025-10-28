@@ -22,7 +22,7 @@ import {
   PROFILE_LAYOUT_OPTIONS,
   coerceProfileTheme,
 } from '@/lib/profileThemeOptions';
-import { LIL_ANGLER_BADGE, sanitizeUserBadges, type ProfileTheme } from '@/lib/firestore';
+import { LIL_ANGLER_BADGE, sanitizeUserBadges, type ProfileTheme, type Team } from '@/lib/firestore';
 import type { EnvironmentSnapshot } from '@/lib/environmentTypes';
 import { SEASON_LABELS, type SeasonKey, type UserTackleStats } from '@/lib/tackleBox';
 
@@ -125,6 +125,7 @@ type ProfileViewProps = {
   onCatchSelect?: (catchItem: Catch) => void;
   catchSummary?: CatchSummary;
   tackleStats?: UserTackleStats | null;
+  teams?: Team[] | null;
 };
 
 export default function ProfileView({
@@ -139,6 +140,7 @@ export default function ProfileView({
   onCatchSelect,
   catchSummary,
   tackleStats,
+  teams = [],
 }: ProfileViewProps) {
   const trophyCatches = useMemo(() => catches.filter((catchItem) => catchItem.trophy), [catches]);
   const standardCatches = useMemo(() => catches.filter((catchItem) => !catchItem.trophy), [catches]);
@@ -157,6 +159,10 @@ export default function ProfileView({
     return profile?.isTester ? `@hookd_${username}` : `@${username}`;
   }, [profile?.isTester, username]);
   const isProMember = useMemo(() => Boolean(profile?.isPro), [profile?.isPro]);
+  const teamAffiliations = useMemo(
+    () => teams.filter((team) => Boolean(team?.id && team?.name)),
+    [teams],
+  );
   const badgeItems = useMemo<BadgeItem[]>(() => {
     const items: BadgeItem[] = [];
     const seen = new Set<string>();
@@ -381,6 +387,19 @@ export default function ProfileView({
                   <span className="font-medium">{followerCount}</span> followers •{' '}
                   <span className="font-medium">{followingCount}</span> following
                 </p>
+                {teamAffiliations.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-white/60">
+                    <span className="uppercase tracking-[0.2em] text-white/40">Teams</span>
+                    {teamAffiliations.map((team) => (
+                      <span
+                        key={team.id}
+                        className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/70"
+                      >
+                        {team.name}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
               </div>
               <div className="flex items-center gap-2 sm:ml-auto">
                 {!isOwner && onToggleFollow && (

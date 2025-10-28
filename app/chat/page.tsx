@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useAuthState } from 'react-firebase-hooks/auth';
-import { Loader2, MessageCircle, MessageSquare, MessageSquarePlus, X } from 'lucide-react';
+import { Loader2, MessageCircle, MessageSquare, MessageSquarePlus, Users, X } from 'lucide-react';
 
 import NavBar from '@/components/NavBar';
 import DirectMessageThreadsList from '@/components/direct-messages/DirectMessageThreadsList';
@@ -13,9 +13,11 @@ import { auth } from '@/lib/firebaseClient';
 import {
   ChatMessage,
   ChatPresence,
+  Team,
   sendChatMessage,
   subscribeToChatMessages,
   subscribeToChatPresence,
+  subscribeToTeamsForUser,
   subscribeToUser,
   updateChatPresence,
 } from '@/lib/firestore';
@@ -38,6 +40,7 @@ export default function ChatPage() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [presenceCount, setPresenceCount] = useState<number | null>(null);
   const [isDmModalOpen, setIsDmModalOpen] = useState(false);
+  const [teams, setTeams] = useState<Team[]>([]);
   const endRef = useRef<HTMLDivElement | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -120,6 +123,19 @@ export default function ChatPage() {
     };
   }, [user?.uid]);
 
+  useEffect(() => {
+    if (!user?.uid) {
+      setTeams([]);
+      return;
+    }
+
+    const unsubscribe = subscribeToTeamsForUser(user.uid, (next) => {
+      setTeams(next);
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid]);
+
   const formattedMessages = useMemo(() => {
     const formatter = new Intl.DateTimeFormat(undefined, {
       month: 'short',
@@ -193,6 +209,26 @@ export default function ChatPage() {
               so you&apos;re always in the loop.
             </p>
           </header>
+
+          {teams.length > 0 ? (
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-white/80">
+              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-white/50">
+                <Users className="h-4 w-4" />
+                <span>Your team channels</span>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {teams.map((team) => (
+                  <Link
+                    key={team.id}
+                    href={`/teams/${team.id}/chat`}
+                    className="inline-flex items-center gap-2 rounded-full border border-white/15 px-3 py-1.5 text-sm text-white/80 transition hover:border-brand-300 hover:text-brand-200"
+                  >
+                    <span>{team.name}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="glass border border-white/10 rounded-3xl p-0 overflow-hidden shadow-2xl shadow-slate-950/50">
             <div className="flex flex-col gap-4 border-b border-white/10 bg-white/5 px-6 py-4 md:flex-row md:items-center md:justify-between">

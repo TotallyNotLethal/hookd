@@ -7,8 +7,10 @@ import { app } from "@/lib/firebaseClient";
 import {
   subscribeToUser,
   subscribeToUserCatches,
+  subscribeToTeamsForUser,
   updateUserProfile,
   uploadProfileAsset,
+  type Team,
 } from "@/lib/firestore";
 import { subscribeToUserTackleStats, type UserTackleStats } from "@/lib/tackleBox";
 import { USERNAME_MIN_LENGTH, validateAndNormalizeUsername } from "@/lib/username";
@@ -625,6 +627,7 @@ export default function Page() {
   const [profile, setProfile] = useState<OwnedProfile | null>(null);
   const [catches, setCatches] = useState<UserCatch[]>([]);
   const [tackleStats, setTackleStats] = useState<UserTackleStats | null>(null);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [editing, setEditing] = useState(false);
   const [activeCatch, setActiveCatch] = useState<UserCatch | null>(null);
   const [isLogbookModalOpen, setIsLogbookModalOpen] = useState(false);
@@ -637,6 +640,7 @@ export default function Page() {
     let unsubscribeProfile: (() => void) | undefined;
     let unsubscribeCatches: (() => void) | undefined;
     let unsubscribeTackle: (() => void) | undefined;
+    let unsubscribeTeams: (() => void) | undefined;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       unsubscribeProfile?.();
@@ -670,11 +674,15 @@ export default function Page() {
         unsubscribeTackle = subscribeToUserTackleStats(user.uid, (stats) => {
           setTackleStats(stats);
         });
+        unsubscribeTeams = subscribeToTeamsForUser(user.uid, (items) => {
+          setTeams(items);
+        });
       } else {
         setProfile(null);
         setCatches([]);
         setActiveCatch(null);
         setTackleStats(null);
+        setTeams([]);
       }
     });
 
@@ -682,6 +690,7 @@ export default function Page() {
       unsubscribeProfile?.();
       unsubscribeCatches?.();
       unsubscribeTackle?.();
+      unsubscribeTeams?.();
       unsubscribeAuth();
     };
   }, []);
@@ -712,6 +721,7 @@ export default function Page() {
           onCatchSelect={(catchItem) => setActiveCatch(catchItem)}
           catchSummary={catchSummary}
           tackleStats={tackleStats}
+          teams={teams}
         />
       </section>
 

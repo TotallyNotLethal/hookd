@@ -41,6 +41,33 @@ export async function uploadProfileAsset(uid: string, file: File, type: ProfileA
   return url;
 }
 
+export const TEAM_LOGO_ALLOWED_TYPES = new Set<string>([
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+  "image/gif",
+]);
+
+export const TEAM_LOGO_MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
+
+const TEAM_ASSET_PATH = (teamId: string) => `team-logos/${teamId}`;
+
+export async function uploadTeamAsset(teamId: string, file: File) {
+  if (!TEAM_LOGO_ALLOWED_TYPES.has(file.type)) {
+    throw new Error("Please choose a PNG, JPG, GIF, or WebP image for the team logo.");
+  }
+
+  if (file.size > TEAM_LOGO_MAX_FILE_SIZE_BYTES) {
+    throw new Error("Team logos must be 5MB or smaller.");
+  }
+
+  const storageRef = ref(storage, TEAM_ASSET_PATH(teamId));
+  await uploadBytes(storageRef, file, { contentType: file.type });
+  const url = await getDownloadURL(storageRef);
+  return url;
+}
+
 /** ---------- Types ---------- */
 export type HookdUser = {
   uid: string;
@@ -170,6 +197,156 @@ export type DirectMessageThread = {
   lastSenderUid?: string | null;
   participantProfiles?: Record<string, DirectMessageParticipantProfile> | null;
 };
+
+export type Team = {
+  id: string;
+  name: string;
+  ownerUid: string;
+  memberUids: string[];
+  pendingInviteUids: string[];
+  logoURL?: string | null;
+  chatChannelId: string;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+};
+
+export type TeamInviteStatus = "pending" | "accepted" | "canceled";
+
+export type TeamInvite = {
+  id: string;
+  teamId: string;
+  inviteeUid: string;
+  inviterUid: string;
+  inviteeUsername: string;
+  status: TeamInviteStatus;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+};
+
+export type TeamChatMessage = {
+  id: string;
+  teamId: string;
+  text: string;
+  uid: string;
+  displayName: string;
+  photoURL?: string | null;
+  createdAt: Date | null;
+};
+
+type TeamArrays = {
+  memberUids?: unknown;
+  pendingInviteUids?: unknown;
+};
+
+export const TEAM_NAME_MIN_LENGTH = 3;
+
+export function normalizeTeamName(name: string): string {
+  if (typeof name !== "string") {
+    throw new Error("Please provide a team name.");
+  }
+
+  const trimmed = name.trim();
+  if (trimmed.length < TEAM_NAME_MIN_LENGTH) {
+    throw new Error(`Team names must be at least ${TEAM_NAME_MIN_LENGTH} characters long.`);
+  }
+
+  return trimmed;
+}
+
+export function ensureProAccess(user: Pick<HookdUser, "isPro" | "uid"> | null | undefined) {
+  if (!user?.isPro) {
+    throw new Error("Teams are available for Pro members only.");
+  }
+}
+
+export function addPendingInviteToTeamArrays(team: TeamArrays, inviteeUid: string): string[] {
+  const pending = new Set<string>(
+    Array.isArray(team.pendingInviteUids) ? team.pendingInviteUids.filter((item): item is string => typeof item === "string") : [],
+  );
+  pending.add(inviteeUid);
+  return Array.from(pending);
+}
+
+export function applyAcceptedMemberToTeamArrays(team: TeamArrays, memberUid: string): {
+  memberUids: string[];
+  pendingInviteUids: string[];
+} {
+  const memberSet = new Set<string>(
+    Array.isArray(team.memberUids) ? team.memberUids.filter((item): item is string => typeof item === "string") : [],
+  );
+  memberSet.add(memberUid);
+
+  const pendingSet = new Set<string>(
+    Array.isArray(team.pendingInviteUids) ? team.pendingInviteUids.filter((item): item is string => typeof item === "string") : [],
+  );
+  pendingSet.delete(memberUid);
+
+  return {
+    memberUids: Array.from(memberSet),
+    pendingInviteUids: Array.from(pendingSet),
+  };
+}
+
+function deserializeTeam(docId: string, data: Record<string, any>): Team {
+  const createdAt = data.createdAt instanceof Timestamp
+    ? data.createdAt.toDate()
+    : data.createdAt && typeof data.createdAt.toDate === "function"
+      ? data.createdAt.toDate()
+      : null;
+
+  const updatedAt = data.updatedAt instanceof Timestamp
+    ? data.updatedAt.toDate()
+    : data.updatedAt && typeof data.updatedAt.toDate === "function"
+      ? data.updatedAt.toDate()
+      : null;
+
+  return {
+    id: docId,
+    name: typeof data.name === "string" ? data.name : "Team",
+    ownerUid: typeof data.ownerUid === "string" ? data.ownerUid : "",
+    memberUids: Array.isArray(data.memberUids)
+      ? data.memberUids.filter((value): value is string => typeof value === "string")
+      : [],
+    pendingInviteUids: Array.isArray(data.pendingInviteUids)
+      ? data.pendingInviteUids.filter((value): value is string => typeof value === "string")
+      : [],
+    logoURL: typeof data.logoURL === "string" ? data.logoURL : data.logoURL ?? null,
+    chatChannelId: typeof data.chatChannelId === "string" && data.chatChannelId
+      ? data.chatChannelId
+      : docId,
+    createdAt,
+    updatedAt,
+  };
+}
+
+function deserializeTeamInvite(docId: string, data: Record<string, any>): TeamInvite {
+  const createdAt = data.createdAt instanceof Timestamp
+    ? data.createdAt.toDate()
+    : data.createdAt && typeof data.createdAt.toDate === "function"
+      ? data.createdAt.toDate()
+      : null;
+
+  const updatedAt = data.updatedAt instanceof Timestamp
+    ? data.updatedAt.toDate()
+    : data.updatedAt && typeof data.updatedAt.toDate === "function"
+      ? data.updatedAt.toDate()
+      : null;
+
+  const status: TeamInviteStatus = data.status === "accepted" || data.status === "canceled"
+    ? data.status
+    : "pending";
+
+  return {
+    id: docId,
+    teamId: typeof data.teamId === "string" ? data.teamId : "",
+    inviteeUid: typeof data.inviteeUid === "string" ? data.inviteeUid : "",
+    inviterUid: typeof data.inviterUid === "string" ? data.inviterUid : "",
+    inviteeUsername: typeof data.inviteeUsername === "string" ? data.inviteeUsername : "",
+    status,
+    createdAt,
+    updatedAt,
+  };
+}
 
 export type CatchTackleInput = {
   lureType?: string | null;
@@ -728,6 +905,445 @@ export function subscribeToUserCatches(uid: string, cb: (arr: any[]) => void) {
     const arr: any[] = [];
     snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
     cb(arr);
+  });
+}
+
+/** ---------- Teams ---------- */
+export async function createTeam({
+  ownerUid,
+  name,
+  logoFile,
+}: {
+  ownerUid: string;
+  name: string;
+  logoFile?: File | null;
+}): Promise<Team> {
+  const trimmedName = normalizeTeamName(name);
+  const teamRef = doc(collection(db, 'teams'));
+
+  await runTransaction(db, async (tx) => {
+    const ownerRef = doc(db, 'users', ownerUid);
+    const ownerSnap = await tx.get(ownerRef);
+
+    if (!ownerSnap.exists()) {
+      throw new Error('We could not find your profile.');
+    }
+
+    const ownerData = ownerSnap.data() as HookdUser;
+    ensureProAccess(ownerData);
+
+    tx.set(teamRef, {
+      name: trimmedName,
+      ownerUid,
+      memberUids: [ownerUid],
+      pendingInviteUids: [],
+      logoURL: null,
+      chatChannelId: teamRef.id,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+  });
+
+  if (logoFile) {
+    const logoURL = await uploadTeamAsset(teamRef.id, logoFile);
+    await updateDoc(teamRef, {
+      logoURL,
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  const finalSnap = await getDoc(teamRef);
+  if (!finalSnap.exists()) {
+    throw new Error('Failed to create the team. Please try again.');
+  }
+
+  return deserializeTeam(teamRef.id, finalSnap.data() as Record<string, any>);
+}
+
+export async function updateTeamLogo(teamId: string, actorUid: string, file: File) {
+  const teamRef = doc(db, 'teams', teamId);
+  const actorRef = doc(db, 'users', actorUid);
+
+  await runTransaction(db, async (tx) => {
+    const [teamSnap, actorSnap] = await Promise.all([
+      tx.get(teamRef),
+      tx.get(actorRef),
+    ]);
+
+    if (!teamSnap.exists()) {
+      throw new Error('Team not found.');
+    }
+
+    if (!actorSnap.exists()) {
+      throw new Error('We could not verify your account.');
+    }
+
+    const teamData = teamSnap.data() as Record<string, any>;
+    const actorData = actorSnap.data() as HookdUser;
+
+    ensureProAccess(actorData);
+
+    const members = Array.isArray(teamData.memberUids) ? teamData.memberUids : [];
+    if (!members.includes(actorUid)) {
+      throw new Error('Only team members can update the logo.');
+    }
+  });
+
+  const logoURL = await uploadTeamAsset(teamId, file);
+  await updateDoc(teamRef, {
+    logoURL,
+    updatedAt: serverTimestamp(),
+  });
+
+  return logoURL;
+}
+
+export async function inviteUserToTeam({
+  teamId,
+  inviterUid,
+  inviteeUsername,
+}: {
+  teamId: string;
+  inviterUid: string;
+  inviteeUsername: string;
+}): Promise<TeamInvite> {
+  const normalizedUsername = validateAndNormalizeUsername(inviteeUsername);
+  const userQuery = query(collection(db, 'users'), where('username', '==', normalizedUsername), limit(1));
+  const inviteeSnap = await getDocs(userQuery);
+
+  if (inviteeSnap.empty) {
+    throw new Error('We could not find an angler with that username.');
+  }
+
+  const inviteeDoc = inviteeSnap.docs[0];
+  const inviteeUid = inviteeDoc.id;
+  const inviteRef = doc(db, 'teamInvites', `${teamId}__${inviteeUid}`);
+  const teamRef = doc(db, 'teams', teamId);
+  const inviterRef = doc(db, 'users', inviterUid);
+
+  await runTransaction(db, async (tx) => {
+    const [teamSnap, inviterSnap, inviteSnap] = await Promise.all([
+      tx.get(teamRef),
+      tx.get(inviterRef),
+      tx.get(inviteRef),
+    ]);
+
+    if (!teamSnap.exists()) {
+      throw new Error('Team not found.');
+    }
+
+    if (!inviterSnap.exists()) {
+      throw new Error('We could not verify your account.');
+    }
+
+    const teamData = teamSnap.data() as Record<string, any>;
+    const inviterData = inviterSnap.data() as HookdUser;
+
+    ensureProAccess(inviterData);
+
+    const members = Array.isArray(teamData.memberUids)
+      ? teamData.memberUids.filter((value): value is string => typeof value === 'string')
+      : [];
+
+    if (!members.includes(inviterUid)) {
+      throw new Error('Only team members can send invites.');
+    }
+
+    if (members.includes(inviteeUid)) {
+      throw new Error('That angler is already on your team.');
+    }
+
+    const existingInvite = inviteSnap.exists() ? inviteSnap.data() as Record<string, any> : null;
+    if (existingInvite?.status === 'pending') {
+      throw new Error('That angler already has a pending invite.');
+    }
+
+    const pendingInviteUids = addPendingInviteToTeamArrays(teamData, inviteeUid);
+    const now = serverTimestamp();
+
+    tx.set(inviteRef, {
+      teamId,
+      inviteeUid,
+      inviterUid,
+      inviteeUsername: normalizedUsername,
+      status: 'pending',
+      createdAt: existingInvite?.createdAt ?? now,
+      updatedAt: now,
+    });
+
+    tx.update(teamRef, {
+      pendingInviteUids,
+      updatedAt: now,
+    });
+  });
+
+  const finalSnap = await getDoc(inviteRef);
+  if (!finalSnap.exists()) {
+    throw new Error('Failed to create the invite. Please try again.');
+  }
+
+  return deserializeTeamInvite(finalSnap.id, finalSnap.data() as Record<string, any>);
+}
+
+export async function cancelTeamInvite({
+  teamId,
+  inviteeUid,
+  actorUid,
+}: {
+  teamId: string;
+  inviteeUid: string;
+  actorUid: string;
+}): Promise<void> {
+  const inviteRef = doc(db, 'teamInvites', `${teamId}__${inviteeUid}`);
+  const teamRef = doc(db, 'teams', teamId);
+  const actorRef = doc(db, 'users', actorUid);
+
+  await runTransaction(db, async (tx) => {
+    const [inviteSnap, teamSnap, actorSnap] = await Promise.all([
+      tx.get(inviteRef),
+      tx.get(teamRef),
+      tx.get(actorRef),
+    ]);
+
+    if (!inviteSnap.exists()) {
+      throw new Error('Invite not found.');
+    }
+
+    if (!teamSnap.exists()) {
+      throw new Error('Team not found.');
+    }
+
+    if (!actorSnap.exists()) {
+      throw new Error('We could not verify your account.');
+    }
+
+    const inviteData = inviteSnap.data() as Record<string, any>;
+    const teamData = teamSnap.data() as Record<string, any>;
+    const actorData = actorSnap.data() as HookdUser;
+
+    ensureProAccess(actorData);
+
+    if (inviteData.status !== 'pending') {
+      return;
+    }
+
+    const isOwner = teamData.ownerUid === actorUid;
+    const isInviter = inviteData.inviterUid === actorUid;
+    const isInvitee = inviteData.inviteeUid === actorUid;
+    if (!isOwner && !isInviter && !isInvitee) {
+      throw new Error('You cannot cancel this invite.');
+    }
+
+    const pendingInviteUids = new Set<string>(
+      Array.isArray(teamData.pendingInviteUids)
+        ? teamData.pendingInviteUids.filter((value): value is string => typeof value === 'string')
+        : [],
+    );
+    pendingInviteUids.delete(inviteeUid);
+
+    const now = serverTimestamp();
+
+    tx.update(inviteRef, {
+      status: 'canceled',
+      updatedAt: now,
+    });
+
+    tx.update(teamRef, {
+      pendingInviteUids: Array.from(pendingInviteUids),
+      updatedAt: now,
+    });
+  });
+}
+
+export async function acceptTeamInvite({
+  teamId,
+  inviteeUid,
+}: {
+  teamId: string;
+  inviteeUid: string;
+}): Promise<void> {
+  const inviteRef = doc(db, 'teamInvites', `${teamId}__${inviteeUid}`);
+  const teamRef = doc(db, 'teams', teamId);
+  const inviteeRef = doc(db, 'users', inviteeUid);
+
+  await runTransaction(db, async (tx) => {
+    const [inviteSnap, teamSnap, inviteeSnap] = await Promise.all([
+      tx.get(inviteRef),
+      tx.get(teamRef),
+      tx.get(inviteeRef),
+    ]);
+
+    if (!inviteSnap.exists()) {
+      throw new Error('Invite not found.');
+    }
+
+    if (!teamSnap.exists()) {
+      throw new Error('Team not found.');
+    }
+
+    if (!inviteeSnap.exists()) {
+      throw new Error('We could not verify your account.');
+    }
+
+    const inviteData = inviteSnap.data() as Record<string, any>;
+    if (inviteData.status !== 'pending') {
+      throw new Error('This invite is no longer active.');
+    }
+
+    if (inviteData.inviteeUid !== inviteeUid) {
+      throw new Error('This invite is assigned to a different angler.');
+    }
+
+    const inviteeData = inviteeSnap.data() as HookdUser;
+    ensureProAccess(inviteeData);
+
+    const teamData = teamSnap.data() as Record<string, any>;
+    const { memberUids, pendingInviteUids } = applyAcceptedMemberToTeamArrays(teamData, inviteeUid);
+    const now = serverTimestamp();
+
+    tx.update(teamRef, {
+      memberUids,
+      pendingInviteUids,
+      updatedAt: now,
+    });
+
+    tx.update(inviteRef, {
+      status: 'accepted',
+      updatedAt: now,
+    });
+  });
+}
+
+export function subscribeToTeamsForUser(uid: string, cb: (teams: Team[]) => void) {
+  const q = query(collection(db, 'teams'), where('memberUids', 'array-contains', uid));
+  return onSnapshot(q, (snap) => {
+    const teams: Team[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as Record<string, any>;
+      teams.push(deserializeTeam(docSnap.id, data));
+    });
+    teams.sort((a, b) => (b.updatedAt?.getTime() ?? 0) - (a.updatedAt?.getTime() ?? 0));
+    cb(teams);
+  });
+}
+
+export function subscribeToTeam(teamId: string, cb: (team: Team | null) => void) {
+  const ref = doc(db, 'teams', teamId);
+  return onSnapshot(ref, (snap) => {
+    if (!snap.exists()) {
+      cb(null);
+      return;
+    }
+    cb(deserializeTeam(snap.id, snap.data() as Record<string, any>));
+  });
+}
+
+export function subscribeToTeamInvitesForUser(uid: string, cb: (invites: TeamInvite[]) => void) {
+  const q = query(
+    collection(db, 'teamInvites'),
+    where('inviteeUid', '==', uid),
+    where('status', '==', 'pending'),
+  );
+
+  return onSnapshot(q, (snap) => {
+    const invites: TeamInvite[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as Record<string, any>;
+      invites.push(deserializeTeamInvite(docSnap.id, data));
+    });
+    invites.sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
+    cb(invites);
+  });
+}
+
+export function subscribeToTeamInvites(teamId: string, cb: (invites: TeamInvite[]) => void) {
+  const q = query(
+    collection(db, 'teamInvites'),
+    where('teamId', '==', teamId),
+    where('status', '==', 'pending'),
+  );
+
+  return onSnapshot(q, (snap) => {
+    const invites: TeamInvite[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as Record<string, any>;
+      invites.push(deserializeTeamInvite(docSnap.id, data));
+    });
+    invites.sort((a, b) => (a.inviteeUsername ?? '').localeCompare(b.inviteeUsername ?? ''));
+    cb(invites);
+  });
+}
+
+export function subscribeToTeamChatMessages(
+  teamId: string,
+  cb: (messages: TeamChatMessage[]) => void,
+  options: { limit?: number; onError?: (error: Error) => void } = {},
+) {
+  const { limit: limitCount = 150, onError } = options;
+  const messagesRef = collection(db, 'teamChats', teamId, 'messages');
+  const q = query(messagesRef, orderBy('createdAt', 'desc'), limit(limitCount));
+
+  return onSnapshot(q, (snap) => {
+    const items: TeamChatMessage[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as Record<string, any>;
+      const createdAt = data.createdAt instanceof Timestamp
+        ? data.createdAt.toDate()
+        : data.createdAt && typeof data.createdAt.toDate === 'function'
+          ? data.createdAt.toDate()
+          : null;
+
+      items.push({
+        id: docSnap.id,
+        teamId,
+        text: typeof data.text === 'string' ? data.text : '',
+        uid: typeof data.uid === 'string' ? data.uid : '',
+        displayName: typeof data.displayName === 'string' ? data.displayName : 'Angler',
+        photoURL: data.photoURL ?? null,
+        createdAt,
+      });
+    });
+
+    items.sort((a, b) => (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0));
+    cb(items);
+  }, (error) => {
+    console.error('Failed to subscribe to team chat messages', error);
+    if (onError) onError(error);
+  });
+}
+
+export async function sendTeamChatMessage(teamId: string, data: {
+  uid: string;
+  displayName: string;
+  text: string;
+  photoURL?: string | null;
+}) {
+  const trimmed = data.text.trim();
+  if (!trimmed) {
+    throw new Error('Message cannot be empty');
+  }
+
+  const teamRef = doc(db, 'teams', teamId);
+  const teamSnap = await getDoc(teamRef);
+  if (!teamSnap.exists()) {
+    throw new Error('Team not found.');
+  }
+
+  const teamData = teamSnap.data() as Record<string, any>;
+  const members = Array.isArray(teamData.memberUids)
+    ? teamData.memberUids.filter((value): value is string => typeof value === 'string')
+    : [];
+
+  if (!members.includes(data.uid)) {
+    throw new Error('Only team members can post in this channel.');
+  }
+
+  await addDoc(collection(db, 'teamChats', teamId, 'messages'), {
+    uid: data.uid,
+    displayName: data.displayName,
+    text: trimmed.slice(0, 2000),
+    photoURL: data.photoURL ?? null,
+    createdAt: serverTimestamp(),
   });
 }
 
