@@ -9,6 +9,7 @@ import {
   Loader2,
   MailPlus,
   ShieldCheck,
+  Trophy,
   Upload,
   Users,
   XCircle,
@@ -22,6 +23,7 @@ import {
   acceptTeamInvite,
   cancelTeamInvite,
   createTeam,
+  fetchTopTeams,
   inviteUserToTeam,
   subscribeToTeam,
   subscribeToTeamInvites,
@@ -88,6 +90,9 @@ export default function TeamsPage() {
   const [inviteForms, setInviteForms] = useState<Record<string, InviteFormState>>({});
   const [respondingInvite, setRespondingInvite] = useState<string | null>(null);
   const [respondError, setRespondError] = useState<string | null>(null);
+  const [leaderboardTeams, setLeaderboardTeams] = useState<Team[]>([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(true);
+  const [leaderboardError, setLeaderboardError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user?.uid) {
@@ -175,6 +180,36 @@ export default function TeamsPage() {
       subscriptions.forEach((fn) => fn());
     };
   }, [incomingInvites]);
+
+  useEffect(() => {
+    let active = true;
+    setLeaderboardLoading(true);
+
+    fetchTopTeams(6)
+      .then((items) => {
+        if (!active) return;
+        setLeaderboardTeams(items);
+        setLeaderboardError(null);
+      })
+      .catch((error: any) => {
+        if (!active) return;
+        setLeaderboardTeams([]);
+        setLeaderboardError(error?.message ?? 'Unable to load top teams.');
+      })
+      .finally(() => {
+        if (active) {
+          setLeaderboardLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const activeTeamIds = useMemo(() => new Set(teams.map((team) => team.id)), [teams]);
+  const hasTeam = teams.length > 0;
+  const primaryTeam = hasTeam ? teams[0] : null;
 
   const trackedUserIds = useMemo(() => {
     const ids = new Set<string>();
@@ -447,6 +482,53 @@ export default function TeamsPage() {
           </p>
         </header>
 
+        <section className="mb-12">
+          <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-white/60">
+            <Trophy className="h-4 w-4" />
+            <span>Teams leaderboard</span>
+          </div>
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+            {leaderboardLoading ? (
+              <div className="flex items-center gap-3 text-white/70">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <span>Loading top crews…</span>
+              </div>
+            ) : leaderboardError ? (
+              <p className="text-sm text-rose-300">{leaderboardError}</p>
+            ) : leaderboardTeams.length === 0 ? (
+              <p className="text-sm text-white/70">
+                Teams will appear here once anglers start forming their crews.
+              </p>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {leaderboardTeams.map((team, index) => {
+                  const count = team.memberCount ?? team.memberUids.length;
+                  const label = count === 1 ? 'angler' : 'anglers';
+                  return (
+                    <article
+                      key={team.id}
+                      className="flex flex-col gap-2 rounded-2xl border border-white/10 bg-slate-950/70 p-4 transition hover:border-brand-300/40 hover:bg-slate-900/70"
+                    >
+                      <div className="flex items-center justify-between text-xs text-white/50">
+                        <span>#{index + 1}</span>
+                        <span>
+                          {count} {label}
+                        </span>
+                      </div>
+                      <Link
+                        href={`/teams/${team.id}`}
+                        className="text-lg font-semibold text-white transition hover:text-brand-200"
+                      >
+                        {team.name}
+                      </Link>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+
         {!user ? (
           <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-white/80">
             <p className="mb-4 text-sm">Sign in to start a team and invite friends.</p>
@@ -474,56 +556,65 @@ export default function TeamsPage() {
                 <MailPlus className="h-5 w-5" />
                 <span>Create a team</span>
               </header>
-              <form className="space-y-4" onSubmit={handleCreateTeam}>
-                <div className="grid gap-4 md:grid-cols-[1fr_minmax(0,220px)] md:items-end">
-                  <div className="space-y-2">
-                    <label htmlFor="team-name" className="text-xs uppercase tracking-[0.2em] text-white/50">
-                      Team name
-                    </label>
-                    <input
-                      id="team-name"
-                      type="text"
-                      value={teamName}
-                      onChange={(event) => setTeamName(event.target.value)}
-                      placeholder="ex. Tide Riders"
-                      required
-                      minLength={3}
-                      className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-300/40"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label htmlFor="team-logo" className="text-xs uppercase tracking-[0.2em] text-white/50">
-                      Logo (optional)
-                    </label>
-                    <input
-                      id="team-logo"
-                      type="file"
-                      accept={Array.from(TEAM_LOGO_ALLOWED_TYPES).join(',')}
-                      onChange={handleLogoSelection}
-                      className="w-full text-sm text-white"
-                    />
-                    {teamLogoPreview ? (
-                      <div className="relative h-24 w-24 overflow-hidden rounded-xl border border-white/10 bg-slate-900/60">
-                        <Image src={teamLogoPreview} alt="Team logo preview" fill className="object-cover" />
-                      </div>
-                    ) : null}
-                    {teamLogoError ? (
-                      <p className="text-xs text-rose-300">{teamLogoError}</p>
-                    ) : (
-                      <p className="text-xs text-white/40">PNG, JPG, GIF, or WebP up to 5MB.</p>
-                    )}
-                  </div>
+              {hasTeam ? (
+                <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4 text-sm text-amber-100/90">
+                  <p className="font-semibold text-amber-200">You&apos;re already part of a team</p>
+                  <p className="mt-1 text-amber-100/80">
+                    You can only belong to one crew at a time. Leave {primaryTeam?.name ?? 'your current team'} before creating a new one.
+                  </p>
                 </div>
-                {createError ? <p className="text-sm text-rose-300">{createError}</p> : null}
-                <button
-                  type="submit"
-                  className="btn-primary inline-flex items-center gap-2 px-5 py-2 text-sm disabled:opacity-60"
-                  disabled={creatingTeam}
-                >
-                  {creatingTeam ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlusIcon />}
-                  <span>Create team</span>
-                </button>
-              </form>
+              ) : (
+                <form className="space-y-4" onSubmit={handleCreateTeam}>
+                  <div className="grid gap-4 md:grid-cols-[1fr_minmax(0,220px)] md:items-end">
+                    <div className="space-y-2">
+                      <label htmlFor="team-name" className="text-xs uppercase tracking-[0.2em] text-white/50">
+                        Team name
+                      </label>
+                      <input
+                        id="team-name"
+                        type="text"
+                        value={teamName}
+                        onChange={(event) => setTeamName(event.target.value)}
+                        placeholder="ex. Tide Riders"
+                        required
+                        minLength={3}
+                        className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-300/40"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="team-logo" className="text-xs uppercase tracking-[0.2em] text-white/50">
+                        Logo (optional)
+                      </label>
+                      <input
+                        id="team-logo"
+                        type="file"
+                        accept={Array.from(TEAM_LOGO_ALLOWED_TYPES).join(',')}
+                        onChange={handleLogoSelection}
+                        className="w-full text-sm text-white"
+                      />
+                      {teamLogoPreview ? (
+                        <div className="relative h-24 w-24 overflow-hidden rounded-xl border border-white/10 bg-slate-900/60">
+                          <Image src={teamLogoPreview} alt="Team logo preview" fill className="object-cover" />
+                        </div>
+                      ) : null}
+                      {teamLogoError ? (
+                        <p className="text-xs text-rose-300">{teamLogoError}</p>
+                      ) : (
+                        <p className="text-xs text-white/40">PNG, JPG, GIF, or WebP up to 5MB.</p>
+                      )}
+                    </div>
+                  </div>
+                  {createError ? <p className="text-sm text-rose-300">{createError}</p> : null}
+                  <button
+                    type="submit"
+                    className="btn-primary inline-flex items-center gap-2 px-5 py-2 text-sm disabled:opacity-60"
+                    disabled={creatingTeam}
+                  >
+                    {creatingTeam ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlusIcon />}
+                    <span>Create team</span>
+                  </button>
+                </form>
+              )}
             </section>
 
             <section className="space-y-6">
@@ -560,7 +651,7 @@ export default function TeamsPage() {
                               </Link>
                             </h3>
                             <p className="text-xs uppercase tracking-[0.2em] text-white/50">
-                              {team.memberUids.length} members
+                              {team.memberCount ?? team.memberUids.length} members
                             </p>
                           </div>
                         </div>
@@ -729,11 +820,21 @@ export default function TeamsPage() {
                   You don&apos;t have any pending invitations right now.
                 </p>
               ) : (
-                <ul className="space-y-4">
+                <div className="space-y-4">
+                  {hasTeam ? (
+                    <p className="rounded-3xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
+                      You&apos;re already part of {primaryTeam?.name ?? 'a team'}. Leave your current crew before accepting a new
+                      invitation.
+                    </p>
+                  ) : null}
+                  <ul className="space-y-4">
                   {incomingInvites.map((invite) => {
                     const team = inviteTeams[invite.teamId];
                     const inviter = profileCache[invite.inviterUid];
                     const disabled = respondingInvite === invite.id;
+                    const alreadyOnDifferentTeam = activeTeamIds.size > 0 && !activeTeamIds.has(invite.teamId);
+                    const disableAccept = disabled || alreadyOnDifferentTeam;
+                    const showSpinner = disabled;
                     return (
                       <li key={invite.id} className="rounded-3xl border border-white/10 bg-white/5 p-6">
                         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -745,15 +846,20 @@ export default function TeamsPage() {
                               Invited by {formatMemberLabel(inviter, 'Angler')}
                               {invite.inviteeUsername ? ` • @${invite.inviteeUsername}` : ''}
                             </p>
+                            {alreadyOnDifferentTeam ? (
+                              <p className="mt-2 text-xs text-amber-200">
+                                Leave your current team before joining a new crew.
+                              </p>
+                            ) : null}
                           </div>
                           <div className="flex flex-wrap items-center gap-3">
                             <button
                               type="button"
                               className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-60"
                               onClick={() => handleAcceptInvite(invite)}
-                              disabled={disabled}
+                              disabled={disableAccept}
                             >
-                              {disabled ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                              {showSpinner ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                               <span>Accept</span>
                             </button>
                             <button
@@ -770,7 +876,8 @@ export default function TeamsPage() {
                       </li>
                     );
                   })}
-                </ul>
+                  </ul>
+                </div>
               )}
               {respondError ? <p className="text-sm text-rose-300">{respondError}</p> : null}
             </section>

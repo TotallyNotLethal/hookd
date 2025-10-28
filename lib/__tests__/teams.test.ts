@@ -51,6 +51,7 @@ describe("team invite helpers", () => {
     const result = applyAcceptedMemberToTeamArrays(initial, "angler");
     assert.deepEqual(result.memberUids.sort(), ["angler", "captain"]);
     assert.deepEqual(result.pendingInviteUids, []);
+    assert.equal(result.memberCount, 2);
   });
 
   it("supports an end-to-end invite acceptance flow", () => {
@@ -64,5 +65,6 @@ describe("team invite helpers", () => {
 
     assert.deepEqual(accepted.memberUids.sort(), ["angler", "captain"]);
     assert.deepEqual(accepted.pendingInviteUids, []);
+    assert.equal(accepted.memberCount, 2);
   });
 });
