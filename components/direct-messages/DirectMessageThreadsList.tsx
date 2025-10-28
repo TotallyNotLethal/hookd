@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
-import { DirectMessageThread, subscribeToDirectMessageThreads } from '@/lib/firestore';
+import { DirectMessageThread, subscribeToDirectMessageThreads, subscribeToUser } from '@/lib/firestore';
 
 const formatter = new Intl.DateTimeFormat(undefined, {
   month: 'short',
@@ -37,6 +37,8 @@ export default function DirectMessageThreadsList({
   const [threads, setThreads] = useState<DirectMessageThread[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blockedUids, setBlockedUids] = useState<string[]>([]);
+  const [blockedByUids, setBlockedByUids] = useState<string[]>([]);
   const defer = useCallback((fn: () => void) => {
     if (typeof queueMicrotask === 'function') {
       queueMicrotask(fn);
@@ -51,6 +53,8 @@ export default function DirectMessageThreadsList({
         setThreads([]);
         setIsLoading(false);
         setError(null);
+        setBlockedUids([]);
+        setBlockedByUids([]);
       });
       return;
     }
@@ -80,6 +84,42 @@ export default function DirectMessageThreadsList({
     };
   }, [currentUserId, defer]);
 
+  useEffect(() => {
+    if (!currentUserId) {
+      defer(() => {
+        setBlockedUids([]);
+        setBlockedByUids([]);
+      });
+      return;
+    }
+
+    const unsubscribe = subscribeToUser(currentUserId, (data) => {
+      defer(() => {
+        setBlockedUids(Array.isArray(data?.blockedUserIds) ? data?.blockedUserIds ?? [] : []);
+        setBlockedByUids(Array.isArray(data?.blockedByUserIds) ? data?.blockedByUserIds ?? [] : []);
+      });
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [currentUserId, defer]);
+
+  const blockedSet = useMemo(() => {
+    const result = new Set<string>();
+    for (const id of blockedUids) {
+      if (typeof id === 'string' && id.trim()) {
+        result.add(id.trim());
+      }
+    }
+    for (const id of blockedByUids) {
+      if (typeof id === 'string' && id.trim()) {
+        result.add(id.trim());
+      }
+    }
+    return result;
+  }, [blockedByUids, blockedUids]);
+
   const listItems = useMemo<ThreadListItem[]>(() => {
     if (!currentUserId) return [];
 
@@ -101,8 +141,8 @@ export default function DirectMessageThreadsList({
           lastMessage,
         };
       })
-      .filter((item) => Boolean(item.otherUid));
-  }, [threads, currentUserId]);
+      .filter((item) => Boolean(item.otherUid) && !blockedSet.has(item.otherUid ?? ''));
+  }, [blockedSet, threads, currentUserId]);
 
   return (
     <div className={className}>

@@ -56,6 +56,46 @@ export default function Page() {
     [lengthLeaders],
   );
   const isProModerator = Boolean(profile?.isPro);
+  const blockedSet = useMemo(() => {
+    const ids = new Set<string>();
+    const blocked = Array.isArray(profile?.blockedUserIds) ? profile.blockedUserIds : [];
+    const blockedBy = Array.isArray(profile?.blockedByUserIds) ? profile.blockedByUserIds : [];
+
+    for (const value of blocked) {
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed) ids.add(trimmed);
+      }
+    }
+
+    for (const value of blockedBy) {
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        if (trimmed) ids.add(trimmed);
+      }
+    }
+
+    return ids;
+  }, [profile]);
+
+  const filterPosts = useCallback(
+    (posts: any[]) => {
+      if (!Array.isArray(posts) || posts.length === 0 || blockedSet.size === 0) {
+        return posts;
+      }
+
+      return posts.filter((post) => {
+        const ownerUid = typeof post?.uid === "string"
+          ? post.uid
+          : typeof post?.userId === "string"
+            ? post.userId
+            : null;
+        if (!ownerUid) return true;
+        return !blockedSet.has(ownerUid);
+      });
+    },
+    [blockedSet],
+  );
 
 
   useEffect(() => {
@@ -65,7 +105,7 @@ export default function Page() {
       try {
         const initialPosts = await getChallengeCatches();
         if (!isMounted) return;
-        setChallengePosts(initialPosts);
+        setChallengePosts(filterPosts(initialPosts));
       } catch (error) {
         console.error("Failed to load challenge catches", error);
       }
@@ -73,7 +113,7 @@ export default function Page() {
 
     const unsubscribe = subscribeToChallengeCatches((posts) => {
       if (isMounted) {
-        setChallengePosts(posts);
+        setChallengePosts(filterPosts(posts));
       }
     });
 
@@ -81,17 +121,17 @@ export default function Page() {
       isMounted = false;
       if (unsubscribe) unsubscribe();
     };
-  }, []);
+  }, [filterPosts]);
 
   useEffect(() => {
     const unsubscribe = subscribeToFeedCatches((posts) => {
-      setRecentCatches(posts.slice(0, 4));
+      setRecentCatches(filterPosts(posts).slice(0, 4));
     });
 
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, []);
+  }, [filterPosts]);
 
   useEffect(() => {
     const unsubscribeWeight = subscribeToTournamentLeaderboardByWeight(10, (entries) => {

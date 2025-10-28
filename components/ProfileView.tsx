@@ -122,10 +122,18 @@ type ProfileViewProps = {
   isFollowing?: boolean;
   onToggleFollow?: () => void;
   followPending?: boolean;
+  canFollow?: boolean;
   onCatchSelect?: (catchItem: Catch) => void;
   catchSummary?: CatchSummary;
   tackleStats?: UserTackleStats | null;
   teams?: Team[] | null;
+  messageHref?: string | null;
+  onBlockToggle?: () => void;
+  blockPending?: boolean;
+  isBlocked?: boolean;
+  onReport?: () => void;
+  reportPending?: boolean;
+  blockedNotice?: string | null;
 };
 
 export default function ProfileView({
@@ -137,10 +145,18 @@ export default function ProfileView({
   isFollowing = false,
   onToggleFollow,
   followPending = false,
+  canFollow = true,
   onCatchSelect,
   catchSummary,
   tackleStats,
   teams = [],
+  messageHref,
+  onBlockToggle,
+  blockPending = false,
+  isBlocked = false,
+  onReport,
+  reportPending = false,
+  blockedNotice,
 }: ProfileViewProps) {
   const trophyCatches = useMemo(() => catches.filter((catchItem) => catchItem.trophy), [catches]);
   const standardCatches = useMemo(() => catches.filter((catchItem) => !catchItem.trophy), [catches]);
@@ -206,6 +222,10 @@ export default function ProfileView({
 
     return items;
   }, [isProMember, profile?.badges]);
+
+  const showBlockedNotice = !isOwner && isBlocked;
+  const blockedDescription = blockedNotice
+    ?? "You won't see updates from this angler while the block is active.";
 
   const theme = useMemo(() => {
     try {
@@ -404,7 +424,7 @@ export default function ProfileView({
                 ) : null}
               </div>
               <div className="flex items-center gap-2 sm:ml-auto">
-                {!isOwner && onToggleFollow && (
+                {!isOwner && onToggleFollow && canFollow && !isBlocked && (
                   <button
                     className={clsx(
                       'rounded-xl border px-4 py-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)]',
@@ -419,15 +439,40 @@ export default function ProfileView({
                     {isFollowing ? 'Unfollow' : 'Follow'}
                   </button>
                 )}
-                {!isOwner && profile?.uid && (
+                {!isOwner && messageHref && !isBlocked && (
                   <Link
-                    href={`/messages/${profile.uid}`}
+                    href={messageHref}
                     prefetch={false}
                     className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)]"
                   >
                     <MessageCircle className="h-4 w-4" />
                     Message
                   </Link>
+                )}
+                {!isOwner && onBlockToggle && (
+                  <button
+                    type="button"
+                    onClick={onBlockToggle}
+                    disabled={blockPending}
+                    className={clsx(
+                      'inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)] disabled:cursor-not-allowed disabled:opacity-60',
+                      isBlocked
+                        ? 'border-white/30 bg-white/10 text-white'
+                        : 'border-red-500/60 text-red-100 hover:bg-red-500/10',
+                    )}
+                  >
+                    {isBlocked ? 'Unblock' : 'Block'}
+                  </button>
+                )}
+                {!isOwner && onReport && (
+                  <button
+                    type="button"
+                    onClick={onReport}
+                    disabled={reportPending}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Report
+                  </button>
                 )}
                 {isOwner && onEditProfile && (
                   <button
@@ -468,6 +513,12 @@ export default function ProfileView({
             {profile?.bio && <p className="mt-4 text-white/80">{profile.bio}</p>}
           </div>
         </div>
+
+        {showBlockedNotice ? (
+          <div className="card border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-100">
+            {blockedDescription}
+          </div>
+        ) : null}
 
         {featuredCatch && featuredCatch.imageUrl && (
           <div className={heroCardClasses}>

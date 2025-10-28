@@ -91,6 +91,8 @@ export type HookdUser = {
   unreadNotificationsCount?: number;
   lastNotificationAt?: any;
   notificationPreferences?: NotificationPreferences;
+  blockedUserIds?: string[];
+  blockedByUserIds?: string[];
 };
 
 export type ProfileAccentKey = "tide" | "ember" | "kelp" | "midnight";
@@ -102,6 +104,18 @@ export type ProfileTheme = {
   backgroundTexture: ProfileTextureKey;
   layoutVariant: ProfileLayoutKey;
   featuredCatchId?: string | null;
+};
+
+export type UserReportStatus = 'pending' | 'reviewed' | 'dismissed';
+
+export type UserReport = {
+  id: string;
+  reporterUid: string;
+  reportedUid: string;
+  reason: string;
+  details?: string | null;
+  createdAt: Date | null;
+  status: UserReportStatus;
 };
 
 export const MIN_PROFILE_AGE = 0;
@@ -145,6 +159,50 @@ export function sanitizeUserBadges(input: unknown): string[] {
     }
   }
   return result;
+}
+
+export function sanitizeUidList(input: unknown): string[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  const result: string[] = [];
+  for (const value of input) {
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    if (result.includes(trimmed)) continue;
+    result.push(trimmed);
+  }
+
+  return result;
+}
+
+function userHasBlocked(user: Partial<HookdUser> | Record<string, any> | null | undefined, otherUid: string): boolean {
+  if (!user || !otherUid) return false;
+  const blocked = sanitizeUidList((user as HookdUser)?.blockedUserIds);
+  return blocked.includes(otherUid);
+}
+
+function userIsBlockedBy(user: Partial<HookdUser> | Record<string, any> | null | undefined, otherUid: string): boolean {
+  if (!user || !otherUid) return false;
+  const blockedBy = sanitizeUidList((user as HookdUser)?.blockedByUserIds);
+  return blockedBy.includes(otherUid);
+}
+
+function usersHaveBlockingRelationship(
+  actorUid: string,
+  actor: Partial<HookdUser> | Record<string, any> | null | undefined,
+  targetUid: string,
+  target: Partial<HookdUser> | Record<string, any> | null | undefined,
+): boolean {
+  if (!actorUid || !targetUid) return false;
+  return (
+    userHasBlocked(actor, targetUid)
+    || userIsBlockedBy(actor, targetUid)
+    || userHasBlocked(target, actorUid)
+    || userIsBlockedBy(target, actorUid)
+  );
 }
 
 export function syncBadgesForAge(badges: string[], age: number | null): string[] {
@@ -1100,6 +1158,8 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       notificationPreferences: { ...DEFAULT_NOTIFICATION_PREFERENCES },
+      blockedUserIds: [],
+      blockedByUserIds: [],
     };
     await setDoc(refUser, payload);
   } else {
@@ -1138,6 +1198,24 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
     const normalizedBadges = syncBadgesForAge(existing.badges ?? [], normalizedAge);
     if (JSON.stringify(existing.badges ?? []) !== JSON.stringify(normalizedBadges)) {
       updates.badges = normalizedBadges;
+    }
+
+    const normalizedBlocked = sanitizeUidList(existing.blockedUserIds);
+    if (
+      !Array.isArray(existing.blockedUserIds)
+      || existing.blockedUserIds.length !== normalizedBlocked.length
+      || existing.blockedUserIds.some((value, index) => normalizedBlocked[index] !== value)
+    ) {
+      updates.blockedUserIds = normalizedBlocked;
+    }
+
+    const normalizedBlockedBy = sanitizeUidList(existing.blockedByUserIds);
+    if (
+      !Array.isArray(existing.blockedByUserIds)
+      || existing.blockedByUserIds.length !== normalizedBlockedBy.length
+      || existing.blockedByUserIds.some((value, index) => normalizedBlockedBy[index] !== value)
+    ) {
+      updates.blockedByUserIds = normalizedBlockedBy;
     }
 
     const sanitizedPreferences = sanitizeNotificationPreferences(existing.notificationPreferences);
@@ -1299,6 +1377,8 @@ export function subscribeToUser(uid: string, cb: (u: HookdUser | null) => void) 
       age: normalizeUserAge(data.age ?? null),
       badges: sanitizeUserBadges(data.badges),
       notificationPreferences: sanitizeNotificationPreferences(data.notificationPreferences),
+      blockedUserIds: sanitizeUidList(data.blockedUserIds),
+      blockedByUserIds: sanitizeUidList(data.blockedByUserIds),
     });
   });
 }
@@ -1320,6 +1400,10 @@ export async function followUser(currentUid: string, targetUid: string) {
 
     const targetData = targetSnap.data() || {};
     const currentData = currentSnap.data() || {};
+
+    if (usersHaveBlockingRelationship(currentUid, currentData, targetUid, targetData)) {
+      throw new Error('You cannot follow this angler.');
+    }
 
     const targetFollowers = new Set<string>(Array.isArray(targetData.followers) ? targetData.followers : []);
     const currentFollowing = new Set<string>(Array.isArray(currentData.following) ? currentData.following : []);
@@ -1377,6 +1461,121 @@ export async function unfollowUser(currentUid: string, targetUid: string) {
 
     tx.update(targetRef, { followers: Array.from(targetFollowers) });
     tx.update(currentRef, { following: Array.from(currentFollowing) });
+  });
+}
+
+export async function blockUser(actorUid: string, targetUid: string) {
+  if (!actorUid || !targetUid || actorUid === targetUid) {
+    throw new Error('Unable to block this angler.');
+  }
+
+  const actorRef = doc(db, 'users', actorUid);
+  const targetRef = doc(db, 'users', targetUid);
+
+  await runTransaction(db, async (tx) => {
+    const [actorSnap, targetSnap] = await Promise.all([
+      tx.get(actorRef),
+      tx.get(targetRef),
+    ]);
+
+    if (!actorSnap.exists()) {
+      throw new Error('We could not verify your account.');
+    }
+
+    if (!targetSnap.exists()) {
+      throw new Error('That angler could not be found.');
+    }
+
+    const actorData = actorSnap.data() as HookdUser;
+    const targetData = targetSnap.data() as HookdUser;
+
+    const actorBlocked = new Set(sanitizeUidList(actorData.blockedUserIds));
+    const actorBlockedBy = new Set(sanitizeUidList(actorData.blockedByUserIds));
+    const targetBlocked = new Set(sanitizeUidList(targetData.blockedUserIds));
+    const targetBlockedBy = new Set(sanitizeUidList(targetData.blockedByUserIds));
+
+    actorBlocked.add(targetUid);
+    targetBlockedBy.add(actorUid);
+
+    if (targetBlocked.has(actorUid)) {
+      actorBlockedBy.add(targetUid);
+    }
+
+    const actorFollowers = new Set(sanitizeUidList(actorData.followers));
+    const actorFollowing = new Set(sanitizeUidList(actorData.following));
+    const targetFollowers = new Set(sanitizeUidList(targetData.followers));
+    const targetFollowing = new Set(sanitizeUidList(targetData.following));
+
+    actorFollowers.delete(targetUid);
+    actorFollowing.delete(targetUid);
+    targetFollowers.delete(actorUid);
+    targetFollowing.delete(actorUid);
+
+    tx.update(actorRef, {
+      blockedUserIds: Array.from(actorBlocked),
+      blockedByUserIds: Array.from(actorBlockedBy),
+      followers: Array.from(actorFollowers),
+      following: Array.from(actorFollowing),
+      updatedAt: serverTimestamp(),
+    });
+
+    tx.update(targetRef, {
+      blockedUserIds: Array.from(targetBlocked),
+      blockedByUserIds: Array.from(targetBlockedBy),
+      followers: Array.from(targetFollowers),
+      following: Array.from(targetFollowing),
+      updatedAt: serverTimestamp(),
+    });
+  });
+}
+
+export async function unblockUser(actorUid: string, targetUid: string) {
+  if (!actorUid || !targetUid || actorUid === targetUid) {
+    throw new Error('Unable to unblock this angler.');
+  }
+
+  const actorRef = doc(db, 'users', actorUid);
+  const targetRef = doc(db, 'users', targetUid);
+
+  await runTransaction(db, async (tx) => {
+    const [actorSnap, targetSnap] = await Promise.all([
+      tx.get(actorRef),
+      tx.get(targetRef),
+    ]);
+
+    if (!actorSnap.exists()) {
+      throw new Error('We could not verify your account.');
+    }
+
+    if (!targetSnap.exists()) {
+      throw new Error('That angler could not be found.');
+    }
+
+    const actorData = actorSnap.data() as HookdUser;
+    const targetData = targetSnap.data() as HookdUser;
+
+    const actorBlocked = new Set(sanitizeUidList(actorData.blockedUserIds));
+    const actorBlockedBy = new Set(sanitizeUidList(actorData.blockedByUserIds));
+    const targetBlockedBy = new Set(sanitizeUidList(targetData.blockedByUserIds));
+    const targetBlocked = new Set(sanitizeUidList(targetData.blockedUserIds));
+
+    actorBlocked.delete(targetUid);
+    targetBlockedBy.delete(actorUid);
+
+    if (!targetBlocked.has(actorUid)) {
+      actorBlockedBy.delete(targetUid);
+    }
+
+    tx.update(actorRef, {
+      blockedUserIds: Array.from(actorBlocked),
+      blockedByUserIds: Array.from(actorBlockedBy),
+      updatedAt: serverTimestamp(),
+    });
+
+    tx.update(targetRef, {
+      blockedByUserIds: Array.from(targetBlockedBy),
+      updatedAt: serverTimestamp(),
+    });
   });
 }
 
@@ -2972,6 +3171,26 @@ export async function sendDirectMessage(data: {
     throw new Error('Message cannot be empty');
   }
 
+  const [senderSnap, recipientSnap] = await Promise.all([
+    getDoc(doc(db, 'users', data.senderUid)),
+    getDoc(doc(db, 'users', data.recipientUid)),
+  ]);
+
+  if (!senderSnap.exists()) {
+    throw new Error('We could not verify your account.');
+  }
+
+  if (!recipientSnap.exists()) {
+    throw new Error('That angler could not be found.');
+  }
+
+  const senderData = senderSnap.data() as HookdUser;
+  const recipientData = recipientSnap.data() as HookdUser;
+
+  if (usersHaveBlockingRelationship(data.senderUid, senderData, data.recipientUid, recipientData)) {
+    throw new Error('You cannot send messages to this angler.');
+  }
+
   const threadId = getDirectMessageThreadId(data.senderUid, data.recipientUid);
   const threadRef = doc(db, 'directThreads', threadId);
   const now = serverTimestamp();
@@ -3003,8 +3222,6 @@ export async function sendDirectMessage(data: {
   });
 
   if (data.senderUid !== data.recipientUid) {
-    const senderSnap = await getDoc(doc(db, 'users', data.senderUid));
-    const senderData = senderSnap.exists() ? (senderSnap.data() as HookdUser) : null;
     await createNotification({
       recipientUid: data.recipientUid,
       actorUid: data.senderUid,
@@ -3021,6 +3238,127 @@ export async function sendDirectMessage(data: {
   }
 }
 
+/** ---------- User Reports ---------- */
+
+export async function submitUserReport(data: {
+  reporterUid: string;
+  reportedUid: string;
+  reason: string;
+  details?: string | null;
+}) {
+  const reporterUid = typeof data.reporterUid === 'string' ? data.reporterUid.trim() : '';
+  const reportedUid = typeof data.reportedUid === 'string' ? data.reportedUid.trim() : '';
+  const reason = typeof data.reason === 'string' ? data.reason.trim() : '';
+  const details = typeof data.details === 'string' ? data.details.trim() : '';
+
+  if (!reporterUid) {
+    throw new Error('You must be signed in to report an angler.');
+  }
+
+  if (!reportedUid) {
+    throw new Error('We could not determine which angler you are reporting.');
+  }
+
+  if (reporterUid === reportedUid) {
+    throw new Error('You cannot report yourself.');
+  }
+
+  if (!reason) {
+    throw new Error('Please share why you are reporting this angler.');
+  }
+
+  const [reporterSnap, reportedSnap] = await Promise.all([
+    getDoc(doc(db, 'users', reporterUid)),
+    getDoc(doc(db, 'users', reportedUid)),
+  ]);
+
+  if (!reporterSnap.exists()) {
+    throw new Error('We could not verify your account.');
+  }
+
+  if (!reportedSnap.exists()) {
+    throw new Error('That angler could not be found.');
+  }
+
+  await addDoc(collection(db, 'userReports'), {
+    reporterUid,
+    reportedUid,
+    reason: reason.slice(0, 500),
+    details: details ? details.slice(0, 2000) : null,
+    createdAt: serverTimestamp(),
+    status: 'pending',
+  });
+}
+
+export async function subscribeToPendingUserReports(
+  testerUid: string,
+  cb: (reports: UserReport[]) => void,
+  options: { onError?: (error: Error) => void } = {},
+): Promise<() => void> {
+  const { onError } = options;
+  const trimmedUid = typeof testerUid === 'string' ? testerUid.trim() : '';
+
+  if (!trimmedUid) {
+    throw new Error('Tester credentials are required to review reports.');
+  }
+
+  const testerSnap = await getDoc(doc(db, 'users', trimmedUid));
+  if (!testerSnap.exists()) {
+    throw new Error('We could not verify your tester access.');
+  }
+
+  const testerData = testerSnap.data() as HookdUser;
+  if (!testerData.isTester) {
+    throw new Error('You are not authorized to review reports.');
+  }
+
+  const reportsQuery = query(
+    collection(db, 'userReports'),
+    where('status', '==', 'pending'),
+    orderBy('createdAt', 'desc'),
+  );
+
+  return new Promise((resolve) => {
+    const unsubscribe = onSnapshot(reportsQuery, (snap) => {
+      const items: UserReport[] = [];
+      snap.forEach((docSnap) => {
+        const data = docSnap.data() as Record<string, any>;
+        const createdAt = data.createdAt instanceof Timestamp
+          ? data.createdAt.toDate()
+          : data.createdAt && typeof data.createdAt.toDate === 'function'
+            ? data.createdAt.toDate()
+            : null;
+
+        const status: UserReportStatus =
+          data.status === 'reviewed' || data.status === 'dismissed' ? data.status : 'pending';
+
+        const reporterUidValue = typeof data.reporterUid === 'string' ? data.reporterUid.trim() : '';
+        const reportedUidValue = typeof data.reportedUid === 'string' ? data.reportedUid.trim() : '';
+        if (!reporterUidValue || !reportedUidValue) {
+          return;
+        }
+
+        items.push({
+          id: docSnap.id,
+          reporterUid: reporterUidValue,
+          reportedUid: reportedUidValue,
+          reason: typeof data.reason === 'string' ? data.reason : '',
+          details: typeof data.details === 'string' ? data.details : null,
+          createdAt,
+          status,
+        });
+      });
+
+      cb(items);
+    }, (error) => {
+      console.error('Failed to subscribe to user reports', error);
+      if (onError) onError(error);
+    });
+
+    resolve(() => unsubscribe());
+  });
+}
+
 /** ---------- Comments ---------- */
 export async function addComment(
   catchId: string,
@@ -3034,6 +3372,24 @@ export async function addComment(
   const commentsCol = collection(db, 'catches', catchId, 'comments');
   const actorSnap = await getDoc(doc(db, 'users', data.uid));
   const actorData = actorSnap.exists() ? (actorSnap.data() as HookdUser) : null;
+  const postRef = doc(db, 'catches', catchId);
+  const postSnap = await getDoc(postRef);
+  if (!postSnap.exists()) {
+    throw new Error('We could not find that catch.');
+  }
+
+  const postData = postSnap.data() as Record<string, any>;
+  const ownerUid = typeof postData.uid === 'string' ? postData.uid : null;
+  let ownerData: HookdUser | null = null;
+
+  if (ownerUid) {
+    const ownerSnap = await getDoc(doc(db, 'users', ownerUid));
+    ownerData = ownerSnap.exists() ? (ownerSnap.data() as HookdUser) : null;
+    if (usersHaveBlockingRelationship(data.uid, actorData ?? null, ownerUid, ownerData ?? null)) {
+      throw new Error('You cannot comment on this catch.');
+    }
+  }
+
   const commentRef = await addDoc(commentsCol, {
     uid: data.uid,
     displayName: data.displayName,
@@ -3042,16 +3398,7 @@ export async function addComment(
     createdAt: serverTimestamp(),
   });
 
-  const postRef = doc(db, 'catches', catchId);
   await updateDoc(postRef, { commentsCount: increment(1) });
-
-  const postSnap = await getDoc(postRef);
-  if (!postSnap.exists()) {
-    return;
-  }
-
-  const postData = postSnap.data() as Record<string, any>;
-  const ownerUid = typeof postData.uid === 'string' ? postData.uid : null;
 
   if (ownerUid && ownerUid !== data.uid) {
     await createNotification({
