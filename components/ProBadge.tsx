@@ -13,7 +13,7 @@ export default function ProBadge({ className }: { className?: string }) {
     >
       <Sparkles aria-hidden className="h-3.5 w-3.5" />
       <span aria-hidden>Pro</span>
-      <span className="sr-only">Pro member</span>
+      <span className="sr-only">Pro</span>
     </span>
   );
 }
