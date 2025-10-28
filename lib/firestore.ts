@@ -166,6 +166,7 @@ export type ChatMessage = {
   displayName: string;
   photoURL?: string | null;
   createdAt: Date | null;
+  isPro: boolean;
 };
 
 export type ChatPresence = {
@@ -2142,6 +2143,7 @@ export function subscribeToChatMessages(
         displayName: typeof data.displayName === 'string' ? data.displayName : 'Angler',
         photoURL: data.photoURL ?? null,
         createdAt,
+        isPro: typeof data.isPro === 'boolean' ? data.isPro : false,
       });
     });
 
@@ -2162,6 +2164,7 @@ export async function sendChatMessage(data: {
   uid: string;
   displayName: string;
   text: string;
+  isPro: boolean;
   photoURL?: string | null;
 }) {
   const normalized = data.text.trim();
@@ -2174,6 +2177,7 @@ export async function sendChatMessage(data: {
     displayName: data.displayName,
     text: normalized.slice(0, 2000),
     photoURL: data.photoURL ?? null,
+    isPro: Boolean(data.isPro),
     createdAt: serverTimestamp(),
   });
 }
