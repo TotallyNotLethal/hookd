@@ -332,7 +332,7 @@ export async function GET(request: Request) {
     const forecastParams = new URLSearchParams({
       latitude: latitude.toString(),
       longitude: longitude.toString(),
-      hourly: 'surface_pressure,temperature_2m,weathercode,wind_speed_10m,wind_direction_10m',
+      hourly: 'surface_pressure,temperature_2m,weathercode,windspeed_10m,winddirection_10m',
       timezone: 'auto',
       start_date: startDate,
       end_date: endDate,
@@ -389,8 +389,8 @@ export async function GET(request: Request) {
     const hourlyAirTemperatures: number[] = forecast?.hourly?.temperature_2m ?? [];
     const hourlyWaterTemperatures: number[] =
       forecast?.hourly?.water_temperature ?? forecast?.hourly?.lake_temperature ?? [];
-    const hourlyWindSpeeds: number[] = forecast?.hourly?.wind_speed_10m ?? [];
-    const hourlyWindDirections: number[] = forecast?.hourly?.wind_direction_10m ?? [];
+    const hourlyWindSpeeds: number[] = forecast?.hourly?.windspeed_10m ?? [];
+    const hourlyWindDirections: number[] = forecast?.hourly?.winddirection_10m ?? [];
     const marineTimes: string[] = marine?.hourly?.time ?? [];
     const marineWaterTemperatures: number[] = marine?.hourly?.water_temperature ?? [];
     const marineUtcOffsetSeconds: number | null = marine?.utc_offset_seconds ?? null;
