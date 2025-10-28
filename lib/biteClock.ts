@@ -114,7 +114,6 @@ async function fetchEnvironmentSlices(
     const params = new URLSearchParams({
       lat: coordinates.lat.toString(),
       lng: coordinates.lng.toString(),
-      timestamp: new Date().toISOString(),
       forwardHours: String(forwardHours),
     });
     const response = await fetch(`/api/environment?${params.toString()}`);

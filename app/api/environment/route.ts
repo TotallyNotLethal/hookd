@@ -283,8 +283,8 @@ export async function GET(request: Request) {
   const timestampParam = url.searchParams.get('timestamp');
   const forwardParam = url.searchParams.get('forwardHours');
 
-  if (!latParam || !lngParam || !timestampParam) {
-    return NextResponse.json({ error: 'lat, lng, and timestamp are required' }, { status: 400 });
+  if (!latParam || !lngParam) {
+    return NextResponse.json({ error: 'lat and lng are required' }, { status: 400 });
   }
 
   const latitude = Number.parseFloat(latParam);
@@ -293,12 +293,19 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Invalid latitude or longitude' }, { status: 400 });
   }
 
-  const baseTimestamp = new Date(timestampParam);
-  if (Number.isNaN(baseTimestamp.getTime())) {
-    return NextResponse.json({ error: 'Invalid timestamp' }, { status: 400 });
+  const now = Date.now();
+
+  let baseTimestamp: Date;
+  if (!timestampParam) {
+    baseTimestamp = new Date(now);
+  } else {
+    const parsed = new Date(timestampParam);
+    if (Number.isNaN(parsed.getTime())) {
+      return NextResponse.json({ error: 'Invalid timestamp' }, { status: 400 });
+    }
+    baseTimestamp = parsed;
   }
 
-  const now = Date.now();
   const diff = Math.abs(baseTimestamp.getTime() - now);
   if (diff > MAX_LEAD_LAG_MS) {
     return NextResponse.json({ capture: null, slices: [] }, { status: 422 });
