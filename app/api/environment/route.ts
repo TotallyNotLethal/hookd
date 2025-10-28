@@ -324,8 +324,16 @@ export async function GET(request: Request) {
     const forecastParams = new URLSearchParams({
       latitude: latitude.toString(),
       longitude: longitude.toString(),
-      hourly:
-        'surface_pressure,temperature_2m,weathercode,wind_speed_10m,wind_direction_10m,water_temperature',
+      hourly: 'surface_pressure,temperature_2m,weathercode,wind_speed_10m,wind_direction_10m',
+      timezone: 'auto',
+      start_date: startDate,
+      end_date: endDate,
+    });
+
+    const marineParams = new URLSearchParams({
+      latitude: latitude.toString(),
+      longitude: longitude.toString(),
+      hourly: 'water_temperature',
       timezone: 'auto',
       start_date: startDate,
       end_date: endDate,
@@ -340,9 +348,17 @@ export async function GET(request: Request) {
       end_date: endDate,
     });
 
-    const [forecastRes, astronomyRes] = await Promise.all([
+    const marinePromise: Promise<Response | null> = fetch(
+      `https://marine-api.open-meteo.com/v1/marine?${marineParams.toString()}`,
+    ).catch((error) => {
+      console.warn('Failed to fetch marine water temperature', error);
+      return null;
+    });
+
+    const [forecastRes, astronomyRes, marineRes] = await Promise.all([
       fetch(`https://api.open-meteo.com/v1/forecast?${forecastParams.toString()}`),
       fetch(`https://api.open-meteo.com/v1/astronomy?${astronomyParams.toString()}`),
+      marinePromise,
     ]);
 
     if (!forecastRes.ok || !astronomyRes.ok) {
@@ -352,16 +368,31 @@ export async function GET(request: Request) {
 
     const forecast = await forecastRes.json();
     const astronomy = await astronomyRes.json();
+    let marine: any = null;
+    if (marineRes?.ok) {
+      marine = await marineRes.json();
+    } else if (marineRes && !marineRes.ok) {
+      console.warn('Marine API responded with status', marineRes.status);
+    }
 
     const hourlyTimes: string[] = forecast?.hourly?.time ?? [];
     const hourlyPressures: number[] = forecast?.hourly?.surface_pressure ?? [];
     const hourlyWeatherCodes: number[] = forecast?.hourly?.weathercode ?? [];
     const hourlyAirTemperatures: number[] = forecast?.hourly?.temperature_2m ?? [];
-    const hourlyWaterTemperatures: number[] = forecast?.hourly?.water_temperature ?? [];
+    const hourlyWaterTemperatures: number[] =
+      forecast?.hourly?.water_temperature ?? forecast?.hourly?.lake_temperature ?? [];
     const hourlyWindSpeeds: number[] = forecast?.hourly?.wind_speed_10m ?? [];
     const hourlyWindDirections: number[] = forecast?.hourly?.wind_direction_10m ?? [];
-    const utcOffsetSeconds = forecast?.utc_offset_seconds ?? astronomy?.utc_offset_seconds ?? 0;
-    const timezone = forecast?.timezone ?? astronomy?.timezone ?? 'UTC';
+    const marineTimes: string[] = marine?.hourly?.time ?? [];
+    const marineWaterTemperatures: number[] = marine?.hourly?.water_temperature ?? [];
+    const marineUtcOffsetSeconds: number | null = marine?.utc_offset_seconds ?? null;
+    const marineTimezone: string | null = marine?.timezone ?? null;
+    const utcOffsetSeconds =
+      forecast?.utc_offset_seconds ??
+      astronomy?.utc_offset_seconds ??
+      marineUtcOffsetSeconds ??
+      0;
+    const timezone = forecast?.timezone ?? astronomy?.timezone ?? marineTimezone ?? 'UTC';
 
     const dailyTimes: string[] = astronomy?.daily?.time ?? [];
     const dailyMoonPhase: number[] = astronomy?.daily?.moon_phase ?? [];
@@ -380,7 +411,17 @@ export async function GET(request: Request) {
           : null;
       const weatherCode = hourlyIndex >= 0 ? hourlyWeatherCodes[hourlyIndex] ?? null : null;
       const airTemperature = hourlyIndex >= 0 ? hourlyAirTemperatures[hourlyIndex] ?? null : null;
-      const waterTemperature = hourlyIndex >= 0 ? hourlyWaterTemperatures[hourlyIndex] ?? null : null;
+      const fallbackWaterTemperature =
+        hourlyIndex >= 0 ? hourlyWaterTemperatures[hourlyIndex] ?? null : null;
+      const marineDateKey = new Date(
+        target.getTime() + (marineUtcOffsetSeconds ?? utcOffsetSeconds) * 1000,
+      )
+        .toISOString()
+        .slice(0, 13);
+      const marineIndex = findNearestIndex(marineTimes, marineDateKey);
+      const marineWaterTemperature =
+        marineIndex >= 0 ? marineWaterTemperatures[marineIndex] ?? null : null;
+      const waterTemperature = marineWaterTemperature ?? fallbackWaterTemperature;
       const windSpeed = hourlyIndex >= 0 ? hourlyWindSpeeds[hourlyIndex] ?? null : null;
       const windDirection = hourlyIndex >= 0 ? hourlyWindDirections[hourlyIndex] ?? null : null;
 
