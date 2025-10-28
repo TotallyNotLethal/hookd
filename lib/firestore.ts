@@ -5,7 +5,7 @@ import {
   doc, setDoc, getDoc, updateDoc, serverTimestamp,
   addDoc, collection, onSnapshot, orderBy, query, where,
   deleteDoc, increment, runTransaction, getDocs, limit,
-  GeoPoint, Timestamp, writeBatch, DocumentReference,
+  GeoPoint, Timestamp, writeBatch, DocumentReference, Transaction,
 } from "firebase/firestore";
 import { getStorage, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import {
@@ -87,6 +87,8 @@ export type HookdUser = {
   profileTheme?: ProfileTheme;
   age?: number | null;
   badges?: string[];
+  unreadNotificationsCount?: number;
+  lastNotificationAt?: any;
 };
 
 export type ProfileAccentKey = "tide" | "ember" | "kelp" | "midnight";
@@ -196,6 +198,273 @@ export type DirectMessage = {
   displayName?: string | null;
   photoURL?: string | null;
 };
+
+export type NotificationVerb =
+  | 'follow'
+  | 'direct_message'
+  | 'like'
+  | 'comment'
+  | 'team_invite_accepted'
+  | 'team_invite_canceled';
+
+export type NotificationResource =
+  | { type: 'user'; uid: string }
+  | { type: 'catch'; catchId: string; ownerUid?: string | null }
+  | { type: 'directThread'; threadId: string; otherUid?: string | null }
+  | { type: 'team'; teamId: string }
+  | { type: 'teamInvite'; teamId: string; inviteeUid?: string | null };
+
+export type Notification = {
+  id: string;
+  recipientUid: string;
+  actorUid: string;
+  actorDisplayName?: string | null;
+  actorUsername?: string | null;
+  actorPhotoURL?: string | null;
+  verb: NotificationVerb;
+  resource: NotificationResource | null;
+  metadata?: Record<string, unknown> | null;
+  isRead: boolean;
+  createdAt: Date | null;
+  updatedAt?: Date | null;
+  readAt?: Date | null;
+};
+
+type NotificationDocData = {
+  recipientUid: string;
+  actorUid: string;
+  actorDisplayName?: string | null;
+  actorUsername?: string | null;
+  actorPhotoURL?: string | null;
+  verb: NotificationVerb;
+  resource?: NotificationResource | null;
+  metadata?: Record<string, unknown> | null;
+  isRead: boolean;
+  createdAt: Timestamp | null | ReturnType<typeof serverTimestamp>;
+  updatedAt?: Timestamp | null | ReturnType<typeof serverTimestamp>;
+  readAt?: Timestamp | null | ReturnType<typeof serverTimestamp>;
+};
+
+const NOTIFICATIONS_COLLECTION = 'notifications';
+
+function notificationsCollectionFor(uid: string) {
+  return collection(db, NOTIFICATIONS_COLLECTION, uid, 'items');
+}
+
+function sanitizeNotificationResource(input: any): NotificationResource | null {
+  if (!input || typeof input !== 'object') return null;
+  const type = input.type;
+  if (type === 'user' && typeof input.uid === 'string') {
+    return { type: 'user', uid: input.uid };
+  }
+  if (type === 'catch' && typeof input.catchId === 'string') {
+    return { type: 'catch', catchId: input.catchId, ownerUid: typeof input.ownerUid === 'string' ? input.ownerUid : null };
+  }
+  if (type === 'directThread' && typeof input.threadId === 'string') {
+    return {
+      type: 'directThread',
+      threadId: input.threadId,
+      otherUid: typeof input.otherUid === 'string' ? input.otherUid : null,
+    };
+  }
+  if (type === 'team' && typeof input.teamId === 'string') {
+    return { type: 'team', teamId: input.teamId };
+  }
+  if (type === 'teamInvite' && typeof input.teamId === 'string') {
+    return {
+      type: 'teamInvite',
+      teamId: input.teamId,
+      inviteeUid: typeof input.inviteeUid === 'string' ? input.inviteeUid : null,
+    };
+  }
+  return null;
+}
+
+function sanitizeMetadata(input: any): Record<string, unknown> | null {
+  if (!input || typeof input !== 'object') return null;
+  const entries = Object.entries(input).filter(([, value]) => value !== undefined);
+  if (!entries.length) return null;
+  return Object.fromEntries(entries);
+}
+
+function deserializeNotification(id: string, data: NotificationDocData): Notification {
+  const createdAt = data.createdAt instanceof Timestamp
+    ? data.createdAt.toDate()
+    : data.createdAt && typeof (data.createdAt as any).toDate === 'function'
+      ? (data.createdAt as any).toDate()
+      : null;
+
+  const updatedAt = data.updatedAt instanceof Timestamp
+    ? data.updatedAt.toDate()
+    : data.updatedAt && typeof (data.updatedAt as any).toDate === 'function'
+      ? (data.updatedAt as any).toDate()
+      : null;
+
+  const readAt = data.readAt instanceof Timestamp
+    ? data.readAt.toDate()
+    : data.readAt && typeof (data.readAt as any).toDate === 'function'
+      ? (data.readAt as any).toDate()
+      : null;
+
+  return {
+    id,
+    recipientUid: data.recipientUid,
+    actorUid: data.actorUid,
+    actorDisplayName: data.actorDisplayName ?? null,
+    actorUsername: data.actorUsername ?? null,
+    actorPhotoURL: data.actorPhotoURL ?? null,
+    verb: data.verb,
+    resource: sanitizeNotificationResource(data.resource),
+    metadata: sanitizeMetadata(data.metadata),
+    isRead: Boolean(data.isRead),
+    createdAt,
+    updatedAt,
+    readAt,
+  };
+}
+
+function buildNotificationDoc(data: {
+  recipientUid: string;
+  actorUid: string;
+  actorDisplayName?: string | null;
+  actorUsername?: string | null;
+  actorPhotoURL?: string | null;
+  verb: NotificationVerb;
+  resource?: NotificationResource | null;
+  metadata?: Record<string, unknown> | null;
+}) {
+  const timestamp = serverTimestamp();
+  return {
+    recipientUid: data.recipientUid,
+    actorUid: data.actorUid,
+    actorDisplayName: data.actorDisplayName ?? null,
+    actorUsername: data.actorUsername ?? null,
+    actorPhotoURL: data.actorPhotoURL ?? null,
+    verb: data.verb,
+    resource: data.resource ?? null,
+    metadata: sanitizeMetadata(data.metadata),
+    isRead: false,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  } satisfies NotificationDocData;
+}
+
+export function subscribeToNotifications(
+  uid: string,
+  cb: (notifications: Notification[]) => void,
+  options: { limit?: number; onError?: (error: Error) => void } = {},
+) {
+  const { limit: limitCount = 50, onError } = options;
+  const notificationsRef = notificationsCollectionFor(uid);
+  const q = query(notificationsRef, orderBy('createdAt', 'desc'), limit(limitCount));
+
+  return onSnapshot(q, (snapshot) => {
+    const items: Notification[] = [];
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data() as NotificationDocData;
+      items.push(deserializeNotification(docSnap.id, data));
+    });
+    cb(items);
+  }, (error) => {
+    console.error('Failed to subscribe to notifications', error);
+    if (onError) onError(error);
+  });
+}
+
+export async function createNotification(data: {
+  recipientUid: string;
+  actorUid: string;
+  actorDisplayName?: string | null;
+  actorUsername?: string | null;
+  actorPhotoURL?: string | null;
+  verb: NotificationVerb;
+  resource?: NotificationResource | null;
+  metadata?: Record<string, unknown> | null;
+}) {
+  if (!data.recipientUid || data.recipientUid === data.actorUid) {
+    return;
+  }
+
+  const notificationsRef = notificationsCollectionFor(data.recipientUid);
+  const notificationRef = doc(notificationsRef);
+  const userRef = doc(db, 'users', data.recipientUid);
+
+  await runTransaction(db, async (tx) => {
+    const userSnap = await tx.get(userRef);
+    if (!userSnap.exists()) {
+      return;
+    }
+
+    tx.set(notificationRef, buildNotificationDoc(data));
+    const timestamp = serverTimestamp();
+    tx.update(userRef, {
+      unreadNotificationsCount: increment(1),
+      lastNotificationAt: timestamp,
+    });
+  });
+}
+
+export async function markNotificationAsRead(recipientUid: string, notificationId: string) {
+  if (!recipientUid || !notificationId) return;
+
+  const notificationRef = doc(db, NOTIFICATIONS_COLLECTION, recipientUid, 'items', notificationId);
+  const userRef = doc(db, 'users', recipientUid);
+
+  await runTransaction(db, async (tx) => {
+    const [notificationSnap, userSnap] = await Promise.all([
+      tx.get(notificationRef),
+      tx.get(userRef),
+    ]);
+
+    if (!notificationSnap.exists()) {
+      return;
+    }
+
+    const notificationData = notificationSnap.data() as NotificationDocData;
+    if (notificationData.isRead) {
+      return;
+    }
+
+    tx.update(notificationRef, {
+      isRead: true,
+      readAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    if (userSnap.exists()) {
+      const current = userSnap.data() as HookdUser;
+      const count = typeof current.unreadNotificationsCount === 'number'
+        ? Math.max(0, current.unreadNotificationsCount - 1)
+        : 0;
+      tx.update(userRef, { unreadNotificationsCount: count });
+    }
+  });
+}
+
+export async function markAllNotificationsAsRead(recipientUid: string) {
+  if (!recipientUid) return;
+
+  const notificationsRef = notificationsCollectionFor(recipientUid);
+  const snapshot = await getDocs(query(notificationsRef, where('isRead', '==', false)));
+  if (snapshot.empty) {
+    return;
+  }
+
+  const userRef = doc(db, 'users', recipientUid);
+  const batch = writeBatch(db);
+  const timestamp = serverTimestamp();
+
+  snapshot.forEach((docSnap) => {
+    batch.update(docSnap.ref, {
+      isRead: true,
+      readAt: timestamp,
+      updatedAt: timestamp,
+    });
+  });
+
+  batch.set(userRef, { unreadNotificationsCount: 0 }, { merge: true });
+  await batch.commit();
+}
 
 export type DirectMessageThread = {
   id: string;
@@ -909,6 +1178,8 @@ export async function followUser(currentUid: string, targetUid: string) {
   const currentRef = doc(db, 'users', currentUid);
   const targetRef = doc(db, 'users', targetUid);
 
+  let notificationPayload: Parameters<typeof createNotification>[0] | null = null;
+
   await runTransaction(db, async (tx) => {
     const targetSnap = await tx.get(targetRef);
     const currentSnap = await tx.get(currentRef);
@@ -924,6 +1195,15 @@ export async function followUser(currentUid: string, targetUid: string) {
 
     if (!targetFollowers.has(currentUid)) {
       targetFollowers.add(currentUid);
+      notificationPayload = {
+        recipientUid: targetUid,
+        actorUid: currentUid,
+        actorDisplayName: typeof currentData.displayName === 'string' ? currentData.displayName : null,
+        actorUsername: typeof currentData.username === 'string' ? currentData.username : null,
+        actorPhotoURL: typeof currentData.photoURL === 'string' ? currentData.photoURL : null,
+        verb: 'follow',
+        resource: { type: 'user', uid: currentUid },
+      };
     }
     if (!currentFollowing.has(targetUid)) {
       currentFollowing.add(targetUid);
@@ -932,6 +1212,10 @@ export async function followUser(currentUid: string, targetUid: string) {
     tx.update(targetRef, { followers: Array.from(targetFollowers) });
     tx.update(currentRef, { following: Array.from(currentFollowing) });
   });
+
+  if (notificationPayload) {
+    await createNotification(notificationPayload);
+  }
 }
 
 export async function unfollowUser(currentUid: string, targetUid: string) {
@@ -1243,6 +1527,8 @@ export async function cancelTeamInvite({
   const teamRef = doc(db, 'teams', teamId);
   const actorRef = doc(db, 'users', actorUid);
 
+  const notificationPayloads: Parameters<typeof createNotification>[0][] = [];
+
   await runTransaction(db, async (tx) => {
     const [inviteSnap, teamSnap, actorSnap] = await Promise.all([
       tx.get(inviteRef),
@@ -1264,6 +1550,7 @@ export async function cancelTeamInvite({
 
     const inviteData = inviteSnap.data() as Record<string, any>;
     const teamData = teamSnap.data() as Record<string, any>;
+    const actorData = actorSnap.data() as HookdUser;
 
     if (inviteData.status !== 'pending') {
       return;
@@ -1294,7 +1581,46 @@ export async function cancelTeamInvite({
       pendingInviteUids: Array.from(pendingInviteUids),
       updatedAt: now,
     });
+
+    const recipients = new Set<string>();
+    const inviterUid = typeof inviteData.inviterUid === 'string' ? inviteData.inviterUid : null;
+    const invitee = typeof inviteData.inviteeUid === 'string' ? inviteData.inviteeUid : null;
+    const ownerUid = typeof teamData.ownerUid === 'string' ? teamData.ownerUid : null;
+
+    if (inviterUid && inviterUid !== actorUid) {
+      recipients.add(inviterUid);
+    }
+    if (invitee && invitee !== actorUid) {
+      recipients.add(invitee);
+    }
+    if (ownerUid && ownerUid !== actorUid) {
+      recipients.add(ownerUid);
+    }
+
+    const actorDisplayName = typeof actorData.displayName === 'string' ? actorData.displayName : null;
+    const actorUsername = typeof actorData.username === 'string' ? actorData.username : null;
+    const actorPhotoURL = typeof actorData.photoURL === 'string' ? actorData.photoURL : null;
+
+    recipients.forEach((recipientUid) => {
+      notificationPayloads.push({
+        recipientUid,
+        actorUid,
+        actorDisplayName,
+        actorUsername,
+        actorPhotoURL,
+        verb: 'team_invite_canceled',
+        resource: { type: 'team', teamId },
+        metadata: {
+          teamId,
+          inviteeUid,
+        },
+      });
+    });
   });
+
+  if (notificationPayloads.length) {
+    await Promise.all(notificationPayloads.map((payload) => createNotification(payload)));
+  }
 }
 
 export async function acceptTeamInvite({
@@ -1308,6 +1634,8 @@ export async function acceptTeamInvite({
   const teamRef = doc(db, 'teams', teamId);
   const inviteeRef = doc(db, 'users', inviteeUid);
   const membershipRef = doc(db, 'teamMemberships', inviteeUid);
+
+  const notificationPayloads: Parameters<typeof createNotification>[0][] = [];
 
   await runTransaction(db, async (tx) => {
     const [inviteSnap, teamSnap, inviteeSnap, membershipSnap] = await Promise.all([
@@ -1371,7 +1699,43 @@ export async function acceptTeamInvite({
       createdAt: now,
       updatedAt: now,
     });
+
+    const inviteeData = inviteeSnap.data() as HookdUser;
+    const recipients = new Set<string>();
+    const inviterUid = typeof inviteData.inviterUid === 'string' ? inviteData.inviterUid : null;
+    const ownerUid = typeof teamData.ownerUid === 'string' ? teamData.ownerUid : null;
+
+    if (inviterUid && inviterUid !== inviteeUid) {
+      recipients.add(inviterUid);
+    }
+    if (ownerUid && ownerUid !== inviteeUid) {
+      recipients.add(ownerUid);
+    }
+
+    const actorDisplayName = typeof inviteeData.displayName === 'string' ? inviteeData.displayName : null;
+    const actorUsername = typeof inviteeData.username === 'string' ? inviteeData.username : null;
+    const actorPhotoURL = typeof inviteeData.photoURL === 'string' ? inviteeData.photoURL : null;
+
+    recipients.forEach((recipientUid) => {
+      notificationPayloads.push({
+        recipientUid,
+        actorUid: inviteeUid,
+        actorDisplayName,
+        actorUsername,
+        actorPhotoURL,
+        verb: 'team_invite_accepted',
+        resource: { type: 'team', teamId },
+        metadata: {
+          teamId,
+          inviteeUid,
+        },
+      });
+    });
   });
+
+  if (notificationPayloads.length) {
+    await Promise.all(notificationPayloads.map((payload) => createNotification(payload)));
+  }
 }
 
 export async function kickTeamMember({
@@ -2020,16 +2384,45 @@ export function subscribeToCatchesWithCoordinates(
 export async function toggleLike(catchId: string, uid: string) {
   const likeRef = doc(db, 'catches', catchId, 'likes', uid);
   const postRef = doc(db, 'catches', catchId);
+  const actorSnap = await getDoc(doc(db, 'users', uid));
+  const actorData = actorSnap.exists() ? (actorSnap.data() as HookdUser) : null;
+  let notificationPayload: Parameters<typeof createNotification>[0] | null = null;
+
   await runTransaction(db, async (tx) => {
+    const postSnap = await tx.get(postRef);
+    if (!postSnap.exists()) {
+      throw new Error('Catch not found');
+    }
+
+    const postData = postSnap.data() as Record<string, any>;
+    const catchOwnerUid = typeof postData.uid === 'string' ? postData.uid : null;
     const likeSnap = await tx.get(likeRef);
+
     if (likeSnap.exists()) {
       tx.delete(likeRef);
       tx.update(postRef, { likesCount: increment(-1) });
     } else {
       tx.set(likeRef, { uid, createdAt: serverTimestamp() });
       tx.update(postRef, { likesCount: increment(1) });
+
+      if (catchOwnerUid && catchOwnerUid !== uid) {
+        notificationPayload = {
+          recipientUid: catchOwnerUid,
+          actorUid: uid,
+          actorDisplayName: actorData?.displayName ?? null,
+          actorUsername: actorData?.username ?? null,
+          actorPhotoURL: actorData?.photoURL ?? null,
+          verb: 'like',
+          resource: { type: 'catch', catchId, ownerUid: catchOwnerUid },
+          metadata: { catchId },
+        };
+      }
     }
   });
+
+  if (notificationPayload) {
+    await createNotification(notificationPayload);
+  }
 }
 
 export function subscribeToUserLike(catchId: string, uid: string, cb: (liked: boolean) => void) {
@@ -2353,14 +2746,74 @@ export async function sendDirectMessage(data: {
     displayName: data.senderDisplayName || null,
     photoURL: data.senderPhotoURL ?? null,
   });
+
+  if (data.senderUid !== data.recipientUid) {
+    const senderSnap = await getDoc(doc(db, 'users', data.senderUid));
+    const senderData = senderSnap.exists() ? (senderSnap.data() as HookdUser) : null;
+    await createNotification({
+      recipientUid: data.recipientUid,
+      actorUid: data.senderUid,
+      actorDisplayName: data.senderDisplayName,
+      actorUsername: senderData?.username ?? null,
+      actorPhotoURL: data.senderPhotoURL ?? senderData?.photoURL ?? null,
+      verb: 'direct_message',
+      resource: { type: 'directThread', threadId, otherUid: data.senderUid },
+      metadata: {
+        threadId,
+        preview: normalized.slice(0, 140),
+      },
+    });
+  }
 }
 
 /** ---------- Comments ---------- */
-export async function addComment(catchId: string, data: { uid: string; displayName: string; photoURL?: string; text: string; }) {
+export async function addComment(
+  catchId: string,
+  data: { uid: string; displayName: string; photoURL?: string; text: string },
+) {
+  const trimmed = data.text.trim();
+  if (!trimmed) {
+    throw new Error('Comment cannot be empty');
+  }
+
   const commentsCol = collection(db, 'catches', catchId, 'comments');
-  await addDoc(commentsCol, { ...data, createdAt: serverTimestamp() });
+  const actorSnap = await getDoc(doc(db, 'users', data.uid));
+  const actorData = actorSnap.exists() ? (actorSnap.data() as HookdUser) : null;
+  const commentRef = await addDoc(commentsCol, {
+    uid: data.uid,
+    displayName: data.displayName,
+    photoURL: data.photoURL ?? actorData?.photoURL ?? null,
+    text: trimmed,
+    createdAt: serverTimestamp(),
+  });
+
   const postRef = doc(db, 'catches', catchId);
   await updateDoc(postRef, { commentsCount: increment(1) });
+
+  const postSnap = await getDoc(postRef);
+  if (!postSnap.exists()) {
+    return;
+  }
+
+  const postData = postSnap.data() as Record<string, any>;
+  const ownerUid = typeof postData.uid === 'string' ? postData.uid : null;
+
+  if (ownerUid && ownerUid !== data.uid) {
+    await createNotification({
+      recipientUid: ownerUid,
+      actorUid: data.uid,
+      actorDisplayName: data.displayName,
+      actorUsername: actorData?.username ?? null,
+      actorPhotoURL: data.photoURL ?? actorData?.photoURL ?? null,
+      verb: 'comment',
+      resource: { type: 'catch', catchId, ownerUid },
+      metadata: {
+        catchId,
+        commentId: commentRef.id,
+        preview: trimmed.slice(0, 140),
+      },
+    });
+  }
 }
 
 export function subscribeToComments(catchId: string, cb: (arr: any[]) => void) {

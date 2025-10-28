@@ -2,11 +2,14 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { getAuth, onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { app } from '@/lib/firebaseClient';
-import { HookdUser, subscribeToUser } from '@/lib/firestore';
+import { HookdUser, Notification, subscribeToUser } from '@/lib/firestore';
+import { useNotifications } from '@/hooks/useNotifications';
 import {
+  Bell,
   Home,
   PlusCircle,
   LogIn,
@@ -16,13 +19,26 @@ import {
   Menu,
   X,
   MessageSquare,
+  Loader2,
 } from 'lucide-react';
 
 export default function NavBar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [profile, setProfile] = useState<HookdUser | null>(null);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const notificationsContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const {
+    notifications,
+    unreadCount,
+    isLoading: notificationsLoading,
+    markNotificationAsRead: markNotificationAsReadMutation,
+    markAllNotificationsAsRead: markAllNotificationsAsReadMutation,
+  } = useNotifications(user?.uid ?? null);
+  const hasUnreadNotifications = unreadCount > 0;
 
   useEffect(() => {
     const auth = getAuth(app);
@@ -53,7 +69,151 @@ export default function NavBar() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!isNotificationsOpen) {
+      return;
+    }
+
+    const handleClick = (event: MouseEvent) => {
+      if (!notificationsContainerRef.current) return;
+      if (!notificationsContainerRef.current.contains(event.target as Node)) {
+        setIsNotificationsOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsNotificationsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isNotificationsOpen]);
+
   const isProMember = useMemo(() => Boolean(profile?.isPro), [profile?.isPro]);
+
+  const displayedNotifications = useMemo(() => notifications.slice(0, 20), [notifications]);
+
+  const relativeTimeFormatter = useMemo(() => (
+    typeof Intl !== 'undefined'
+      ? new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' })
+      : null
+  ), []);
+
+  const formatRelativeTime = useCallback((date: Date | null) => {
+    if (!date) return '';
+    if (!relativeTimeFormatter) return date.toLocaleString();
+
+    const diff = date.getTime() - Date.now();
+    const minute = 60 * 1000;
+    const hour = 60 * minute;
+    const day = 24 * hour;
+    const week = 7 * day;
+
+    if (Math.abs(diff) < hour) {
+      return relativeTimeFormatter.format(Math.round(diff / minute), 'minute');
+    }
+    if (Math.abs(diff) < day) {
+      return relativeTimeFormatter.format(Math.round(diff / hour), 'hour');
+    }
+    if (Math.abs(diff) < week) {
+      return relativeTimeFormatter.format(Math.round(diff / day), 'day');
+    }
+    return date.toLocaleDateString();
+  }, [relativeTimeFormatter]);
+
+  const resolveNotificationLabel = useCallback((notification: Notification) => {
+    const actorName = notification.actorDisplayName
+      || (notification.actorUsername ? `@${notification.actorUsername}` : 'An angler');
+
+    switch (notification.verb) {
+      case 'follow':
+        return `${actorName} started following you.`;
+      case 'direct_message':
+        return `${actorName} sent you a direct message.`;
+      case 'like':
+        return `${actorName} liked your catch.`;
+      case 'comment':
+        return `${actorName} commented on your catch.`;
+      case 'team_invite_accepted':
+        return `${actorName} joined your team.`;
+      case 'team_invite_canceled':
+        return `${actorName} updated a team invite.`;
+      default:
+        return 'You have a new notification.';
+    }
+  }, []);
+
+  const resolveNotificationHref = useCallback((notification: Notification) => {
+    switch (notification.verb) {
+      case 'follow':
+        return `/profile/${notification.actorUid}`;
+      case 'direct_message':
+        return `/messages/${notification.actorUid}`;
+      case 'like':
+      case 'comment':
+        if (notification.resource?.type === 'catch') {
+          const owner = notification.resource.ownerUid || notification.actorUid;
+          return `/profile/${owner}`;
+        }
+        return `/profile/${notification.actorUid}`;
+      case 'team_invite_accepted':
+      case 'team_invite_canceled':
+        if (notification.resource?.type === 'team') {
+          return `/teams/${notification.resource.teamId}`;
+        }
+        return '/teams';
+      default:
+        return null;
+    }
+  }, []);
+
+  const extractPreview = useCallback((notification: Notification) => {
+    const metadata = notification.metadata as Record<string, unknown> | null;
+    if (!metadata) return null;
+    const preview = metadata.preview;
+    if (typeof preview === 'string' && preview.trim()) {
+      return preview.trim();
+    }
+    return null;
+  }, []);
+
+  const resolveInitials = useCallback((notification: Notification) => {
+    const source = notification.actorDisplayName
+      || notification.actorUsername
+      || '';
+    if (!source) {
+      return '?';
+    }
+    const parts = source.trim().split(/\s+/);
+    if (parts.length === 0) {
+      return '?';
+    }
+    const initials = parts.slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join('');
+    return initials || '?';
+  }, []);
+
+  const handleNotificationClick = useCallback(async (notification: Notification) => {
+    const destination = resolveNotificationHref(notification);
+    setIsNotificationsOpen(false);
+    if (!notification.isRead) {
+      await markNotificationAsReadMutation(notification.id);
+    }
+    if (destination) {
+      router.push(destination);
+    }
+  }, [markNotificationAsReadMutation, resolveNotificationHref, router]);
+
+  const handleMarkAllNotificationsAsRead = useCallback(async () => {
+    await markAllNotificationsAsReadMutation();
+    setIsNotificationsOpen(false);
+  }, [markAllNotificationsAsReadMutation]);
 
   const tabs = [
     { href: '/', icon: Home, label: 'Home' },
@@ -114,6 +274,104 @@ export default function NavBar() {
                 </>
               )}
             </div>
+
+            {/* Notifications dropdown (shared) */}
+            {user ? (
+              <div ref={notificationsContainerRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsNotificationsOpen((prev) => !prev)}
+                  className="relative hidden sm:inline-flex items-center justify-center rounded-xl border border-white/15 p-2 text-white transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                  aria-label="View notifications"
+                >
+                  <Bell className={`h-5 w-5 ${hasUnreadNotifications ? 'fill-brand-400 text-brand-300' : ''}`} />
+                  {hasUnreadNotifications ? (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[1.25rem] rounded-full bg-brand-400 px-1 text-center text-[10px] font-semibold text-slate-950 shadow">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                      <span className="sr-only"> unread notifications</span>
+                    </span>
+                  ) : null}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsNotificationsOpen((prev) => !prev)}
+                  className="relative inline-flex items-center justify-center rounded-xl border border-white/15 p-2 text-white transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300 sm:hidden"
+                  aria-label="View notifications"
+                >
+                  <Bell className={`h-5 w-5 ${hasUnreadNotifications ? 'fill-brand-400 text-brand-300' : ''}`} />
+                  {hasUnreadNotifications ? (
+                    <span className="absolute -top-1.5 -right-1.5 min-w-[1.25rem] rounded-full bg-brand-400 px-1 text-center text-[10px] font-semibold text-slate-950 shadow">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                      <span className="sr-only"> unread notifications</span>
+                    </span>
+                  ) : null}
+                </button>
+
+                {isNotificationsOpen ? (
+                  <div className="absolute right-0 mt-3 w-80 sm:w-96 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/95 shadow-2xl backdrop-blur">
+                    <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+                      <p className="text-sm font-semibold text-white">Notifications</p>
+                      <button
+                        type="button"
+                        onClick={handleMarkAllNotificationsAsRead}
+                        className="text-xs font-medium text-brand-200 transition hover:text-brand-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={!hasUnreadNotifications}
+                      >
+                        Mark all as read
+                      </button>
+                    </div>
+                    <div className="max-h-96 overflow-y-auto">
+                      {notificationsLoading ? (
+                        <div className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-white/70">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Loading notifications…
+                        </div>
+                      ) : displayedNotifications.length === 0 ? (
+                        <div className="px-4 py-8 text-sm text-white/60">
+                          You&apos;re all caught up. No notifications yet.
+                        </div>
+                      ) : (
+                        <ul className="divide-y divide-white/5">
+                          {displayedNotifications.map((notification) => {
+                            const preview = extractPreview(notification);
+                            return (
+                              <li key={notification.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleNotificationClick(notification)}
+                                  className={`flex w-full gap-3 px-4 py-3 text-left transition ${notification.isRead ? 'hover:bg-white/5' : 'bg-white/5 hover:bg-white/10'}`}
+                                >
+                                  {notification.actorPhotoURL ? (
+                                    <Image
+                                      src={notification.actorPhotoURL}
+                                      alt={notification.actorDisplayName || 'Notification avatar'}
+                                      width={40}
+                                      height={40}
+                                      className="h-10 w-10 rounded-full object-cover"
+                                    />
+                                  ) : (
+                                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-800 text-xs font-semibold uppercase text-white/80">
+                                      {resolveInitials(notification)}
+                                    </span>
+                                  )}
+                                  <span className="flex-1">
+                                    <span className="block text-sm font-medium text-white">{resolveNotificationLabel(notification)}</span>
+                                    {preview ? (
+                                      <span className="mt-1 block text-xs text-white/60 line-clamp-2">{preview}</span>
+                                    ) : null}
+                                    <span className="mt-1 block text-xs text-white/40">{formatRelativeTime(notification.createdAt)}</span>
+                                  </span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {/* Mobile actions */}
             <div className="flex items-center gap-2 sm:hidden">
