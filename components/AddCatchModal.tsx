@@ -875,6 +875,14 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         const response = await fetch(`/api/environment?${params.toString()}`, {
           signal: controller.signal,
         });
+        if (response.status >= 400 && response.status < 500) {
+          if (isActive && !controller.signal.aborted) {
+            setEnvironmentSnapshot(null);
+            setEnvironmentBands(null);
+            setEnvironmentError('Live conditions unavailable.');
+          }
+          return;
+        }
         if (!response.ok) {
           throw new Error('Unable to fetch environment data.');
         }

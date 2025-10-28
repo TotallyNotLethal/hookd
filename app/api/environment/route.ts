@@ -15,6 +15,8 @@ const PRESSURE_TREND_THRESHOLD = 0.3;
 const MAX_FORWARD_HOURS = 6;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 64;
+export const MAX_LEAD_LAG_DAYS = 16;
+const MAX_LEAD_LAG_MS = MAX_LEAD_LAG_DAYS * 24 * 60 * 60 * 1000;
 
 type EnvironmentCachePayload = {
   capture: EnvironmentSnapshot | null;
@@ -294,6 +296,12 @@ export async function GET(request: Request) {
   const baseTimestamp = new Date(timestampParam);
   if (Number.isNaN(baseTimestamp.getTime())) {
     return NextResponse.json({ error: 'Invalid timestamp' }, { status: 400 });
+  }
+
+  const now = Date.now();
+  const diff = Math.abs(baseTimestamp.getTime() - now);
+  if (diff > MAX_LEAD_LAG_MS) {
+    return NextResponse.json({ capture: null, slices: [] }, { status: 422 });
   }
 
   const forwardHours = clampForward(Number.parseInt(forwardParam ?? '0', 10));
