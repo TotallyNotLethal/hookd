@@ -118,6 +118,9 @@ async function fetchEnvironmentSlices(
       forwardHours: String(forwardHours),
     });
     const response = await fetch(`/api/environment?${params.toString()}`);
+    if (response.status >= 400 && response.status < 500) {
+      return null;
+    }
     if (!response.ok) {
       throw new Error(`Environment endpoint failed with status ${response.status}`);
     }

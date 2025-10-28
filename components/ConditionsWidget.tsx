@@ -384,6 +384,14 @@ export default function ConditionsWidget({
         const response = await fetch(`/api/environment?${params.toString()}`, {
           signal: controller.signal,
         });
+        if (response.status >= 400 && response.status < 500) {
+          if (!isActive || controller.signal.aborted) {
+            return;
+          }
+          setFallbackEnvironment(null);
+          setFallbackEnvironmentError('Live conditions unavailable.');
+          return;
+        }
         if (!response.ok) {
           throw new Error(`Environment request failed with status ${response.status}`);
         }
