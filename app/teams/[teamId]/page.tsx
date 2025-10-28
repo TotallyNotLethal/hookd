@@ -5,11 +5,11 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useAuthState } from 'react-firebase-hooks/auth';
-import { CalendarDays, Fish, Loader2, MapPin, MessageCircle, Users } from 'lucide-react';
+import { CalendarDays, Fish, Loader2, MapPin, MessageCircle, UserMinus, Users } from 'lucide-react';
 
 import NavBar from '@/components/NavBar';
 import { auth, db } from '@/lib/firebaseClient';
-import { subscribeToTeam, type Team } from '@/lib/firestore';
+import { kickTeamMember, subscribeToTeam, type Team } from '@/lib/firestore';
 import { doc, getDoc } from 'firebase/firestore';
 
 type ProfileSummary = {
@@ -34,6 +34,7 @@ export default function TeamOverviewPage() {
   const [team, setTeam] = useState<Team | null>(null);
   const [loading, setLoading] = useState(true);
   const [profiles, setProfiles] = useState<Record<string, ProfileSummary>>({});
+  const [memberActions, setMemberActions] = useState<Record<string, { loading: boolean; error: string | null }>>({});
 
   useEffect(() => {
     if (!teamId) {
@@ -96,6 +97,27 @@ export default function TeamOverviewPage() {
   }, [profiles, team]);
 
   const isCaptain = useMemo(() => team && authUser?.uid ? team.ownerUid === authUser.uid : false, [team, authUser?.uid]);
+
+  const handleKickMember = async (memberUid: string) => {
+    if (!team || !authUser?.uid) return;
+    if (memberUid === team.ownerUid) return;
+
+    setMemberActions((prev) => ({ ...prev, [memberUid]: { loading: true, error: null } }));
+    try {
+      await kickTeamMember({ teamId: team.id, actorUid: authUser.uid, targetUid: memberUid });
+      setMemberActions((prev) => {
+        const next = { ...prev };
+        delete next[memberUid];
+        return next;
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to remove that member.';
+      setMemberActions((prev) => ({
+        ...prev,
+        [memberUid]: { loading: false, error: message },
+      }));
+    }
+  };
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-white">
       <NavBar />
@@ -176,28 +198,55 @@ export default function TeamOverviewPage() {
                       const profile = profiles[uid];
                       const isSelf = authUser?.uid === uid;
                       const isOwner = team.ownerUid === uid;
+                      const canRemove = isCaptain && !isOwner && !isSelf;
+                      const actionState = memberActions[uid];
                       return (
-                        <li key={uid} className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
-                          <div>
-                            <p className="font-medium text-white">{formatMemberDisplay(profile, 'Angler')}</p>
-                            <p className="text-xs text-white/50">
-                              {isOwner ? 'Captain' : 'Crewmate'}
-                              {isSelf ? ' • You' : ''}
-                            </p>
-                          </div>
-                          {profile?.photoURL ? (
-                            <Image
-                              src={profile.photoURL}
-                              alt={profile.displayName}
-                              width={40}
-                              height={40}
-                              className="h-10 w-10 rounded-full object-cover"
-                            />
-                          ) : (
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-slate-900/60 text-sm text-white/60">
-                              🎣
+                        <li
+                          key={uid}
+                          className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-3 md:flex-row md:items-center md:justify-between"
+                        >
+                          <div className="flex items-center gap-3">
+                            {profile?.photoURL ? (
+                              <Image
+                                src={profile.photoURL}
+                                alt={profile.displayName}
+                                width={40}
+                                height={40}
+                                className="h-10 w-10 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-slate-900/60 text-sm text-white/60">
+                                🎣
+                              </div>
+                            )}
+                            <div>
+                              <p className="font-medium text-white">{formatMemberDisplay(profile, 'Angler')}</p>
+                              <p className="text-xs text-white/50">
+                                {isOwner ? 'Captain' : 'Crewmate'}
+                                {isSelf ? ' • You' : ''}
+                              </p>
                             </div>
-                          )}
+                          </div>
+                          {canRemove ? (
+                            <div className="flex flex-col items-start gap-2 md:items-end">
+                              <button
+                                type="button"
+                                onClick={() => handleKickMember(uid)}
+                                disabled={actionState?.loading}
+                                className="inline-flex items-center gap-2 rounded-full border border-red-400/30 bg-red-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-100 transition hover:border-red-300 hover:text-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                {actionState?.loading ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <UserMinus className="h-3.5 w-3.5" />
+                                )}
+                                <span>Remove</span>
+                              </button>
+                              {actionState?.error ? (
+                                <p className="text-xs text-amber-300/80">{actionState.error}</p>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </li>
                       );
                     })}
@@ -226,7 +275,10 @@ export default function TeamOverviewPage() {
                         <div>
                           <p className="font-semibold text-white">Share a hotspot</p>
                           <p className="text-xs text-white/50">Drop pins and plan the bite together on the Hook&apos;d map.</p>
-                          <Link href="/map" className="mt-2 inline-flex items-center gap-1 text-xs text-brand-200 hover:text-brand-100">
+                          <Link
+                            href={`/teams/${team.id}/map`}
+                            className="mt-2 inline-flex items-center gap-1 text-xs text-brand-200 hover:text-brand-100"
+                          >
                             Open map →
                           </Link>
                         </div>

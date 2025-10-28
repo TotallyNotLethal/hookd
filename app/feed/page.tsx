@@ -5,7 +5,12 @@ import {
   subscribeToFeedCatches,
   subscribeToFollowingFeedCatches,
   subscribeToLocalFeedCatches,
+  subscribeToTeam,
+  subscribeToTeamFeedCatches,
+  subscribeToTeamMembership,
   subscribeToUser,
+  type Team,
+  type TeamMembership,
 } from "@/lib/firestore";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
@@ -20,11 +25,12 @@ const AddCatchModal = dynamic(() => import("@/components/AddCatchModal"), {
 });
 
 
-type FeedFilter = "all" | "following" | "local";
+type FeedFilter = "all" | "following" | "local" | "team";
 
 const EMPTY_FOLLOWING_IDS: string[] = [];
+const EMPTY_TEAM_MEMBERS: string[] = [];
 
-const FILTERS: { key: FeedFilter; label: string }[] = [
+const BASE_FILTERS: { key: FeedFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "following", label: "Following" },
   { key: "local", label: "Local (50 mi)" },
@@ -39,6 +45,8 @@ function FeedContent() {
   const [geoError, setGeoError] = useState<string | null>(null);
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [followingIds, setFollowingIds] = useState<string[]>([]);
+  const [teamMembership, setTeamMembership] = useState<TeamMembership | null>(null);
+  const [team, setTeam] = useState<Team | null>(null);
   const sp = useSearchParams();
   const router = useRouter();
   const [user] = useAuthState(auth);
@@ -55,6 +63,14 @@ function FeedContent() {
     () => (user?.uid ? followingIds : EMPTY_FOLLOWING_IDS),
     [followingIds, user?.uid],
   );
+  const teamMemberUids = team?.memberUids ?? EMPTY_TEAM_MEMBERS;
+  const filters = useMemo(() => {
+    const entries = [...BASE_FILTERS];
+    if (team) {
+      entries.push({ key: "team" as const, label: team.name ? `Team (${team.name})` : "Team" });
+    }
+    return entries;
+  }, [team]);
 
   useEffect(() => {
     if (!user?.uid) {
@@ -74,6 +90,42 @@ function FeedContent() {
   }, [defer, user?.uid]);
 
   useEffect(() => {
+    if (!user?.uid) {
+      defer(() => {
+        setTeamMembership(null);
+        setTeam(null);
+      });
+      return;
+    }
+
+    const unsubscribe = subscribeToTeamMembership(user.uid, (membership) => {
+      defer(() => setTeamMembership(membership));
+    });
+
+    return () => unsubscribe();
+  }, [defer, user?.uid]);
+
+  useEffect(() => {
+    const teamId = teamMembership?.teamId;
+    if (!teamId) {
+      defer(() => setTeam(null));
+      return;
+    }
+
+    const unsubscribe = subscribeToTeam(teamId, (next) => {
+      defer(() => setTeam(next));
+    });
+
+    return () => unsubscribe();
+  }, [defer, teamMembership?.teamId]);
+
+  useEffect(() => {
+    if (filter === "team" && !team) {
+      defer(() => setFilter("all"));
+    }
+  }, [defer, filter, team]);
+
+  useEffect(() => {
     let unsubscribe: (() => void) | undefined;
 
     if (filter === "all") {
@@ -90,12 +142,20 @@ function FeedContent() {
       } else {
         unsubscribe = subscribeToLocalFeedCatches(location, 50, setItems);
       }
+    } else if (filter === "team") {
+      if (!user?.uid || !team) {
+        defer(() => setItems([]));
+      } else if (teamMemberUids.length === 0) {
+        defer(() => setItems([]));
+      } else {
+        unsubscribe = subscribeToTeamFeedCatches(teamMemberUids, setItems);
+      }
     }
 
     return () => {
       unsubscribe?.();
     };
-  }, [defer, effectiveFollowingIds, filter, location, user?.uid]);
+  }, [defer, effectiveFollowingIds, filter, location, team, teamMemberUids, user?.uid]);
 
   useEffect(() => {
     if (sp.get("compose") === "1") {
@@ -149,11 +209,23 @@ function FeedContent() {
     if (filter === "local" && !location) {
       return "Share your location to find catches near you.";
     }
+    if (filter === "team" && !user) {
+      return "Sign in to see catches from your crew.";
+    }
+    if (filter === "team" && !team) {
+      return "Join a team to unlock crew catches.";
+    }
+    if (filter === "team" && teamMemberUids.length === 0) {
+      return "Invite anglers to your crew to start sharing catches.";
+    }
     if (items.length === 0) {
+      if (filter === "team") {
+        return "Your crew hasn’t logged any catches yet.";
+      }
       return "No catches yet. Be the first to share!";
     }
     return null;
-  }, [effectiveFollowingIds.length, filter, geoLoading, items.length, location, user]);
+  }, [effectiveFollowingIds.length, filter, geoLoading, items.length, location, team, teamMemberUids.length, user]);
 
   const openDetail = (post: any) => {
     setActive(post);
@@ -170,7 +242,7 @@ function FeedContent() {
           </button>
         </div>
         <div className="flex flex-wrap gap-2 mb-6">
-          {FILTERS.map((item) => (
+          {filters.map((item) => (
             <button
               key={item.key}
               onClick={() => handleFilterSelect(item.key)}

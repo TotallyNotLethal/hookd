@@ -211,6 +211,12 @@ export type Team = {
   updatedAt: Date | null;
 };
 
+export type TeamMembership = {
+  teamId: string | null;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+};
+
 export type TeamInviteStatus = "pending" | "accepted" | "canceled";
 
 export type TeamInvite = {
@@ -288,6 +294,35 @@ export function applyAcceptedMemberToTeamArrays(team: TeamArrays, memberUid: str
     pendingInviteUids: Array.from(pendingSet),
     memberCount: memberSet.size,
   };
+}
+
+export function subscribeToTeamMembership(uid: string, cb: (membership: TeamMembership | null) => void) {
+  const membershipRef = doc(db, 'teamMemberships', uid);
+  return onSnapshot(membershipRef, (snap) => {
+    if (!snap.exists()) {
+      cb(null);
+      return;
+    }
+
+    const data = snap.data() as Record<string, any>;
+    const createdAt = data.createdAt instanceof Timestamp
+      ? data.createdAt.toDate()
+      : data.createdAt && typeof data.createdAt.toDate === 'function'
+        ? data.createdAt.toDate()
+        : null;
+
+    const updatedAt = data.updatedAt instanceof Timestamp
+      ? data.updatedAt.toDate()
+      : data.updatedAt && typeof data.updatedAt.toDate === 'function'
+        ? data.updatedAt.toDate()
+        : null;
+
+    cb({
+      teamId: typeof data.teamId === 'string' && data.teamId ? data.teamId : null,
+      createdAt,
+      updatedAt,
+    });
+  });
 }
 
 async function deleteDocumentReferences(refs: DocumentReference[]): Promise<void> {
@@ -1331,6 +1366,92 @@ export async function acceptTeamInvite({
   });
 }
 
+export async function kickTeamMember({
+  teamId,
+  actorUid,
+  targetUid,
+}: {
+  teamId: string;
+  actorUid: string;
+  targetUid: string;
+}): Promise<void> {
+  if (actorUid === targetUid) {
+    throw new Error('Captains cannot remove themselves. Visit the teams dashboard to manage ownership.');
+  }
+
+  const teamRef = doc(db, 'teams', teamId);
+  const actorRef = doc(db, 'users', actorUid);
+  const targetRef = doc(db, 'users', targetUid);
+  const membershipRef = doc(db, 'teamMemberships', targetUid);
+
+  await runTransaction(db, async (tx) => {
+    const [teamSnap, actorSnap, targetSnap, membershipSnap] = await Promise.all([
+      tx.get(teamRef),
+      tx.get(actorRef),
+      tx.get(targetRef),
+      tx.get(membershipRef),
+    ]);
+
+    if (!teamSnap.exists()) {
+      throw new Error('Team not found.');
+    }
+
+    if (!actorSnap.exists()) {
+      throw new Error('We could not verify your account.');
+    }
+
+    if (!targetSnap.exists()) {
+      throw new Error('We could not verify the selected angler.');
+    }
+
+    const teamData = teamSnap.data() as Record<string, any>;
+
+    if (teamData.ownerUid !== actorUid) {
+      throw new Error('Only the team captain can remove members.');
+    }
+
+    if (teamData.ownerUid === targetUid) {
+      throw new Error('You cannot remove the captain from the team.');
+    }
+
+    const members = new Set<string>(
+      Array.isArray(teamData.memberUids)
+        ? teamData.memberUids.filter((value): value is string => typeof value === 'string')
+        : [],
+    );
+
+    if (!members.has(targetUid)) {
+      throw new Error('That angler is not on your team.');
+    }
+
+    members.delete(targetUid);
+
+    const pendingInvites = new Set<string>(
+      Array.isArray(teamData.pendingInviteUids)
+        ? teamData.pendingInviteUids.filter((value): value is string => typeof value === 'string')
+        : [],
+    );
+    pendingInvites.delete(targetUid);
+
+    const now = serverTimestamp();
+
+    tx.update(teamRef, {
+      memberUids: Array.from(members),
+      pendingInviteUids: Array.from(pendingInvites),
+      memberCount: members.size,
+      updatedAt: now,
+    });
+
+    if (membershipSnap.exists()) {
+      const membershipData = membershipSnap.data() as Record<string, any>;
+      const membershipTeamId = typeof membershipData.teamId === 'string' ? membershipData.teamId : null;
+      if (membershipTeamId === teamId) {
+        tx.delete(membershipRef);
+      }
+    }
+  });
+}
+
 export function subscribeToTeamsForUser(uid: string, cb: (teams: Team[]) => void) {
   const q = query(collection(db, 'teams'), where('memberUids', 'array-contains', uid));
   return onSnapshot(q, (snap) => {
@@ -1611,6 +1732,55 @@ export function subscribeToFeedCatches(cb: (arr: any[]) => void) {
   });
 }
 
+export function subscribeToTeamFeedCatches(memberUids: string[], cb: (arr: any[]) => void) {
+  const cleaned = Array.from(
+    new Set(
+      memberUids
+        .filter((uid): uid is string => typeof uid === 'string')
+        .map((uid) => uid.trim())
+        .filter((uid) => uid.length > 0),
+    ),
+  );
+
+  if (cleaned.length === 0) {
+    cb([]);
+    return () => {};
+  }
+
+  const chunkSize = 10;
+  const chunkResults = new Map<number, Map<string, any>>();
+  const unsubscribers: (() => void)[] = [];
+
+  const emit = () => {
+    const merged: any[] = [];
+    chunkResults.forEach((map) => {
+      map.forEach((value) => merged.push(value));
+    });
+    merged.sort((a, b) => valueToMillis(b.createdAt) - valueToMillis(a.createdAt));
+    cb(merged);
+  };
+
+  for (let index = 0; index < cleaned.length; index += chunkSize) {
+    const slice = cleaned.slice(index, index + chunkSize);
+    const q = query(collection(db, 'catches'), where('uid', 'in', slice));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const map = new Map<string, any>();
+      snap.forEach((docSnap) => {
+        map.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+      });
+      chunkResults.set(index, map);
+      emit();
+    });
+
+    unsubscribers.push(unsubscribe);
+  }
+
+  return () => {
+    unsubscribers.forEach((fn) => fn());
+    chunkResults.clear();
+  };
+}
+
 function computeDistanceMiles(
   a: { lat: number; lng: number },
   b: { lat: number; lng: number },
@@ -1713,47 +1883,70 @@ export function subscribeToLocalFeedCatches(
   });
 }
 
-export function subscribeToCatchesWithCoordinates(cb: (arr: CatchWithCoordinates[]) => void) {
-  const q = query(collection(db, "catches"));
-  return onSnapshot(q, (snap) => {
-    const arr: CatchWithCoordinates[] = [];
-    snap.forEach((docSnap) => {
-      const data = docSnap.data();
-      if (data.locationPrivate) {
-        return;
-      }
-      const coords = data.coordinates;
-      if (!(coords instanceof GeoPoint)) return;
+export function subscribeToCatchesWithCoordinates(
+  cb: (arr: CatchWithCoordinates[]) => void,
+  options?: { allowedUids?: string[] | null },
+) {
+  const allowed = Array.isArray(options?.allowedUids)
+    ? Array.from(
+        new Set(
+          options.allowedUids
+            .filter((uid): uid is string => typeof uid === 'string')
+            .map((uid) => uid.trim())
+            .filter((uid) => uid.length > 0),
+        ),
+      )
+    : null;
 
-      const createdAtTimestamp = data.createdAt instanceof Timestamp ? data.createdAt : null;
-      const capturedAtTimestamp = data.capturedAt instanceof Timestamp ? data.capturedAt : null;
+  if (allowed && allowed.length === 0) {
+    cb([]);
+    return () => {};
+  }
 
-      arr.push({
-        id: docSnap.id,
-        species: data.species || "",
-        uid: data.uid ?? data.userId ?? null,
-        userId: data.userId ?? data.uid ?? null,
-        weight: data.weight ?? null,
-        location: data.location ?? null,
-        caption: data.caption ?? null,
-        displayName: data.displayName ?? data.user?.name ?? null,
-        userPhoto: data.userPhoto ?? null,
-        coordinates: { lat: coords.latitude, lng: coords.longitude },
-        locationPrivate: data.locationPrivate ?? null,
-        createdAt: createdAtTimestamp,
-        createdAtDate: createdAtTimestamp ? createdAtTimestamp.toDate() : null,
-        capturedAt: capturedAtTimestamp,
-        capturedAtDate: capturedAtTimestamp ? capturedAtTimestamp.toDate() : null,
-        imageUrl: data.imageUrl ?? null,
-        likesCount: typeof data.likesCount === "number" ? data.likesCount : null,
-        commentsCount: typeof data.commentsCount === "number" ? data.commentsCount : null,
-        trophy: typeof data.trophy === "boolean" ? data.trophy : null,
-        hashtags: Array.isArray(data.hashtags) ? data.hashtags : null,
-        user: typeof data.user === "object" && data.user !== null ? data.user : null,
-      });
+  const convert = (docSnap: any): CatchWithCoordinates | null => {
+    const data = docSnap.data();
+    if (data.locationPrivate) {
+      return null;
+    }
+
+    const coords = data.coordinates;
+    if (!(coords instanceof GeoPoint)) return null;
+
+    const createdAtTimestamp = data.createdAt instanceof Timestamp ? data.createdAt : null;
+    const capturedAtTimestamp = data.capturedAt instanceof Timestamp ? data.capturedAt : null;
+
+    return {
+      id: docSnap.id,
+      species: data.species || "",
+      uid: data.uid ?? data.userId ?? null,
+      userId: data.userId ?? data.uid ?? null,
+      weight: data.weight ?? null,
+      location: data.location ?? null,
+      caption: data.caption ?? null,
+      displayName: data.displayName ?? data.user?.name ?? null,
+      userPhoto: data.userPhoto ?? null,
+      coordinates: { lat: coords.latitude, lng: coords.longitude },
+      locationPrivate: data.locationPrivate ?? null,
+      createdAt: createdAtTimestamp,
+      createdAtDate: createdAtTimestamp ? createdAtTimestamp.toDate() : null,
+      capturedAt: capturedAtTimestamp,
+      capturedAtDate: capturedAtTimestamp ? capturedAtTimestamp.toDate() : null,
+      imageUrl: data.imageUrl ?? null,
+      likesCount: typeof data.likesCount === 'number' ? data.likesCount : null,
+      commentsCount: typeof data.commentsCount === 'number' ? data.commentsCount : null,
+      trophy: typeof data.trophy === 'boolean' ? data.trophy : null,
+      hashtags: Array.isArray(data.hashtags) ? data.hashtags : null,
+      user: typeof data.user === 'object' && data.user !== null ? data.user : null,
+    };
+  };
+
+  const emit = (maps: Map<number, Map<string, CatchWithCoordinates>>) => {
+    const merged: CatchWithCoordinates[] = [];
+    maps.forEach((map) => {
+      map.forEach((value) => merged.push(value));
     });
 
-    arr.sort((a, b) => {
+    merged.sort((a, b) => {
       const aDate = a.capturedAtDate ?? a.createdAtDate ?? null;
       const bDate = b.capturedAtDate ?? b.createdAtDate ?? null;
       const aTime = aDate ? aDate.getTime() : 0;
@@ -1761,8 +1954,58 @@ export function subscribeToCatchesWithCoordinates(cb: (arr: CatchWithCoordinates
       return bTime - aTime;
     });
 
-    cb(arr);
-  });
+    cb(merged);
+  };
+
+  if (!allowed) {
+    const q = query(collection(db, 'catches'));
+    return onSnapshot(q, (snap) => {
+      const arr: CatchWithCoordinates[] = [];
+      snap.forEach((docSnap) => {
+        const converted = convert(docSnap);
+        if (converted) {
+          arr.push(converted);
+        }
+      });
+
+      arr.sort((a, b) => {
+        const aDate = a.capturedAtDate ?? a.createdAtDate ?? null;
+        const bDate = b.capturedAtDate ?? b.createdAtDate ?? null;
+        const aTime = aDate ? aDate.getTime() : 0;
+        const bTime = bDate ? bDate.getTime() : 0;
+        return bTime - aTime;
+      });
+
+      cb(arr);
+    });
+  }
+
+  const chunkSize = 10;
+  const chunkResults = new Map<number, Map<string, CatchWithCoordinates>>();
+  const unsubscribers: (() => void)[] = [];
+
+  for (let index = 0; index < allowed.length; index += chunkSize) {
+    const slice = allowed.slice(index, index + chunkSize);
+    const q = query(collection(db, 'catches'), where('uid', 'in', slice));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const map = new Map<string, CatchWithCoordinates>();
+      snap.forEach((docSnap) => {
+        const converted = convert(docSnap);
+        if (converted) {
+          map.set(docSnap.id, converted);
+        }
+      });
+      chunkResults.set(index, map);
+      emit(chunkResults);
+    });
+
+    unsubscribers.push(unsubscribe);
+  }
+
+  return () => {
+    unsubscribers.forEach((fn) => fn());
+    chunkResults.clear();
+  };
 }
 
 /** ---------- Likes (subcollection + counter) ---------- */
