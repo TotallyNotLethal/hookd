@@ -1,55 +1,36 @@
-# =======================================
-# 🚀 Hook'd – Next.js + Firebase Project
-# =======================================
-
-# Node modules and build output
+# Dependencies
 node_modules/
+
+# Build output
 .next/
 out/
 dist/
+build/
 
-# Logs and debug
+# Capacitor / Android
+android/.gradle/
+android/.idea/
+android/app/build/
+android/build/
+android/capacitor-cordova-android-plugins/
+android/local.properties
+
+# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
 
-# OS / Editor files
-.DS_Store
-Thumbs.db
-*.swp
-*.swo
-*.tmp
-.idea/
-.vscode/
-*.log
-
-# Env files (Firebase / API keys)
+# Env files
 .env
 .env.local
-.env.development
-.env.production
-.env.test
-.firebase/
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Firebase related files
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Firebase cache
 .firebaserc
-firebase-debug.log
-firebase-debug.*
-firebase-export-*
-
-# TypeScript cache
-*.tsbuildinfo
-
-# Testing
-coverage/
-jest.config.js
-
-# Misc
-*.bak
-*.old
-*.orig
-*.rej
-
-# Vercel
-.vercel
+.firebase/
