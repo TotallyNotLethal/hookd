@@ -378,8 +378,6 @@ export default function ConditionsWidget({
         const params = new URLSearchParams({
           lat: location.latitude.toString(),
           lng: location.longitude.toString(),
-          timestamp: new Date().toISOString(),
-          forwardHours: "0",
         });
         const response = await fetch(`/api/environment?${params.toString()}`, {
           signal: controller.signal,

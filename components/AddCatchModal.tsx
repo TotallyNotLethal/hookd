@@ -848,10 +848,10 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
 
   const environmentLat = coordinates?.lat;
   const environmentLng = coordinates?.lng;
-  const environmentTimestampIso = capturedAt ? capturedAt.toISOString() : null;
+  const environmentCaptureKey = capturedAt ? capturedAt.getTime() : null;
 
   useEffect(() => {
-    if (environmentLat == null || environmentLng == null || !environmentTimestampIso) {
+    if (environmentLat == null || environmentLng == null) {
       setEnvironmentSnapshot(null);
       setEnvironmentBands(null);
       setEnvironmentError(null);
@@ -869,8 +869,6 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         const params = new URLSearchParams({
           lat: environmentLat.toString(),
           lng: environmentLng.toString(),
-          timestamp: environmentTimestampIso,
-          forwardHours: '0',
         });
         const response = await fetch(`/api/environment?${params.toString()}`, {
           signal: controller.signal,
@@ -919,7 +917,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       isActive = false;
       controller.abort();
     };
-  }, [environmentLat, environmentLng, environmentTimestampIso]);
+  }, [environmentLat, environmentLng, environmentCaptureKey]);
 
   useEffect(() => {
     if (!locationDirty) return;

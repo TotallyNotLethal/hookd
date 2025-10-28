@@ -47,7 +47,6 @@ test('GET populates weather data from weather_code responses', async () => {
   const fixedNow = Date.UTC(2024, 4, 5, 12, 0, 0);
   Date.now = () => fixedNow;
 
-  const baseTimestamp = '2024-05-05T12:15:00Z';
   const forecastPayload = {
     timezone: 'UTC',
     utc_offset_seconds: 0,
@@ -96,10 +95,8 @@ test('GET populates weather data from weather_code responses', async () => {
   }) as typeof fetch;
 
   try {
-    const params = new URLSearchParams({ lat: '10', lng: '20', timestamp: baseTimestamp });
-    const response = await GET(
-      new Request(`http://localhost/api/environment?${params.toString()}`),
-    );
+    const params = new URLSearchParams({ lat: '10', lng: '20' });
+    const response = await GET(new Request(`http://localhost/api/environment?${params.toString()}`));
 
     assert.equal(response.status, 200);
     const payload = await response.json();
