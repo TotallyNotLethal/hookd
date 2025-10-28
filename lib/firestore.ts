@@ -58,6 +58,8 @@ export type HookdUser = {
   isTester: boolean;
   isPro: boolean;
   profileTheme?: ProfileTheme;
+  age?: number | null;
+  badges?: string[];
 };
 
 export type ProfileAccentKey = "tide" | "ember" | "kelp" | "midnight";
@@ -70,6 +72,65 @@ export type ProfileTheme = {
   layoutVariant: ProfileLayoutKey;
   featuredCatchId?: string | null;
 };
+
+export const MIN_PROFILE_AGE = 0;
+export const MAX_PROFILE_AGE = 120;
+export const LIL_ANGLER_BADGE = 'lil-angler';
+export const LIL_ANGLER_MAX_AGE = 9;
+
+export function normalizeUserAge(input: unknown): number | null {
+  if (input === null || input === undefined) {
+    return null;
+  }
+
+  if (typeof input === 'string') {
+    const trimmed = input.trim();
+    if (!trimmed) return null;
+    const numeric = Number(trimmed);
+    if (!Number.isFinite(numeric)) return null;
+    const rounded = Math.round(numeric);
+    return Math.min(MAX_PROFILE_AGE, Math.max(MIN_PROFILE_AGE, rounded));
+  }
+
+  if (typeof input === 'number') {
+    if (!Number.isFinite(input)) return null;
+    const rounded = Math.round(input);
+    return Math.min(MAX_PROFILE_AGE, Math.max(MIN_PROFILE_AGE, rounded));
+  }
+
+  return null;
+}
+
+export function sanitizeUserBadges(input: unknown): string[] {
+  if (!Array.isArray(input)) return [];
+
+  const result: string[] = [];
+  for (const badge of input) {
+    if (typeof badge !== 'string') continue;
+    const trimmed = badge.trim();
+    if (!trimmed) continue;
+    if (!result.includes(trimmed)) {
+      result.push(trimmed);
+    }
+  }
+  return result;
+}
+
+export function syncBadgesForAge(badges: string[], age: number | null): string[] {
+  const sanitized = sanitizeUserBadges(badges);
+  const hasLilAngler = sanitized.includes(LIL_ANGLER_BADGE);
+
+  if (age != null && age <= LIL_ANGLER_MAX_AGE) {
+    if (!hasLilAngler) sanitized.push(LIL_ANGLER_BADGE);
+    return sanitized;
+  }
+
+  if (hasLilAngler) {
+    return sanitized.filter((badge) => badge !== LIL_ANGLER_BADGE);
+  }
+
+  return sanitized;
+}
 
 export type ChatMessage = {
   id: string;
@@ -462,6 +523,8 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
       isTester: false,             // ✅ default tester flag
       isPro: false,
       profileTheme: { ...DEFAULT_PROFILE_THEME },
+      age: null,
+      badges: [],
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
@@ -494,6 +557,16 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
       updates.isPro = false;
     }
 
+    const normalizedAge = normalizeUserAge(existing.age ?? null);
+    if (existing.age !== normalizedAge) {
+      updates.age = normalizedAge;
+    }
+
+    const normalizedBadges = syncBadgesForAge(existing.badges ?? [], normalizedAge);
+    if (JSON.stringify(existing.badges ?? []) !== JSON.stringify(normalizedBadges)) {
+      updates.badges = normalizedBadges;
+    }
+
     await updateDoc(refUser, updates);
   }
 }
@@ -523,26 +596,50 @@ export async function updateUserProfile(
     about?: string | null;
     profileTheme?: Partial<ProfileTheme> | null;
     isPro?: boolean;
+    age?: number | null;
+    badges?: string[] | null;
     [key: string]: any;
   },
 ) {
   const refUser = doc(db, 'users', uid);
-  const { profileTheme, about, ...rest } = data;
-  const payload: Record<string, any> = { ...rest, updatedAt: serverTimestamp() };
+  const { profileTheme, about, age, badges, ...rest } = data;
 
-  if (about !== undefined) {
-    payload.about = about ?? '';
-  }
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(refUser);
+    const existing = snap.exists() ? (snap.data() as HookdUser) : ({} as HookdUser);
 
-  if (profileTheme !== undefined) {
-    const themeToPersist = profileTheme === null
-      ? { ...DEFAULT_PROFILE_THEME }
-      : coerceProfileTheme(profileTheme, DEFAULT_PROFILE_THEME);
+    const payload: Record<string, any> = { ...rest, updatedAt: serverTimestamp() };
 
-    payload.profileTheme = themeToPersist;
-  }
+    if (about !== undefined) {
+      payload.about = about ?? '';
+    }
 
-  await setDoc(refUser, payload, { merge: true });
+    if (profileTheme !== undefined) {
+      const themeToPersist = profileTheme === null
+        ? { ...DEFAULT_PROFILE_THEME }
+        : coerceProfileTheme(profileTheme, DEFAULT_PROFILE_THEME);
+
+      payload.profileTheme = themeToPersist;
+    }
+
+    let nextAge: number | null = normalizeUserAge(existing.age ?? null);
+    if (age !== undefined) {
+      nextAge = normalizeUserAge(age);
+      payload.age = nextAge;
+    }
+
+    const existingBadges = sanitizeUserBadges(existing.badges);
+    const baseBadges = badges !== undefined
+      ? sanitizeUserBadges(badges ?? [])
+      : existingBadges;
+
+    const shouldSyncBadges = age !== undefined || badges !== undefined || !Array.isArray(existing.badges);
+    if (shouldSyncBadges) {
+      payload.badges = syncBadgesForAge(baseBadges, nextAge);
+    }
+
+    tx.set(refUser, payload, { merge: true });
+  });
 }
 
 export function subscribeToUser(uid: string, cb: (u: HookdUser | null) => void) {
@@ -554,7 +651,12 @@ export function subscribeToUser(uid: string, cb: (u: HookdUser | null) => void) 
     }
 
     const data = snap.data() as HookdUser;
-    cb({ ...data, uid });
+    cb({
+      ...data,
+      uid,
+      age: normalizeUserAge(data.age ?? null),
+      badges: sanitizeUserBadges(data.badges),
+    });
   });
 }
 
