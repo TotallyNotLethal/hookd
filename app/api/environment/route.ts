@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+import { TtlCache } from '@/lib/server/ttlCache';
+
 import type {
   EnvironmentSnapshot,
   MoonPhaseBand,
@@ -11,6 +13,39 @@ const PRESSURE_HIGH = 1015;
 const PRESSURE_LOW = 1008;
 const PRESSURE_TREND_THRESHOLD = 0.3;
 const MAX_FORWARD_HOURS = 6;
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_MAX_ENTRIES = 64;
+
+type EnvironmentCachePayload = {
+  capture: EnvironmentSnapshot | null;
+  slices: {
+    offsetHours: number;
+    timestampUtc: string;
+    snapshot: EnvironmentSnapshot;
+  }[];
+};
+
+const environmentCache = new TtlCache<EnvironmentCachePayload>({
+  ttlMs: CACHE_TTL_MS,
+  maxEntries: CACHE_MAX_ENTRIES,
+});
+
+function toCacheKey({
+  latitude,
+  longitude,
+  baseTimestamp,
+  forwardHours,
+}: {
+  latitude: number;
+  longitude: number;
+  baseTimestamp: Date;
+  forwardHours: number;
+}) {
+  const latBucket = latitude.toFixed(3);
+  const lngBucket = longitude.toFixed(3);
+  const hourBucket = Math.floor(baseTimestamp.getTime() / (60 * 60 * 1000));
+  return `${latBucket}:${lngBucket}:${hourBucket}:${forwardHours}`;
+}
 
 const WEATHER_CODE_DESCRIPTIONS: Record<number, string> = {
   0: 'Clear',
@@ -273,6 +308,18 @@ export async function GET(request: Request) {
   const startDate = start.toISOString().slice(0, 10);
   const endDate = end.toISOString().slice(0, 10);
 
+  const cacheKey = toCacheKey({
+    latitude,
+    longitude,
+    baseTimestamp,
+    forwardHours,
+  });
+
+  const cached = environmentCache.get(cacheKey);
+  if (cached) {
+    return NextResponse.json(cached);
+  }
+
   try {
     const forecastParams = new URLSearchParams({
       latitude: latitude.toString(),
@@ -367,10 +414,14 @@ export async function GET(request: Request) {
       };
     });
 
-    return NextResponse.json({
+    const payload = {
       capture: slices[0]?.snapshot ?? null,
       slices,
-    });
+    };
+
+    environmentCache.set(cacheKey, payload);
+
+    return NextResponse.json(payload);
   } catch (error) {
     console.error('Failed to load environment snapshot', error);
     return NextResponse.json({ error: 'Unable to load environment snapshot' }, { status: 502 });
