@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer, Circle, CircleMarker, useMap } from "react-leaflet";
 import L from "leaflet";
 import { useRouter } from "next/navigation";
@@ -56,6 +56,14 @@ export default function FishingMap({
   const router = useRouter();
   const [userPosition, setUserPosition] = useState<[number, number]>(DEFAULT_POSITION);
   const [catchDocuments, setCatchDocuments] = useState<CatchWithCoordinates[]>([]);
+  const geoSupported = useMemo(
+    () => typeof navigator !== "undefined" && Boolean(navigator.geolocation),
+    [],
+  );
+  const [geoStatus, setGeoStatus] = useState<string | null>(() =>
+    geoSupported ? null : "Location detection isn't available in this browser.",
+  );
+  const [geoLoading, setGeoLoading] = useState(false);
   const baseSpots = useMemo(
     () => (includeReferenceSpots ? fishingSpots : [] as typeof fishingSpots),
     [includeReferenceSpots],
@@ -74,6 +82,13 @@ export default function FishingMap({
   }, []);
   const allowRegulationOverlay = includeReferenceSpots && showRegulationsToggle;
   const [showRegulations, setShowRegulations] = useState(allowRegulationOverlay);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     setSpeciesFilters(initialSpeciesFilters);
@@ -83,18 +98,39 @@ export default function FishingMap({
     setShowRegulations(allowRegulationOverlay);
   }, [allowRegulationOverlay]);
 
-  useEffect(() => {
-    if (!navigator.geolocation) return;
+  const requestUserPosition = useCallback(() => {
+    if (!geoSupported || typeof navigator === "undefined" || !navigator.geolocation) {
+      setGeoStatus("Location detection isn't available in this browser.");
+      return;
+    }
+
+    if (geoLoading) {
+      return;
+    }
+
+    setGeoLoading(true);
+    setGeoStatus("Locating your position…");
+
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        if (!isMountedRef.current) {
+          return;
+        }
         setUserPosition([position.coords.latitude, position.coords.longitude]);
+        setGeoLoading(false);
+        setGeoStatus(null);
       },
-      () => {
-        setUserPosition(DEFAULT_POSITION);
+      (error) => {
+        console.warn("Unable to access geolocation", error);
+        if (!isMountedRef.current) {
+          return;
+        }
+        setGeoLoading(false);
+        setGeoStatus("We couldn't access your location. Showing default map view.");
       },
       { enableHighAccuracy: true, timeout: 5000 },
     );
-  }, []);
+  }, [geoLoading, geoSupported]);
 
   useEffect(() => {
     const unsubscribe = subscribeToCatchesWithCoordinates(
@@ -157,14 +193,25 @@ export default function FishingMap({
 
   return (
     <div className={clsx("grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]", className)}>
-      <div className="overflow-hidden rounded-3xl border border-white/10">
-        <MapContainer
-          center={userPosition}
-          zoom={11}
-          scrollWheelZoom
-          style={{ height: "480px", width: "100%" }}
-          className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-        >
+      <div className="space-y-2">
+        <div className="relative overflow-hidden rounded-3xl border border-white/10">
+          {geoSupported ? (
+            <button
+              type="button"
+              onClick={requestUserPosition}
+              className="absolute right-4 top-4 z-[401] rounded-full border border-white/20 bg-slate-900/80 px-4 py-1.5 text-sm font-medium text-white/90 shadow transition hover:border-white/40 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={geoLoading}
+            >
+              {geoLoading ? "Locating…" : "Use my location"}
+            </button>
+          ) : null}
+          <MapContainer
+            center={userPosition}
+            zoom={11}
+            scrollWheelZoom
+            style={{ height: "480px", width: "100%" }}
+            className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+          >
           <MapRelocator position={userPosition} />
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -251,7 +298,9 @@ export default function FishingMap({
                 ))}
             </>
           )}
-        </MapContainer>
+          </MapContainer>
+        </div>
+        {geoStatus ? <p className="text-xs text-white/60">{geoStatus}</p> : null}
       </div>
 
       <aside className="glass rounded-3xl p-6 space-y-6">

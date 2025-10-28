@@ -191,7 +191,7 @@ export default function ConditionsWidget({
 }: ConditionsWidgetProps) {
   const { isPro, loading: proLoading } = useProAccess();
   const [location, setLocation] = useState<LocationState>(fallbackLocation);
-  const [locationStatus, setLocationStatus] = useState<LocationStatus>("idle");
+  const [locationStatus, setLocationStatus] = useState<LocationStatus>("fallback");
   const [usingFallback, setUsingFallback] = useState(true);
   const [signal, setSignal] = useState<BiteSignalDocument | null>(null);
   const [signalError, setSignalError] = useState<string | null>(null);
@@ -201,6 +201,30 @@ export default function ConditionsWidget({
   const [fallbackEnvironment, setFallbackEnvironment] = useState<EnvironmentSnapshot | null>(null);
   const [fallbackEnvironmentLoading, setFallbackEnvironmentLoading] = useState(false);
   const [fallbackEnvironmentError, setFallbackEnvironmentError] = useState<string | null>(null);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    setLocation({
+      name: fallbackLocation.name,
+      latitude: fallbackLocation.latitude,
+      longitude: fallbackLocation.longitude,
+      timezone: fallbackLocation.timezone,
+    });
+    setUsingFallback(true);
+    setGeolocationError(null);
+    setLocationStatus((previous) => (previous === "locating" ? previous : "fallback"));
+  }, [
+    fallbackLocation.latitude,
+    fallbackLocation.longitude,
+    fallbackLocation.name,
+    fallbackLocation.timezone,
+  ]);
 
   const locationKey = useMemo(() => {
     if (!location?.latitude || !location?.longitude) return null;
@@ -245,39 +269,59 @@ export default function ConditionsWidget({
     }
   }, [isPro, locationKey, location]);
 
-  useEffect(() => {
-    let isMounted = true;
-    setLocationStatus("locating");
-    setUsingFallback(true);
-    setGeolocationError(null);
+  const requestUserLocation = useCallback(() => {
+    if (locationStatus === "locating") {
+      return;
+    }
 
     if (typeof window === "undefined" || !navigator.geolocation) {
+      setGeolocationError("Location services unavailable. Using default spot.");
+      setUsingFallback(true);
       setLocationStatus("fallback");
-      return () => {
-        isMounted = false;
-      };
+      return;
     }
+
+    setLocationStatus("locating");
+    setGeolocationError(null);
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        if (!isMounted) return;
-        const latitude = position.coords.latitude;
-        const longitude = position.coords.longitude;
-        const name = await resolveLocationName(latitude, longitude, fallbackLocation.name);
-        if (!isMounted) return;
-        setLocation({
-          name,
-          latitude,
-          longitude,
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? fallbackLocation.timezone,
-        });
-        setUsingFallback(false);
-        setLocationStatus("resolved");
+        if (!isMountedRef.current) {
+          return;
+        }
+
+        try {
+          const latitude = position.coords.latitude;
+          const longitude = position.coords.longitude;
+          const name = await resolveLocationName(latitude, longitude, fallbackLocation.name);
+
+          if (!isMountedRef.current) {
+            return;
+          }
+
+          setLocation({
+            name,
+            latitude,
+            longitude,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone ?? fallbackLocation.timezone,
+          });
+          setUsingFallback(false);
+          setLocationStatus("resolved");
+        } catch (error) {
+          console.warn("Unable to resolve location name", error);
+          if (!isMountedRef.current) {
+            return;
+          }
+          setGeolocationError("Unable to confirm detected location. Using default spot.");
+          setUsingFallback(true);
+          setLocationStatus("fallback");
+        }
       },
       (error) => {
         console.warn("Unable to detect geolocation", error);
-        if (!isMounted) return;
-        setLocation(fallbackLocation);
+        if (!isMountedRef.current) {
+          return;
+        }
         setUsingFallback(true);
         setGeolocationError('Location services unavailable. Using default spot.');
         setLocationStatus("fallback");
@@ -287,11 +331,7 @@ export default function ConditionsWidget({
         timeout: 8000,
       },
     );
-
-    return () => {
-      isMounted = false;
-    };
-  }, [fallbackLocation]);
+  }, [fallbackLocation.name, fallbackLocation.timezone, locationStatus]);
 
   useEffect(() => {
     if (!isPro || !locationKey) return;
@@ -402,21 +442,34 @@ export default function ConditionsWidget({
 
   return (
     <div className={`card p-4 flex flex-col gap-4 ${className}`}>
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs uppercase tracking-wide text-white/50">Bite Signals</p>
           <h3 className="font-semibold text-lg text-white">{location.name}</h3>
-          <p className="text-[11px] text-white/40 mt-1">
+          <p className="mt-1 text-[11px] text-white/40">
             {locationStatus === "locating"
               ? "Detecting your location…"
               : usingFallback
                 ? geolocationError ?? "Using default spot. Enable location for local intel."
                 : "Based on your current location"}
           </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+            <button
+              type="button"
+              onClick={requestUserLocation}
+              className="rounded-full border border-white/20 px-3 py-1 font-medium text-white/80 transition hover:border-white/40 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={locationStatus === "locating"}
+            >
+              {locationStatus === "locating" ? "Locating…" : "Use my location"}
+            </button>
+            {locationStatus === "fallback" && geolocationError ? (
+              <span className="text-amber-200/80">{geolocationError}</span>
+            ) : null}
+          </div>
         </div>
-        {lastUpdatedLabel && !signalLoading && (
+        {lastUpdatedLabel && !signalLoading ? (
           <p className="text-xs text-white/40">Updated {lastUpdatedLabel}</p>
-        )}
+        ) : null}
       </div>
 
       {signalError && !signalLoading ? (

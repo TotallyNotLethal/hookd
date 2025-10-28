@@ -334,7 +334,6 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [geolocationSupported, setGeolocationSupported] = useState(false);
   const [geolocationPending, setGeolocationPending] = useState(false);
   const isMountedRef = useRef(true);
-  const initialGeolocationRequestRef = useRef(false);
   const searchRequestId = useRef(0);
   const [user] = useAuthState(auth);
   const [profile, setProfile] = useState<HookdUser | null>(null);
@@ -667,21 +666,16 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     const supported = typeof navigator !== 'undefined' && Boolean(navigator.geolocation);
     setGeolocationSupported(supported);
 
-    if (!initialGeolocationRequestRef.current) {
-      initialGeolocationRequestRef.current = true;
-      if (supported) {
-        requestGeolocation();
-      } else {
-        setGeolocationStatus('Location services are not available in this browser.');
-        updateMapZoom(4);
-        userAdjustedZoomRef.current = false;
-      }
+    if (!supported) {
+      setGeolocationStatus('Location services are not available in this browser.');
+      updateMapZoom(4);
+      userAdjustedZoomRef.current = false;
     }
 
     return () => {
       isMountedRef.current = false;
     };
-  }, [requestGeolocation, updateMapZoom]);
+  }, [updateMapZoom]);
 
   const handleFileSelection = useCallback(
     async (selectedFile: File) => {
