@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useProAccess } from "@/hooks/useProAccess";
 import type { BitePrediction, BiteSignalDocument } from "@/lib/biteClock";
 import { getOrRefreshBiteSignal } from "@/lib/biteClock";
-import { deriveLocationKey } from "@/lib/location";
+import { deriveLocationKey, reverseGeocodeLocation } from "@/lib/location";
 import type { EnvironmentSnapshot } from "@/lib/environmentTypes";
 
 interface ConditionsWidgetProps {
@@ -313,29 +313,6 @@ function buildForecastViews(slices: EnvironmentSlice[]): ForecastView[] {
     });
 }
 
-async function resolveLocationName(lat: number, lng: number, fallback: string) {
-  try {
-    const params = new URLSearchParams({
-      latitude: lat.toString(),
-      longitude: lng.toString(),
-      language: "en",
-      count: "1",
-    });
-    const response = await fetch(`/api/open-meteo/reverse?${params.toString()}`);
-    if (!response.ok) {
-      throw new Error(`Reverse lookup failed with status ${response.status}`);
-    }
-    const data = await response.json();
-    const result = data?.results?.[0];
-    if (!result?.name) return fallback;
-    const admin = [result.admin1, result.admin2, result.country_code].filter(Boolean).join(", ");
-    return admin ? `${result.name}, ${admin}` : result.name;
-  } catch (error) {
-    console.warn("Unable to reverse geocode location", error);
-    return fallback;
-  }
-}
-
 export default function ConditionsWidget({
   fallbackLocation,
   className = "",
@@ -399,7 +376,7 @@ export default function ConditionsWidget({
   );
   const fallbackUpdatedLabel = useMemo(
     () => formatLocalTime(fallbackCapture),
-    [fallbackCapture?.captureUtc],
+    [fallbackCapture],
   );
 
   const fetchSignal = useCallback(async () => {
@@ -447,7 +424,7 @@ export default function ConditionsWidget({
         try {
           const latitude = position.coords.latitude;
           const longitude = position.coords.longitude;
-          const name = await resolveLocationName(latitude, longitude, fallbackLocation.name);
+          const name = await reverseGeocodeLocation(latitude, longitude, fallbackLocation.name);
 
           if (!isMountedRef.current) {
             return;
