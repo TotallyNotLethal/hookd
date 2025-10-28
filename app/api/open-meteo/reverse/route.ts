@@ -49,18 +49,39 @@ export async function GET(request: Request) {
         status: upstreamResponse.status,
         data,
       });
+
+      return NextResponse.json(data, {
+        status: upstreamResponse.status,
+        headers: CORS_HEADERS,
+      });
     }
 
-    return NextResponse.json(data, {
-      status: upstreamResponse.status,
-      headers: CORS_HEADERS,
-    });
+    console.warn(
+      "Open-Meteo reverse geocoding upstream error",
+      upstreamResponse.status,
+      data,
+    );
+
+    return NextResponse.json(
+      {
+        error: "Reverse geocoding unavailable.",
+        results: [],
+        meta: { upstreamStatus: upstreamResponse.status },
+      },
+      {
+        status: 200,
+        headers: CORS_HEADERS,
+      },
+    );
   } catch (error) {
     console.error("Open-Meteo reverse geocoding proxy error", error);
     return NextResponse.json(
-      { error: "Unable to complete reverse geocoding request." },
       {
-        status: 500,
+        error: "Unable to complete reverse geocoding request.",
+        results: [],
+      },
+      {
+        status: 200,
         headers: CORS_HEADERS,
       },
     );

@@ -1,11 +1,12 @@
 'use client';
+import { FirebaseError } from "firebase/app";
 import { app, db } from "./firebaseClient";
 import { validateAndNormalizeUsername } from "./username";
 import {
   doc, setDoc, getDoc, updateDoc, serverTimestamp,
   addDoc, collection, onSnapshot, orderBy, query, where,
   deleteDoc, increment, runTransaction, getDocs, limit,
-  GeoPoint, Timestamp, writeBatch, DocumentReference, Transaction,
+  GeoPoint, Timestamp, writeBatch, DocumentReference, Transaction, Query, DocumentData,
 } from "firebase/firestore";
 import { getStorage, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import {
@@ -2454,16 +2455,35 @@ const timestampToMillis = (value: any): number => {
   return 0;
 };
 
+const CHALLENGE_HASHTAG = "#HookdChallenge";
+const CHALLENGE_LIMIT = 6;
+
+type ChallengeCatchSnapshot = { id: string; createdAt?: any } & Record<string, unknown>;
+
+function sortChallengeCatches<T extends ChallengeCatchSnapshot>(items: T[]): T[] {
+  return items
+    .slice()
+    .sort((a, b) => timestampToMillis(b.createdAt) - timestampToMillis(a.createdAt))
+    .slice(0, CHALLENGE_LIMIT);
+}
+
+async function fetchChallengeCatchDocs(challengeQuery: Query<DocumentData>) {
+  const snap = await getDocs(challengeQuery);
+  const docs = snap.docs.map((docSnap) => {
+    const data = docSnap.data() as Record<string, unknown> & { createdAt?: any };
+    return { id: docSnap.id, ...data };
+  });
+  return sortChallengeCatches(docs);
+}
+
 export function subscribeToChallengeCatches(cb: (arr: any[]) => void) {
   const q = query(
     collection(db, "catches"),
-    where("hashtags", "array-contains", "#HookdChallenge")
+    where("hashtags", "array-contains", CHALLENGE_HASHTAG)
   );
   return onSnapshot(q, (snap) => {
-    const arr: any[] = [];
-    snap.forEach((d) => arr.push({ id: d.id, ...d.data() }));
-    arr.sort((a, b) => timestampToMillis(b.createdAt) - timestampToMillis(a.createdAt));
-    cb(arr.slice(0, 6));
+    const catches = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+    cb(sortChallengeCatches(catches));
   });
 }
 
@@ -2831,26 +2851,25 @@ export async function deleteCatch(catchId: string) {
 }
 
 export async function getChallengeCatches() {
-  const q = query(
+  const baseQuery = query(
     collection(db, "catches"),
-    where("hashtags", "array-contains", "#HookdChallenge"),
-    orderBy("createdAt", "desc"),
-    limit(6)
+    where("hashtags", "array-contains", CHALLENGE_HASHTAG),
   );
 
-  const snap = await getDocs(q);
-  const docs = snap.docs.map((doc) => {
-    const data = doc.data() as { createdAt?: any };
-    return { id: doc.id, ...data };
-  });
-
-  return docs
-    .sort((a, b) => {
-      const aTime = a.createdAt?.seconds || 0;
-      const bTime = b.createdAt?.seconds || 0;
-      return bTime - aTime;
-    })
-    .slice(0, 6);
+  try {
+    return await fetchChallengeCatchDocs(
+      query(baseQuery, orderBy("createdAt", "desc"), limit(CHALLENGE_LIMIT)),
+    );
+  } catch (error) {
+    if (error instanceof FirebaseError && error.code === "failed-precondition") {
+      console.warn(
+        "Composite index for challenge catches missing. Falling back to client-side sorting.",
+        error,
+      );
+      return fetchChallengeCatchDocs(baseQuery);
+    }
+    throw error;
+  }
 }
 
 /** ---------- Tournaments ---------- */
