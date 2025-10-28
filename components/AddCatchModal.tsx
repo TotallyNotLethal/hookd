@@ -23,6 +23,12 @@ import {
 import type { EnvironmentBands, EnvironmentSnapshot } from '@/lib/environmentTypes';
 import { deriveLocationKey } from '@/lib/location';
 import { subscribeToUserTackleStats, type UserTackleStats } from '@/lib/tackleBox';
+import {
+  NativePhotoError,
+  type NativePhotoSource,
+  isNativePlatform as isCapacitorNative,
+  requestNativePhotoFile,
+} from '@/lib/nativePhoto';
 import FishSelector from './FishSelector';
 import WeightPicker, { type WeightValue } from './WeightPicker';
 
@@ -326,6 +332,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const mapZoomRef = useRef(mapZoom);
   const userAdjustedZoomRef = useRef(false);
   const [readingMetadata, setReadingMetadata] = useState(false);
+  const [isNativeApp, setIsNativeApp] = useState(false);
   const [locationDirty, setLocationDirty] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [isSearchingLocation, setIsSearchingLocation] = useState(false);
@@ -662,6 +669,10 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   }, [lookupLocationName, updateMapZoom]);
 
   useEffect(() => {
+    setIsNativeApp(isCapacitorNative());
+  }, []);
+
+  useEffect(() => {
     isMountedRef.current = true;
     const supported = typeof navigator !== 'undefined' && Boolean(navigator.geolocation);
     setGeolocationSupported(supported);
@@ -815,6 +826,70 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       setOriginalFile(null);
     }
   }, []);
+
+  const handleNativePhotoFlow = useCallback(
+    async (
+      source: NativePhotoSource,
+      onFile: (selected: File) => Promise<void> | void,
+      {
+        permissionMessage,
+        genericMessage,
+      }: { permissionMessage: string; genericMessage: string },
+    ) => {
+      try {
+        const nativeFile = await requestNativePhotoFile(source);
+        if (nativeFile) {
+          await onFile(nativeFile);
+        }
+      } catch (error) {
+        console.warn('Native photo request failed', error);
+        if (error instanceof NativePhotoError && error.reason === 'permission') {
+          alert(permissionMessage);
+        } else {
+          alert(genericMessage);
+        }
+      }
+    },
+    [],
+  );
+
+  const handleNativeCatchPhoto = useCallback(() => {
+    void handleNativePhotoFlow(
+      'camera',
+      (selected) => handleFileSelection(selected),
+      {
+        permissionMessage:
+          'Camera access is required to capture a catch photo. Please enable camera permissions and try again.',
+        genericMessage: 'Unable to capture a photo. Please try again or choose one from your library.',
+      },
+    );
+  }, [handleFileSelection, handleNativePhotoFlow]);
+
+  const handleNativeCatchPhotoFromLibrary = useCallback(() => {
+    void handleNativePhotoFlow(
+      'gallery',
+      (selected) => handleFileSelection(selected),
+      {
+        permissionMessage:
+          'Photo library access is required to select a catch photo. Please enable photo permissions and try again.',
+        genericMessage: 'Unable to select a photo from your library. Please try again.',
+      },
+    );
+  }, [handleFileSelection, handleNativePhotoFlow]);
+
+  const handleNativeOriginalPhoto = useCallback(() => {
+    void handleNativePhotoFlow(
+      'gallery',
+      (selected) => {
+        setOriginalFile(selected);
+      },
+      {
+        permissionMessage:
+          'Photo library access is required to attach the original photo. Please enable photo permissions and try again.',
+        genericMessage: 'Unable to select an original photo. Please try again.',
+      },
+    );
+  }, [handleNativePhotoFlow]);
 
   const handleCoordinatesChange = useCallback(
     (latLng: Coordinates) => {
@@ -1255,17 +1330,44 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         <div className="flex-1 overflow-y-auto space-y-4 pr-1">
           {/* Photo */}
           <div className="space-y-1">
-            <label className="text-sm text-white/70" htmlFor="catch-file">
+            <label
+              className="text-sm text-white/70"
+              htmlFor={isNativeApp ? undefined : 'catch-file'}
+            >
               Catch photo
             </label>
-            <input
-              id="catch-file"
-              type="file"
-              accept="image/*"
-              onChange={handleFileChange}
-              required
-              className="input file:mr-3 file:rounded-lg file:border-0 file:bg-brand-500 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
-            />
+            {isNativeApp ? (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleNativeCatchPhoto}
+                    className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                  >
+                    Take photo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleNativeCatchPhotoFromLibrary}
+                    className="rounded-lg border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white/80 transition hover:border-white/30 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                  >
+                    Choose from library
+                  </button>
+                </div>
+                {file?.name && (
+                  <p className="text-xs text-white/60">Selected: {file.name}</p>
+                )}
+              </>
+            ) : (
+              <input
+                id="catch-file"
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                required
+                className="input file:mr-3 file:rounded-lg file:border-0 file:bg-brand-500 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
+              />
+            )}
             {readingMetadata && <p className="text-xs text-white/50">Reading photo metadata…</p>}
           </div>
 
@@ -1453,16 +1555,29 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
                 </div>
               )}
               <div className="space-y-1">
-                <label className="text-sm text-white/70" htmlFor="original-photo">
+                <label
+                  className="text-sm text-white/70"
+                  htmlFor={isNativeApp ? undefined : 'original-photo'}
+                >
                   Original photo for validation
                 </label>
-                <input
-                  id="original-photo"
-                  type="file"
-                  accept="image/*"
-                  className="input file:mr-3 file:rounded-lg file:border-0 file:bg-brand-400 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
-                  onChange={handleOriginalFileChange}
-                />
+                {isNativeApp ? (
+                  <button
+                    type="button"
+                    onClick={handleNativeOriginalPhoto}
+                    className="rounded-lg bg-brand-400 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200"
+                  >
+                    Choose photo from library
+                  </button>
+                ) : (
+                  <input
+                    id="original-photo"
+                    type="file"
+                    accept="image/*"
+                    className="input file:mr-3 file:rounded-lg file:border-0 file:bg-brand-400 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
+                    onChange={handleOriginalFileChange}
+                  />
+                )}
                 <p className="text-xs text-white/60">
                   {originalFileName ? `Selected: ${originalFileName}` : 'Defaults to your uploaded catch photo.'}
                 </p>
