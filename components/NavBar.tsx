@@ -8,6 +8,7 @@ import { getAuth, onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { app } from '@/lib/firebaseClient';
 import { HookdUser, Notification, subscribeToUser } from '@/lib/firestore';
 import { useNotifications } from '@/hooks/useNotifications';
+import NotificationPreferencesModal from './NotificationPreferencesModal';
 import {
   Bell,
   Home,
@@ -20,6 +21,7 @@ import {
   X,
   MessageSquare,
   Loader2,
+  Settings,
 } from 'lucide-react';
 
 export default function NavBar() {
@@ -29,6 +31,7 @@ export default function NavBar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [profile, setProfile] = useState<HookdUser | null>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isNotificationPreferencesOpen, setIsNotificationPreferencesOpen] = useState(false);
   const notificationsContainerRef = useRef<HTMLDivElement | null>(null);
 
   const {
@@ -58,6 +61,8 @@ export default function NavBar() {
         });
       } else {
         setProfile(null);
+        setIsNotificationsOpen(false);
+        setIsNotificationPreferencesOpen(false);
       }
     });
 
@@ -244,8 +249,9 @@ export default function NavBar() {
   ];
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-30 bg-slate-950/95 backdrop-blur border-b border-white/10">
-      <div className="container py-4">
+    <>
+      <header className="fixed top-0 left-0 right-0 z-30 bg-slate-950/95 backdrop-blur border-b border-white/10">
+        <div className="container py-4">
         <div className="flex items-center justify-between">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-3">
@@ -332,14 +338,29 @@ export default function NavBar() {
                   <div className="absolute right-0 mt-3 w-80 sm:w-96 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/95 shadow-2xl backdrop-blur">
                     <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
                       <p className="text-sm font-semibold text-white">Notifications</p>
-                      <button
-                        type="button"
-                        onClick={handleMarkAllNotificationsAsRead}
-                        className="text-xs font-medium text-brand-200 transition hover:text-brand-100 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={!hasUnreadNotifications}
-                      >
-                        Mark all as read
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsNotificationPreferencesOpen(true);
+                            setIsNotificationsOpen(false);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1 text-[11px] font-medium text-white/70 transition hover:border-brand-300/60 hover:text-white"
+                          aria-label="Open notification preferences"
+                        >
+                          <Settings className="h-3.5 w-3.5" aria-hidden="true" />
+                          <span className="hidden sm:inline">Preferences</span>
+                          <span className="sm:hidden">Prefs</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleMarkAllNotificationsAsRead}
+                          className="text-xs font-medium text-brand-200 transition hover:text-brand-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={!hasUnreadNotifications}
+                        >
+                          Mark all as read
+                        </button>
+                      </div>
                     </div>
                     <div className="max-h-96 overflow-y-auto">
                       {notificationsLoading ? (
@@ -522,7 +543,13 @@ export default function NavBar() {
             </ul>
           </nav>
         </div>
-      </div>
-    </header>
+        </div>
+      </header>
+      <NotificationPreferencesModal
+        open={isNotificationPreferencesOpen}
+        onClose={() => setIsNotificationPreferencesOpen(false)}
+        uid={user?.uid}
+      />
+    </>
   );
 }
