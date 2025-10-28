@@ -108,7 +108,6 @@ export const requestNativePhotoFile = async (
     }
 
     const result = await Camera.pickImages({
-      resultType: CameraResultType.Uri,
       limit: 1,
       quality: 90,
       presentationStyle: 'popover',
