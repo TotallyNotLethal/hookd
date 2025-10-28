@@ -329,15 +329,23 @@ export default function TeamsPage() {
     }
   };
 
-  const handleInviteSubmit = async (teamId: string, event: FormEvent<HTMLFormElement>) => {
+  const handleInviteSubmit = async (team: Team, event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const state = inviteForms[teamId] ?? { value: '', submitting: false, error: null };
+    const state = inviteForms[team.id] ?? { value: '', submitting: false, error: null };
     const value = state.value.trim();
 
     if (!user?.uid) {
       setInviteForms((prev) => ({
         ...prev,
-        [teamId]: { ...state, error: 'Sign in to send invites.' },
+        [team.id]: { ...state, error: 'Sign in to send invites.' },
+      }));
+      return;
+    }
+
+    if (team.ownerUid !== user.uid) {
+      setInviteForms((prev) => ({
+        ...prev,
+        [team.id]: { ...state, error: 'Only the captain can send team invites.' },
       }));
       return;
     }
@@ -345,27 +353,27 @@ export default function TeamsPage() {
     if (!value) {
       setInviteForms((prev) => ({
         ...prev,
-        [teamId]: { ...state, error: 'Enter a username to invite.' },
+        [team.id]: { ...state, error: 'Enter a username to invite.' },
       }));
       return;
     }
 
     setInviteForms((prev) => ({
       ...prev,
-      [teamId]: { value, submitting: true, error: null },
+      [team.id]: { value, submitting: true, error: null },
     }));
 
     try {
-      await inviteUserToTeam({ teamId, inviterUid: user.uid, inviteeUsername: value });
+      await inviteUserToTeam({ teamId: team.id, inviterUid: user.uid, inviteeUsername: value });
       setInviteForms((prev) => ({
         ...prev,
-        [teamId]: { value: '', submitting: false, error: null },
+        [team.id]: { value: '', submitting: false, error: null },
       }));
     } catch (error: any) {
       console.error('Failed to send invite', error);
       setInviteForms((prev) => ({
         ...prev,
-        [teamId]: {
+        [team.id]: {
           value,
           submitting: false,
           error: error?.message ?? 'Unable to send that invite right now.',
@@ -533,6 +541,7 @@ export default function TeamsPage() {
                     const inviteState = inviteForms[team.id] ?? { value: '', submitting: false, error: null };
                     const pending = teamInvites[team.id] ?? [];
                     const logo = logoStatus[team.id] ?? { loading: false, error: null };
+                    const isCaptain = team.ownerUid === user?.uid;
                     return (
                       <article key={team.id} className="flex flex-col gap-6 rounded-3xl border border-white/10 bg-white/5 p-6">
                         <div className="flex items-center gap-4">
@@ -545,7 +554,11 @@ export default function TeamsPage() {
                             />
                           </div>
                           <div className="flex-1">
-                            <h3 className="text-lg font-semibold text-white">{team.name}</h3>
+                            <h3 className="text-lg font-semibold text-white">
+                              <Link href={`/teams/${team.id}`} className="transition hover:text-brand-200">
+                                {team.name}
+                              </Link>
+                            </h3>
                             <p className="text-xs uppercase tracking-[0.2em] text-white/50">
                               {team.memberUids.length} members
                             </p>
@@ -585,6 +598,8 @@ export default function TeamsPage() {
                             <ul className="space-y-2 text-sm text-white/70">
                               {pending.map((invite) => {
                                 const summary = profileCache[invite.inviteeUid];
+                                const canCancel =
+                                  isCaptain || invite.inviterUid === user?.uid || invite.inviteeUid === user?.uid;
                                 return (
                                   <li key={invite.id} className="flex items-center justify-between gap-3">
                                     <div>
@@ -595,53 +610,64 @@ export default function TeamsPage() {
                                         Invited by {formatMemberLabel(profileCache[invite.inviterUid], 'Angler')}
                                       </p>
                                     </div>
-                                    <button
-                                      type="button"
-                                      className="inline-flex items-center gap-1 rounded-full border border-white/15 px-3 py-1 text-xs text-white/70 transition hover:border-white/30 hover:text-white"
-                                      onClick={() => handleCancelInvite(invite)}
-                                      disabled={respondingInvite === invite.id}
-                                    >
-                                      {respondingInvite === invite.id ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                      ) : (
-                                        <XCircle className="h-3.5 w-3.5" />
-                                      )}
-                                      <span>Cancel</span>
-                                    </button>
+                                    {canCancel ? (
+                                      <button
+                                        type="button"
+                                        className="inline-flex items-center gap-1 rounded-full border border-white/15 px-3 py-1 text-xs text-white/70 transition hover:border-white/30 hover:text-white"
+                                        onClick={() => handleCancelInvite(invite)}
+                                        disabled={respondingInvite === invite.id}
+                                      >
+                                        {respondingInvite === invite.id ? (
+                                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                          <XCircle className="h-3.5 w-3.5" />
+                                        )}
+                                        <span>{invite.inviteeUid === user?.uid ? 'Decline' : 'Cancel'}</span>
+                                      </button>
+                                    ) : null}
                                   </li>
                                 );
                               })}
                             </ul>
                           )}
+                          {!isCaptain && pending.length > 0 ? (
+                            <p className="text-xs text-white/40">Only your captain can manage pending invites.</p>
+                          ) : null}
                         </div>
 
-                        <form className="space-y-3" onSubmit={(event) => handleInviteSubmit(team.id, event)}>
-                          <h4 className="text-sm font-semibold text-white/80">Invite a teammate</h4>
-                          <input
-                            type="text"
-                            placeholder="angler_username"
-                            value={inviteState.value}
-                            onChange={(event) => handleInviteInputChange(team.id, event)}
-                            className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-2.5 text-sm text-white placeholder:text-white/40 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-300/40"
-                          />
-                          {inviteState.error ? (
-                            <p className="text-xs text-rose-300">{inviteState.error}</p>
-                          ) : (
-                            <p className="text-xs text-white/40">Enter their Hook&apos;d username to send an invite.</p>
-                          )}
-                          <button
-                            type="submit"
-                            className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-60"
-                            disabled={inviteState.submitting}
-                          >
-                            {inviteState.submitting ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
+                        {isCaptain ? (
+                          <form className="space-y-3" onSubmit={(event) => handleInviteSubmit(team, event)}>
+                            <h4 className="text-sm font-semibold text-white/80">Invite a teammate</h4>
+                            <input
+                              type="text"
+                              placeholder="angler_username"
+                              value={inviteState.value}
+                              onChange={(event) => handleInviteInputChange(team.id, event)}
+                              className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-2.5 text-sm text-white placeholder:text-white/40 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-300/40"
+                            />
+                            {inviteState.error ? (
+                              <p className="text-xs text-rose-300">{inviteState.error}</p>
                             ) : (
-                              <MailPlus className="h-4 w-4" />
+                              <p className="text-xs text-white/40">Enter their Hook&apos;d username to send an invite.</p>
                             )}
-                            <span>Send invite</span>
-                          </button>
-                        </form>
+                            <button
+                              type="submit"
+                              className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm disabled:opacity-60"
+                              disabled={inviteState.submitting}
+                            >
+                              {inviteState.submitting ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <MailPlus className="h-4 w-4" />
+                              )}
+                              <span>Send invite</span>
+                            </button>
+                          </form>
+                        ) : (
+                          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-white/60">
+                            Only your captain can send team invites. Ask them to add new anglers when you&apos;re ready to grow the crew.
+                          </div>
+                        )}
 
                         <div className="space-y-2">
                           <h4 className="text-sm font-semibold text-white/80">Team chat</h4>
@@ -654,32 +680,38 @@ export default function TeamsPage() {
                           </Link>
                         </div>
 
-                        <div className="space-y-2">
-                          <h4 className="text-sm font-semibold text-white/80">Update logo</h4>
-                          <label className="inline-flex items-center gap-2 text-sm text-white/70">
-                            <input
-                              type="file"
-                              accept={Array.from(TEAM_LOGO_ALLOWED_TYPES).join(',')}
-                              className="hidden"
-                              onChange={(event) => {
-                                const file = event.target.files?.[0];
-                                if (file) {
-                                  handleLogoUpdate(team.id, file);
-                                }
-                                event.target.value = '';
-                              }}
-                            />
-                            <span className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-sm transition hover:border-brand-300 hover:text-brand-200">
-                              {logo.loading ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Upload className="h-4 w-4" />
-                              )}
-                              <span>Upload new logo</span>
-                            </span>
-                          </label>
-                          {logo.error ? <p className="text-xs text-rose-300">{logo.error}</p> : null}
-                        </div>
+                        {isCaptain ? (
+                          <div className="space-y-2">
+                            <h4 className="text-sm font-semibold text-white/80">Update logo</h4>
+                            <label className="inline-flex items-center gap-2 text-sm text-white/70">
+                              <input
+                                type="file"
+                                accept={Array.from(TEAM_LOGO_ALLOWED_TYPES).join(',')}
+                                className="hidden"
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0];
+                                  if (file) {
+                                    handleLogoUpdate(team.id, file);
+                                  }
+                                  event.target.value = '';
+                                }}
+                              />
+                              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-sm transition hover:border-brand-300 hover:text-brand-200">
+                                {logo.loading ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Upload className="h-4 w-4" />
+                                )}
+                                <span>Upload new logo</span>
+                              </span>
+                            </label>
+                            {logo.error ? <p className="text-xs text-rose-300">{logo.error}</p> : null}
+                          </div>
+                        ) : (
+                          <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-white/60">
+                            Captains control the team logo and branding. Reach out to {formatMemberLabel(profileCache[team.ownerUid], 'your captain')} when you have an update.
+                          </div>
+                        )}
                       </article>
                     );
                   })}
