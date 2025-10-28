@@ -159,6 +159,12 @@ export function syncBadgesForAge(badges: string[], age: number | null): string[]
   return sanitized;
 }
 
+export type ChatMessageMention = {
+  uid: string;
+  username: string;
+  displayName?: string | null;
+};
+
 export type ChatMessage = {
   id: string;
   text: string;
@@ -167,6 +173,7 @@ export type ChatMessage = {
   photoURL?: string | null;
   createdAt: Date | null;
   isPro: boolean;
+  mentions?: ChatMessageMention[];
 };
 
 export type ChatPresence = {
@@ -2136,6 +2143,25 @@ export function subscribeToChatMessages(
           ? data.createdAt.toDate()
           : null;
 
+      const rawMentions = Array.isArray(data.mentions)
+        ? data.mentions
+        : [];
+
+      const mentions = rawMentions.reduce<ChatMessageMention[]>((acc, mention) => {
+        if (!mention || typeof mention !== 'object') return acc;
+        const uid = typeof mention.uid === 'string' ? mention.uid.trim() : '';
+        const username = typeof mention.username === 'string' ? mention.username.trim() : '';
+        if (!uid || !username) return acc;
+        const normalizedUsername = username.toLowerCase();
+        if (acc.some((item) => item.uid === uid || item.username === normalizedUsername)) return acc;
+        acc.push({
+          uid,
+          username: normalizedUsername,
+          displayName: typeof mention.displayName === 'string' ? mention.displayName : null,
+        });
+        return acc;
+      }, []);
+
       items.push({
         id: docSnap.id,
         text: typeof data.text === 'string' ? data.text : '',
@@ -2144,6 +2170,7 @@ export function subscribeToChatMessages(
         photoURL: data.photoURL ?? null,
         createdAt,
         isPro: typeof data.isPro === 'boolean' ? data.isPro : false,
+        mentions,
       });
     });
 
@@ -2166,11 +2193,25 @@ export async function sendChatMessage(data: {
   text: string;
   isPro: boolean;
   photoURL?: string | null;
+  mentions?: ChatMessageMention[];
 }) {
   const normalized = data.text.trim();
   if (!normalized) {
     throw new Error('Message cannot be empty');
   }
+
+  const mentions = Array.isArray(data.mentions)
+    ? data.mentions.reduce<ChatMessageMention[]>((acc, mention) => {
+      if (!mention || typeof mention !== 'object') return acc;
+      const uid = typeof mention.uid === 'string' ? mention.uid.trim() : '';
+      const username = typeof mention.username === 'string' ? mention.username.trim().toLowerCase() : '';
+      const displayName = typeof mention.displayName === 'string' ? mention.displayName : null;
+      if (!uid || !username) return acc;
+      if (acc.some((item) => item.uid === uid || item.username === username)) return acc;
+      acc.push({ uid, username, displayName });
+      return acc;
+    }, [])
+    : [];
 
   await addDoc(collection(db, 'chatMessages'), {
     uid: data.uid,
@@ -2179,6 +2220,7 @@ export async function sendChatMessage(data: {
     photoURL: data.photoURL ?? null,
     isPro: Boolean(data.isPro),
     createdAt: serverTimestamp(),
+    mentions,
   });
 }
 

@@ -1,6 +1,15 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ChangeEvent,
+  FormEvent,
+  KeyboardEvent,
+  ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useAuthState } from 'react-firebase-hooks/auth';
@@ -9,10 +18,13 @@ import { Loader2, MessageCircle, MessageSquare, MessageSquarePlus, Users, X } fr
 import NavBar from '@/components/NavBar';
 import DirectMessageThreadsList from '@/components/direct-messages/DirectMessageThreadsList';
 import Modal from '@/components/ui/Modal';
-import { auth } from '@/lib/firebaseClient';
+import { collection, endAt, getDocs, limit, orderBy, query as firestoreQuery, startAt } from 'firebase/firestore';
+
+import { auth, db } from '@/lib/firebaseClient';
 import {
   ChatMessage,
   ChatPresence,
+  ChatMessageMention,
   Team,
   sendChatMessage,
   subscribeToChatMessages,
@@ -43,6 +55,22 @@ export default function ChatPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const endRef = useRef<HTMLDivElement | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const mentionListId = 'chat-mention-suggestions';
+
+  type MentionOption = {
+    uid: string;
+    username: string;
+    displayName?: string | null;
+    photoURL?: string | null;
+  };
+
+  const [mentionQuery, setMentionQuery] = useState('');
+  const [mentionResults, setMentionResults] = useState<MentionOption[]>([]);
+  const [mentionHighlightIndex, setMentionHighlightIndex] = useState(0);
+  const [activeMentionRange, setActiveMentionRange] = useState<{ start: number; end: number } | null>(null);
+  const [isMentionLoading, setIsMentionLoading] = useState(false);
+  const [selectedMentions, setSelectedMentions] = useState<ChatMessageMention[]>([]);
 
   useEffect(() => {
     if (!user?.uid) {
@@ -136,6 +164,175 @@ export default function ChatPage() {
     return () => unsubscribe();
   }, [user?.uid]);
 
+  const syncSelectedMentionsWithText = (value: string) => {
+    const matchSet = new Set<string>();
+    const regex = /@([a-z0-9_]+)/gi;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(value)) !== null) {
+      matchSet.add(match[1].toLowerCase());
+    }
+    setSelectedMentions((prev) => prev.filter((mention) => matchSet.has(mention.username)));
+  };
+
+  const detectMentionContext = (value: string, caret: number | null) => {
+    if (caret == null) {
+      setActiveMentionRange(null);
+      setMentionQuery('');
+      return;
+    }
+
+    const uptoCaret = value.slice(0, caret);
+    const match = uptoCaret.match(/(^|[\s.,()[\]{}!?:;])@([a-z0-9_]{0,32})$/i);
+
+    if (match) {
+      const atPosition = uptoCaret.lastIndexOf('@');
+      setActiveMentionRange({ start: atPosition, end: caret });
+      setMentionQuery(match[2].toLowerCase());
+    } else {
+      setActiveMentionRange(null);
+      setMentionQuery('');
+    }
+  };
+
+  const handleInputChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    const nextValue = event.target.value;
+    setInput(nextValue);
+    detectMentionContext(nextValue, event.target.selectionStart ?? nextValue.length);
+    syncSelectedMentionsWithText(nextValue);
+  };
+
+  const handleTextareaSelect = (event: React.SyntheticEvent<HTMLTextAreaElement>) => {
+    const textarea = event.currentTarget;
+    detectMentionContext(textarea.value, textarea.selectionStart ?? textarea.value.length);
+  };
+
+  const handleMentionSelect = (option: MentionOption) => {
+    if (!textareaRef.current || !activeMentionRange) {
+      return;
+    }
+
+    const textarea = textareaRef.current;
+    const value = textarea.value;
+    const before = value.slice(0, activeMentionRange.start);
+    const after = value.slice(activeMentionRange.end);
+    const mentionText = `@${option.username}`;
+    const needsTrailingSpace = after.startsWith(' ') || after.startsWith('\n') || after.length === 0 ? '' : ' ';
+    const nextValue = `${before}${mentionText}${needsTrailingSpace}${after}`;
+    const nextCaret = before.length + mentionText.length + needsTrailingSpace.length;
+
+    setInput(nextValue);
+    setActiveMentionRange(null);
+    setMentionQuery('');
+    setMentionResults([]);
+    syncSelectedMentionsWithText(nextValue);
+    setSelectedMentions((prev) => {
+      const normalizedUsername = option.username.toLowerCase();
+      if (prev.some((mention) => mention.uid === option.uid || mention.username === normalizedUsername)) {
+        return prev;
+      }
+      return [
+        ...prev,
+        {
+          uid: option.uid,
+          username: normalizedUsername,
+          displayName: option.displayName ?? null,
+        },
+      ];
+    });
+
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.setSelectionRange(nextCaret, nextCaret);
+    });
+  };
+
+  const handleTextareaKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (!activeMentionRange || (!mentionResults.length && !isMentionLoading)) {
+      return;
+    }
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setMentionHighlightIndex((prev) => (prev + 1) % Math.max(mentionResults.length, 1));
+      return;
+    }
+
+    if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setMentionHighlightIndex((prev) => {
+        if (!mentionResults.length) return prev;
+        return (prev - 1 + mentionResults.length) % mentionResults.length;
+      });
+      return;
+    }
+
+    if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') {
+      if (mentionResults.length) {
+        event.preventDefault();
+        const option = mentionResults[mentionHighlightIndex] ?? mentionResults[0];
+        handleMentionSelect(option);
+      }
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setActiveMentionRange(null);
+      setMentionQuery('');
+      setMentionResults([]);
+    }
+  };
+
+  const renderMessageContent = (message: ChatMessage): ReactNode => {
+    if (!message.mentions?.length) {
+      return message.text;
+    }
+
+    const mentionMap = new Map(
+      message.mentions.map((mention) => [mention.username.toLowerCase(), mention]),
+    );
+    const regex = /@([a-z0-9_]+)/gi;
+    const text = message.text;
+    const nodes: ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = regex.exec(text)) !== null) {
+      const start = match.index;
+      const end = start + match[0].length;
+      if (start > lastIndex) {
+        nodes.push(text.slice(lastIndex, start));
+      }
+
+      const username = match[1].toLowerCase();
+      const mention = mentionMap.get(username);
+
+      if (mention) {
+        nodes.push(
+          <Link
+            key={`${mention.uid}-${start}`}
+            href={`/profile/${mention.uid}`}
+            prefetch={false}
+            className="inline-flex items-center gap-1 rounded-full bg-brand-400/20 px-1.5 py-0.5 font-medium text-brand-100 underline decoration-dotted decoration-2 underline-offset-2 transition hover:bg-brand-400/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+          >
+            @{mention.username}
+            <span className="sr-only"> — View profile</span>
+          </Link>,
+        );
+      } else {
+        nodes.push(match[0]);
+      }
+
+      lastIndex = end;
+    }
+
+    if (lastIndex < text.length) {
+      nodes.push(text.slice(lastIndex));
+    }
+
+    return nodes.length ? nodes : text;
+  };
+
   const formattedMessages = useMemo(() => {
     const formatter = new Intl.DateTimeFormat(undefined, {
       month: 'short',
@@ -154,6 +351,92 @@ export default function ChatPage() {
       timestampLabel: message.createdAt ? formatter.format(message.createdAt) : 'Sending…',
     }));
   }, [messages]);
+
+  useEffect(() => {
+    if (!activeMentionRange || !mentionQuery) {
+      setMentionResults([]);
+      setIsMentionLoading(false);
+      return;
+    }
+
+    let isCurrent = true;
+    setIsMentionLoading(true);
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        const usersRef = collection(db, 'users');
+        const searchQuery = firestoreQuery(
+          usersRef,
+          orderBy('username'),
+          startAt(mentionQuery),
+          endAt(`${mentionQuery}\uf8ff`),
+          limit(5),
+        );
+        const snap = await getDocs(searchQuery);
+        if (!isCurrent) return;
+
+        const options: MentionOption[] = [];
+        snap.forEach((docSnap) => {
+          const data = docSnap.data() as Record<string, any>;
+          const username = typeof data.username === 'string' ? data.username.trim().toLowerCase() : '';
+          if (!username) return;
+          if (user?.uid && docSnap.id === user.uid) return;
+          if (options.some((option) => option.username === username)) return;
+          options.push({
+            uid: docSnap.id,
+            username,
+            displayName: typeof data.displayName === 'string' ? data.displayName : null,
+            photoURL: typeof data.photoURL === 'string' ? data.photoURL : null,
+          });
+        });
+
+        setMentionResults(options);
+        setMentionHighlightIndex(0);
+      } catch (err) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.error('Failed to fetch mention suggestions', err);
+        }
+        if (isCurrent) {
+          setMentionResults([]);
+        }
+      } finally {
+        if (isCurrent) {
+          setIsMentionLoading(false);
+        }
+      }
+    }, 200);
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(timeoutId);
+    };
+  }, [activeMentionRange, mentionQuery, user?.uid]);
+
+  useEffect(() => {
+    setMentionHighlightIndex(0);
+  }, [mentionQuery]);
+
+  useEffect(() => {
+    if (!mentionResults.length) {
+      setMentionHighlightIndex(0);
+      return;
+    }
+
+    setMentionHighlightIndex((prev) => {
+      if (prev >= mentionResults.length) {
+        return mentionResults.length - 1;
+      }
+      return prev;
+    });
+  }, [mentionResults.length]);
+
+  const activeMentionId = mentionResults.length
+    ? `${mentionListId}-option-${Math.min(mentionHighlightIndex, mentionResults.length - 1)}`
+    : undefined;
+
+  const isMentionPopoverVisible = Boolean(
+    activeMentionRange && (isMentionLoading || mentionResults.length > 0 || mentionQuery.length > 0),
+  );
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -178,14 +461,28 @@ export default function ChatPage() {
         ? userProfile.photoURL
         : null;
 
+      const mentionSet = new Set<string>();
+      const regex = /@([a-z0-9_]+)/gi;
+      let mentionMatch: RegExpExecArray | null;
+      while ((mentionMatch = regex.exec(trimmed)) !== null) {
+        mentionSet.add(mentionMatch[1].toLowerCase());
+      }
+
+      const mentionsToSend = selectedMentions.filter((mention) => mentionSet.has(mention.username));
+
       await sendChatMessage({
         uid: user.uid,
         displayName,
         text: trimmed,
         isPro: Boolean(userProfile?.isPro),
         photoURL,
+        mentions: mentionsToSend,
       });
       setInput('');
+      setSelectedMentions([]);
+      setMentionQuery('');
+      setMentionResults([]);
+      setActiveMentionRange(null);
     } catch (err) {
       console.error('Failed to send chat message', err);
       setSendError('Unable to send that message. Please try again.');
@@ -317,7 +614,7 @@ export default function ChatPage() {
                         <span>{message.timestampLabel}</span>
                       </div>
                       <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-white/90">
-                        {message.text}
+                        {renderMessageContent(message)}
                       </p>
                     </div>
                   </article>
@@ -341,17 +638,93 @@ export default function ChatPage() {
                   <label htmlFor="chat-input" className="text-xs uppercase tracking-[0.2em] text-white/50">
                     Message
                   </label>
-                  <textarea
-                    id="chat-input"
-                    name="message"
-                    value={input}
-                    onChange={(event) => setInput(event.target.value)}
-                    placeholder={user ? 'Share a fishing report, plan a meetup, or drop a quick hello…' : 'Sign in to share a message.'}
-                    className="min-h-[96px] w-full resize-y rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-300/40 disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={!user || isSending}
-                    maxLength={2000}
-                    required
-                  />
+                  <div className="relative">
+                    <textarea
+                      id="chat-input"
+                      name="message"
+                      ref={textareaRef}
+                      value={input}
+                      onChange={handleInputChange}
+                      onKeyDown={handleTextareaKeyDown}
+                      onSelect={handleTextareaSelect}
+                      onKeyUp={(event) => {
+                        const textarea = event.currentTarget;
+                        detectMentionContext(textarea.value, textarea.selectionStart ?? textarea.value.length);
+                      }}
+                      placeholder={user ? 'Share a fishing report, plan a meetup, or drop a quick hello…' : 'Sign in to share a message.'}
+                      className="min-h-[96px] w-full resize-y rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-300/40 disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={!user || isSending}
+                      maxLength={2000}
+                      required
+                      aria-autocomplete="list"
+                      aria-controls={isMentionPopoverVisible ? mentionListId : undefined}
+                      aria-activedescendant={activeMentionId}
+                    />
+                    {isMentionPopoverVisible ? (
+                      <div className="absolute left-0 right-0 top-full z-20 mt-2 max-h-64 overflow-y-auto rounded-2xl border border-white/10 bg-slate-900/95 p-2 shadow-xl shadow-slate-950/40 backdrop-blur">
+                        {isMentionLoading ? (
+                          <div className="flex items-center gap-2 px-3 py-2 text-sm text-white/70">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Searching anglers…
+                          </div>
+                        ) : null}
+                        {!isMentionLoading && mentionResults.length > 0 ? (
+                          <ul
+                            id={mentionListId}
+                            role="listbox"
+                            aria-label="Mention suggestions"
+                            className="space-y-1"
+                          >
+                            {mentionResults.map((option, index) => {
+                              const isActive = index === mentionHighlightIndex;
+                              const optionId = `${mentionListId}-option-${index}`;
+                              return (
+                                <li key={option.uid}>
+                                  <button
+                                    type="button"
+                                    id={optionId}
+                                    role="option"
+                                    aria-selected={isActive}
+                                    className={`flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${isActive ? 'bg-brand-400/20 text-white' : 'text-white/90 hover:bg-white/10'}`}
+                                    onMouseDown={(event) => {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      handleMentionSelect(option);
+                                    }}
+                                  >
+                                    <span className="relative flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-slate-800">
+                                      {option.photoURL ? (
+                                        <Image
+                                          src={option.photoURL}
+                                          alt={option.displayName ? `${option.displayName}'s avatar` : `${option.username}'s avatar`}
+                                          fill
+                                          sizes="32px"
+                                          className="object-cover"
+                                        />
+                                      ) : (
+                                        <span className="text-xs uppercase text-white/70">
+                                          {option.username.slice(0, 2).toUpperCase()}
+                                        </span>
+                                      )}
+                                    </span>
+                                    <span className="flex flex-col">
+                                      <span className="font-medium text-white">@{option.username}</span>
+                                      {option.displayName ? (
+                                        <span className="text-xs text-white/60">{option.displayName}</span>
+                                      ) : null}
+                                    </span>
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        ) : null}
+                        {!isMentionLoading && mentionResults.length === 0 ? (
+                          <div className="px-3 py-2 text-sm text-white/60">No anglers found.</div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <span className="text-xs text-white/40">Messages update instantly for everyone online.</span>
                     <button
