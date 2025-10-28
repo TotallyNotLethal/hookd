@@ -2669,7 +2669,7 @@ export async function sendChatMessage(data: {
         actorDisplayName: data.displayName,
         actorPhotoURL: data.photoURL ?? null,
         verb: 'chat_mention' as const,
-        resource: { type: 'chatMessage', messageId: messageRef.id },
+        resource: { type: 'chatMessage', messageId: messageRef.id } satisfies NotificationResource,
         metadata: {
           preview,
           mentionUsername: mention.username,
