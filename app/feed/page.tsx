@@ -2,6 +2,7 @@
 import NavBar from "@/components/NavBar";
 import PostCard from "@/components/PostCard";
 import {
+  getCatchById,
   subscribeToFeedCatches,
   subscribeToFollowingFeedCatches,
   subscribeToLocalFeedCatches,
@@ -50,6 +51,11 @@ function FeedContent() {
   const sp = useSearchParams();
   const router = useRouter();
   const [user] = useAuthState(auth);
+  const [isLoadingCatch, setIsLoadingCatch] = useState(false);
+  const [catchLoadError, setCatchLoadError] = useState<string | null>(null);
+
+  const searchParamsString = sp?.toString() ?? "";
+  const catchIdParam = sp?.get("catchId");
 
   const defer = useCallback((fn: () => void) => {
     if (typeof queueMicrotask === "function") {
@@ -227,9 +233,96 @@ function FeedContent() {
     return null;
   }, [effectiveFollowingIds.length, filter, geoLoading, items.length, location, team, teamMemberUids.length, user]);
 
-  const openDetail = (post: any) => {
+  const openDetail = useCallback((post: any) => {
     setActive(post);
-  };
+    setCatchLoadError(null);
+    setIsLoadingCatch(false);
+    const params = new URLSearchParams(searchParamsString);
+    params.set("catchId", post.id);
+    router.replace(params.toString() ? `/feed?${params}` : "/feed", { scroll: false });
+  }, [router, searchParamsString]);
+
+  const closeDetail = useCallback(() => {
+    setActive(null);
+    const params = new URLSearchParams(searchParamsString);
+    params.delete("catchId");
+    router.replace(params.toString() ? `/feed?${params}` : "/feed", { scroll: false });
+  }, [router, searchParamsString]);
+
+  useEffect(() => {
+    if (!catchIdParam) {
+      defer(() => {
+        setIsLoadingCatch(false);
+        setCatchLoadError(null);
+      });
+      return;
+    }
+
+    if (active?.id === catchIdParam) {
+      return;
+    }
+
+    const matching = items.find((item) => item.id === catchIdParam);
+    if (matching) {
+      defer(() => {
+        setActive(matching);
+        setCatchLoadError(null);
+        setIsLoadingCatch(false);
+      });
+      return;
+    }
+
+    let isCancelled = false;
+    defer(() => {
+      setIsLoadingCatch(true);
+      setCatchLoadError(null);
+    });
+
+    void getCatchById(catchIdParam)
+      .then((result) => {
+        if (isCancelled) return;
+        if (result) {
+          setActive(result);
+          setCatchLoadError(null);
+        } else {
+          setCatchLoadError("We couldn't find that catch.");
+          defer(() => setActive(null));
+          const params = new URLSearchParams(searchParamsString);
+          params.delete("catchId");
+          router.replace(params.toString() ? `/feed?${params}` : "/feed", { scroll: false });
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to open catch from notification", error);
+        if (isCancelled) return;
+        setCatchLoadError("We couldn't load that catch. Please try again.");
+        defer(() => setActive(null));
+        const params = new URLSearchParams(searchParamsString);
+        params.delete("catchId");
+        router.replace(params.toString() ? `/feed?${params}` : "/feed", { scroll: false });
+      })
+      .finally(() => {
+        if (!isCancelled) {
+          setIsLoadingCatch(false);
+        }
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [active?.id, catchIdParam, defer, items, router, searchParamsString]);
+
+  useEffect(() => {
+    if (!catchIdParam) {
+      defer(() => setActive(null));
+      return;
+    }
+
+    const matching = items.find((item) => item.id === catchIdParam);
+    if (matching && active?.id !== matching.id) {
+      defer(() => setActive(matching));
+    }
+  }, [active?.id, catchIdParam, defer, items]);
 
   return (
     <main>
@@ -261,6 +354,14 @@ function FeedContent() {
             {geoError}
           </div>
         )}
+        {catchLoadError && (
+          <div className="mb-4 text-sm text-amber-300/80">
+            {catchLoadError}
+          </div>
+        )}
+        {isLoadingCatch && !catchLoadError && (
+          <div className="mb-4 text-sm text-white/60">Loading catch…</div>
+        )}
         {statusMessage && (
           <p className="text-white/60 mb-4">{statusMessage}</p>
         )}
@@ -280,7 +381,7 @@ function FeedContent() {
         />
       )}
       {active && (
-        <PostDetailModal post={active} onClose={() => setActive(null)} size="wide" />
+        <PostDetailModal post={active} onClose={closeDetail} size="wide" />
       )}
     </main>
   );
