@@ -11,6 +11,7 @@ import {
   uploadProfileAsset,
 } from "@/lib/firestore";
 import { subscribeToUserTackleStats, type UserTackleStats } from "@/lib/tackleBox";
+import { USERNAME_MIN_LENGTH, validateAndNormalizeUsername } from "@/lib/username";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import clsx from "clsx";
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
@@ -90,6 +91,17 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
   );
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [bannerError, setBannerError] = useState<string | null>(null);
+  const [usernameError, setUsernameError] = useState<string | null>(() => {
+    if (!username) {
+      return `Usernames must be at least ${USERNAME_MIN_LENGTH} characters long.`;
+    }
+    try {
+      validateAndNormalizeUsername(username);
+      return null;
+    } catch (validationError: any) {
+      return validationError?.message ?? "Invalid username.";
+    }
+  });
 
   const catchIdSet = useMemo(() => new Set(catches.map((item) => item.id)), [catches]);
   const defaultAvatar = useMemo(() => user?.photoURL || "/logo.svg", [user?.photoURL]);
@@ -211,6 +223,19 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
     setTheme((prev) => ({ ...prev, featuredCatchId: value ? value : null }));
   };
 
+  const handleUsernameChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const value = event.target.value;
+
+    try {
+      const normalized = validateAndNormalizeUsername(value);
+      setUsernameError(null);
+      setUserName(normalized);
+    } catch (validationError: any) {
+      setUsernameError(validationError?.message ?? "Invalid username.");
+      setUserName(value);
+    }
+  };
+
   async function save() {
     try {
       setSaving(true);
@@ -262,9 +287,22 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
 
       setStatusMessage("Saving profile…");
       await updateUserProfile(user.uid, updates);
-      if (username && username !== user.username) {
+      let normalizedUsername: string | null = null;
+      if (username) {
+        try {
+          normalizedUsername = validateAndNormalizeUsername(username);
+          setUsernameError(null);
+        } catch (validationError: any) {
+          const message = validationError?.message ?? "Invalid username.";
+          setUsernameError(message);
+          setError(message);
+          return;
+        }
+      }
+
+      if (normalizedUsername && normalizedUsername !== user.username) {
         const { setUsername } = await import("@/lib/firestore");
-        await setUsername(user.uid, username);
+        await setUsername(user.uid, normalizedUsername);
       }
       onClose();
     } catch (e: any) {
@@ -292,12 +330,20 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder="Display name"
           />
-          <input
-            className="input"
-            value={username}
-            onChange={(e) => setUserName(e.target.value)}
-            placeholder="Username (unique)"
-          />
+          <div className="grid gap-1">
+            <input
+              className="input"
+              value={username}
+              onChange={handleUsernameChange}
+              placeholder="Username (unique)"
+            />
+            <p
+              className={clsx("text-xs", usernameError ? "text-red-400" : "text-white/50")}
+            >
+              {usernameError ??
+                `Use at least ${USERNAME_MIN_LENGTH} characters. Letters, numbers, and underscores only.`}
+            </p>
+          </div>
           <textarea
             className="input min-h-[80px]"
             value={bio}
@@ -482,7 +528,11 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
             <button className="rounded-xl border border-white/15 px-4 py-2 hover:bg-white/5" onClick={onClose}>
               Cancel
             </button>
-            <button className="btn-primary" onClick={save} disabled={saving}>
+            <button
+              className="btn-primary"
+              onClick={save}
+              disabled={saving || Boolean(usernameError)}
+            >
               {saving ? "Saving…" : "Save"}
             </button>
           </div>
