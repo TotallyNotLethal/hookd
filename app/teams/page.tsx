@@ -9,6 +9,7 @@ import {
   Loader2,
   MailPlus,
   ShieldCheck,
+  Trash2,
   Trophy,
   Upload,
   Users,
@@ -23,6 +24,7 @@ import {
   acceptTeamInvite,
   cancelTeamInvite,
   createTeam,
+  deleteTeam,
   fetchTopTeams,
   inviteUserToTeam,
   subscribeToTeam,
@@ -87,6 +89,7 @@ export default function TeamsPage() {
   const [inviteTeams, setInviteTeams] = useState<Record<string, Team | null>>({});
   const [profileCache, setProfileCache] = useState<Record<string, ProfileSummary>>({});
   const [logoStatus, setLogoStatus] = useState<Record<string, LogoStatus>>({});
+  const [deleteStatus, setDeleteStatus] = useState<Record<string, { loading: boolean; error: string | null }>>({});
   const [inviteForms, setInviteForms] = useState<Record<string, InviteFormState>>({});
   const [respondingInvite, setRespondingInvite] = useState<string | null>(null);
   const [respondError, setRespondError] = useState<string | null>(null);
@@ -295,6 +298,44 @@ export default function TeamsPage() {
     setTeamLogo(file);
     const previewUrl = URL.createObjectURL(file);
     setTeamLogoPreview(previewUrl);
+  };
+
+  const handleDeleteTeam = async (team: Team) => {
+    if (!user?.uid) {
+      setDeleteStatus((prev) => ({
+        ...prev,
+        [team.id]: { loading: false, error: 'Sign in to delete the team.' },
+      }));
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${team.name}? This will remove the team for every member and clear its chat history.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeleteStatus((prev) => ({
+      ...prev,
+      [team.id]: { loading: true, error: null },
+    }));
+
+    try {
+      await deleteTeam(team.id, user.uid);
+      setDeleteStatus((prev) => {
+        const next = { ...prev };
+        delete next[team.id];
+        return next;
+      });
+    } catch (error: any) {
+      const message = error instanceof Error ? error.message : 'Failed to delete the team. Please try again.';
+      setDeleteStatus((prev) => ({
+        ...prev,
+        [team.id]: { loading: false, error: message },
+      }));
+    }
   };
 
   const handleCreateTeam = async (event: FormEvent<HTMLFormElement>) => {
@@ -542,80 +583,89 @@ export default function TeamsPage() {
             <Loader2 className="h-4 w-4 animate-spin" />
             <span>Checking your team access…</span>
           </div>
-        ) : !isPro ? (
-          <div className="rounded-3xl border border-amber-400/20 bg-amber-500/10 p-6 text-amber-100">
-            <h2 className="mb-2 text-lg font-semibold">Teams are a Pro feature</h2>
-            <p className="text-sm text-amber-100/80">
-              Upgrade to Hook&apos;d Pro to create private crews, send invites, and unlock team chat channels.
-            </p>
-          </div>
         ) : (
           <div className="space-y-12">
-            <section className="glass rounded-3xl border border-white/10 bg-white/5 p-6">
-              <header className="mb-6 flex items-center gap-2 text-sm font-semibold">
-                <MailPlus className="h-5 w-5" />
-                <span>Create a team</span>
-              </header>
-              {hasTeam ? (
-                <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4 text-sm text-amber-100/90">
-                  <p className="font-semibold text-amber-200">You&apos;re already part of a team</p>
-                  <p className="mt-1 text-amber-100/80">
-                    You can only belong to one crew at a time. Leave {primaryTeam?.name ?? 'your current team'} before creating a new one.
-                  </p>
-                </div>
+            {!isPro ? (
+              <div className="rounded-3xl border border-amber-400/20 bg-amber-500/10 p-6 text-amber-100">
+                <h2 className="mb-2 text-lg font-semibold">Captains need Hook&apos;d Pro</h2>
+                <p className="text-sm text-amber-100/80">
+                  Upgrade to create private crews and unlock captain-only tools. You can still accept invitations from other
+                  teams.
+                </p>
+              </div>
+            ) : null}
+
+            {!hasTeam ? (
+              isPro ? (
+                <section className="glass rounded-3xl border border-white/10 bg-white/5 p-6">
+                  <header className="mb-6 flex items-center gap-2 text-sm font-semibold">
+                    <MailPlus className="h-5 w-5" />
+                    <span>Create a team</span>
+                  </header>
+                  <form className="space-y-4" onSubmit={handleCreateTeam}>
+                    <div className="grid gap-4 md:grid-cols-[1fr_minmax(0,220px)] md:items-end">
+                      <div className="space-y-2">
+                        <label htmlFor="team-name" className="text-xs uppercase tracking-[0.2em] text-white/50">
+                          Team name
+                        </label>
+                        <input
+                          id="team-name"
+                          type="text"
+                          value={teamName}
+                          onChange={(event) => setTeamName(event.target.value)}
+                          placeholder="ex. Tide Riders"
+                          required
+                          minLength={3}
+                          className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-300/40"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label htmlFor="team-logo" className="text-xs uppercase tracking-[0.2em] text-white/50">
+                          Logo (optional)
+                        </label>
+                        <input
+                          id="team-logo"
+                          type="file"
+                          accept={Array.from(TEAM_LOGO_ALLOWED_TYPES).join(',')}
+                          onChange={handleLogoSelection}
+                          className="w-full text-sm text-white"
+                        />
+                        {teamLogoPreview ? (
+                          <div className="relative h-24 w-24 overflow-hidden rounded-xl border border-white/10 bg-slate-900/60">
+                            <Image src={teamLogoPreview} alt="Team logo preview" fill className="object-cover" />
+                          </div>
+                        ) : null}
+                        {teamLogoError ? (
+                          <p className="text-xs text-rose-300">{teamLogoError}</p>
+                        ) : (
+                          <p className="text-xs text-white/40">PNG, JPG, GIF, or WebP up to 5MB.</p>
+                        )}
+                      </div>
+                    </div>
+                    {createError ? <p className="text-sm text-rose-300">{createError}</p> : null}
+                    <button
+                      type="submit"
+                      className="btn-primary inline-flex items-center gap-2 px-5 py-2 text-sm disabled:opacity-60"
+                      disabled={creatingTeam}
+                    >
+                      {creatingTeam ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlusIcon />}
+                      <span>Create team</span>
+                    </button>
+                  </form>
+                </section>
               ) : (
-                <form className="space-y-4" onSubmit={handleCreateTeam}>
-                  <div className="grid gap-4 md:grid-cols-[1fr_minmax(0,220px)] md:items-end">
-                    <div className="space-y-2">
-                      <label htmlFor="team-name" className="text-xs uppercase tracking-[0.2em] text-white/50">
-                        Team name
-                      </label>
-                      <input
-                        id="team-name"
-                        type="text"
-                        value={teamName}
-                        onChange={(event) => setTeamName(event.target.value)}
-                        placeholder="ex. Tide Riders"
-                        required
-                        minLength={3}
-                        className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-300/40"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label htmlFor="team-logo" className="text-xs uppercase tracking-[0.2em] text-white/50">
-                        Logo (optional)
-                      </label>
-                      <input
-                        id="team-logo"
-                        type="file"
-                        accept={Array.from(TEAM_LOGO_ALLOWED_TYPES).join(',')}
-                        onChange={handleLogoSelection}
-                        className="w-full text-sm text-white"
-                      />
-                      {teamLogoPreview ? (
-                        <div className="relative h-24 w-24 overflow-hidden rounded-xl border border-white/10 bg-slate-900/60">
-                          <Image src={teamLogoPreview} alt="Team logo preview" fill className="object-cover" />
-                        </div>
-                      ) : null}
-                      {teamLogoError ? (
-                        <p className="text-xs text-rose-300">{teamLogoError}</p>
-                      ) : (
-                        <p className="text-xs text-white/40">PNG, JPG, GIF, or WebP up to 5MB.</p>
-                      )}
-                    </div>
-                  </div>
-                  {createError ? <p className="text-sm text-rose-300">{createError}</p> : null}
-                  <button
-                    type="submit"
-                    className="btn-primary inline-flex items-center gap-2 px-5 py-2 text-sm disabled:opacity-60"
-                    disabled={creatingTeam}
-                  >
-                    {creatingTeam ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlusIcon />}
-                    <span>Create team</span>
-                  </button>
-                </form>
-              )}
-            </section>
+                <section className="glass rounded-3xl border border-white/10 bg-white/5 p-6">
+                  <header className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                    <MailPlus className="h-5 w-5" />
+                    <span>Create a team</span>
+                  </header>
+                  <p className="text-sm text-white/70">
+                    Only Pro captains can start new crews. Ask an existing captain for an invite or upgrade to Hook&apos;d Pro to
+                    launch your own team.
+                  </p>
+                </section>
+              )
+            ) : null}
 
             <section className="space-y-6">
               <header className="flex items-center gap-2 text-sm font-semibold">
@@ -632,6 +682,7 @@ export default function TeamsPage() {
                     const inviteState = inviteForms[team.id] ?? { value: '', submitting: false, error: null };
                     const pending = teamInvites[team.id] ?? [];
                     const logo = logoStatus[team.id] ?? { loading: false, error: null };
+                    const deletion = deleteStatus[team.id] ?? { loading: false, error: null };
                     const isCaptain = team.ownerUid === user?.uid;
                     return (
                       <article key={team.id} className="flex flex-col gap-6 rounded-3xl border border-white/10 bg-white/5 p-6">
@@ -772,31 +823,51 @@ export default function TeamsPage() {
                         </div>
 
                         {isCaptain ? (
-                          <div className="space-y-2">
-                            <h4 className="text-sm font-semibold text-white/80">Update logo</h4>
-                            <label className="inline-flex items-center gap-2 text-sm text-white/70">
-                              <input
-                                type="file"
-                                accept={Array.from(TEAM_LOGO_ALLOWED_TYPES).join(',')}
-                                className="hidden"
-                                onChange={(event) => {
-                                  const file = event.target.files?.[0];
-                                  if (file) {
-                                    handleLogoUpdate(team.id, file);
-                                  }
-                                  event.target.value = '';
-                                }}
-                              />
-                              <span className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-sm transition hover:border-brand-300 hover:text-brand-200">
-                                {logo.loading ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Upload className="h-4 w-4" />
-                                )}
-                                <span>Upload new logo</span>
-                              </span>
-                            </label>
-                            {logo.error ? <p className="text-xs text-rose-300">{logo.error}</p> : null}
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <h4 className="text-sm font-semibold text-white/80">Update logo</h4>
+                              <label className="inline-flex items-center gap-2 text-sm text-white/70">
+                                <input
+                                  type="file"
+                                  accept={Array.from(TEAM_LOGO_ALLOWED_TYPES).join(',')}
+                                  className="hidden"
+                                  onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    if (file) {
+                                      handleLogoUpdate(team.id, file);
+                                    }
+                                    event.target.value = '';
+                                  }}
+                                />
+                                <span className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-sm transition hover:border-brand-300 hover:text-brand-200">
+                                  {logo.loading ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Upload className="h-4 w-4" />
+                                  )}
+                                  <span>Upload new logo</span>
+                                </span>
+                              </label>
+                              {logo.error ? <p className="text-xs text-rose-300">{logo.error}</p> : null}
+                            </div>
+
+                            <div className="space-y-2">
+                              <h4 className="text-sm font-semibold text-white/80">Delete team</h4>
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-2 rounded-full border border-rose-400/30 px-4 py-2 text-sm text-rose-200 transition hover:border-rose-300 hover:bg-rose-500/10"
+                                onClick={() => handleDeleteTeam(team)}
+                                disabled={deletion.loading}
+                              >
+                                {deletion.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                                <span>Delete team</span>
+                              </button>
+                              {deletion.error ? (
+                                <p className="text-xs text-rose-300">{deletion.error}</p>
+                              ) : (
+                                <p className="text-xs text-white/40">This action removes the team for all members.</p>
+                              )}
+                            </div>
                           </div>
                         ) : (
                           <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-white/60">
