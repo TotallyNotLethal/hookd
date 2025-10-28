@@ -1,5 +1,6 @@
 'use client';
 import { app, db } from "./firebaseClient";
+import { validateAndNormalizeUsername } from "./username";
 import {
   doc, setDoc, getDoc, updateDoc, serverTimestamp,
   addDoc, collection, onSnapshot, orderBy, query, where,
@@ -498,8 +499,8 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
 }
 
 export async function setUsername(uid: string, username: string) {
-  // Normalize username (no spaces, lowercase)
-  const clean = username.trim().toLowerCase();
+  // Validate and normalize username before checking Firestore uniqueness
+  const clean = validateAndNormalizeUsername(username);
 
   // Check if already taken
   const q = query(collection(db, "users"), where("username", "==", clean));
