@@ -141,6 +141,8 @@ export default function NavBar() {
         return `${actorName} liked your catch.`;
       case 'comment':
         return `${actorName} commented on your catch.`;
+      case 'followed_catch':
+        return `${actorName} shared a new catch.`;
       case 'team_invite_accepted':
         return `${actorName} joined your team.`;
       case 'team_invite_canceled':
@@ -166,6 +168,7 @@ export default function NavBar() {
         return `/messages/${notification.actorUid}`;
       case 'like':
       case 'comment':
+      case 'followed_catch':
         if (notification.resource?.type === 'catch') {
           const catchId = notification.resource.catchId
             || (typeof notification.metadata?.catchId === 'string' ? notification.metadata.catchId : null);
