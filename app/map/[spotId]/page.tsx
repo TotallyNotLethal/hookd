@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import NavBar from "@/components/NavBar";
@@ -29,7 +29,21 @@ function formatDateTime(date: Date | null) {
   });
 }
 
-function SpotHeader({ spot, distance, lastUpdated }: { spot: MapSpot; distance: number | null; lastUpdated: Date | null }) {
+function SpotHeader({
+  spot,
+  distance,
+  lastUpdated,
+  onRequestLocation,
+  locating,
+  locationStatus,
+}: {
+  spot: MapSpot;
+  distance: number | null;
+  lastUpdated: Date | null;
+  onRequestLocation: (() => void) | null;
+  locating: boolean;
+  locationStatus: string | null;
+}) {
   return (
     <div className="glass rounded-3xl border border-white/10 bg-slate-950/60 p-6">
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
@@ -48,15 +62,27 @@ function SpotHeader({ spot, distance, lastUpdated }: { spot: MapSpot; distance: 
               </p>
             )}
           </div>
-          <div className="flex flex-wrap gap-4 text-xs text-white/50">
+          <div className="flex flex-wrap items-center gap-4 text-xs text-white/50">
             <span>
               Lat/Lng: {spot.latitude.toFixed(4)}, {spot.longitude.toFixed(4)}
             </span>
-            {typeof distance === "number" && (
+            {typeof distance === "number" ? (
               <span>Approx. {distance.toFixed(1)} miles from you</span>
-            )}
+            ) : onRequestLocation ? (
+              <button
+                type="button"
+                onClick={onRequestLocation}
+                className="rounded-full border border-white/20 bg-white/5 px-3 py-1 font-medium text-white/80 transition hover:border-white/40 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={locating}
+              >
+                {locating ? "Locating…" : "Use my location for distance"}
+              </button>
+            ) : null}
             {lastUpdated && <span>Last activity: {formatDateTime(lastUpdated)}</span>}
           </div>
+          {locationStatus ? (
+            <p className="text-xs text-amber-200/80">{locationStatus}</p>
+          ) : null}
           {spot.regulations?.bagLimit && (
             <p className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-white/70">
               Bag limit guidance: {spot.regulations.bagLimit}
@@ -129,31 +155,55 @@ export default function SpotDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [activeCatch, setActiveCatch] = useState<any | null>(null);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
+  const geoSupported = useMemo(
+    () => typeof navigator !== "undefined" && Boolean(navigator.geolocation),
+    [],
+  );
+  const [geoStatus, setGeoStatus] = useState<string | null>(() =>
+    geoSupported ? null : "Location detection isn't available in this browser.",
+  );
+  const [geoLoading, setGeoLoading] = useState(false);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
-    let isMounted = true;
-    if (!navigator.geolocation) {
-      return () => {
-        isMounted = false;
-      };
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const requestUserLocation = useCallback(() => {
+    if (!geoSupported || typeof navigator === "undefined" || !navigator.geolocation) {
+      setGeoStatus("Location detection isn't available in this browser.");
+      return;
     }
+
+    if (geoLoading) {
+      return;
+    }
+
+    setGeoLoading(true);
+    setGeoStatus("Locating your position…");
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        if (!isMounted) return;
+        if (!isMountedRef.current) {
+          return;
+        }
         setUserLocation([position.coords.latitude, position.coords.longitude]);
+        setGeoLoading(false);
+        setGeoStatus(null);
       },
-      () => {
-        if (!isMounted) return;
-        setUserLocation(null);
+      (error) => {
+        console.warn("Unable to access geolocation", error);
+        if (!isMountedRef.current) {
+          return;
+        }
+        setGeoLoading(false);
+        setGeoStatus("We couldn't access your location. Showing approximate data.");
       },
       { enableHighAccuracy: true, timeout: 5000 },
     );
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  }, [geoLoading, geoSupported]);
 
   useEffect(() => {
     const unsubscribe = subscribeToCatchesWithCoordinates((catches) => {
@@ -247,7 +297,14 @@ export default function SpotDetailPage() {
           ) : (
             <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
               <div className="space-y-6">
-                <SpotHeader spot={spot} distance={distanceFromUser} lastUpdated={lastUpdated} />
+                <SpotHeader
+                  spot={spot}
+                  distance={distanceFromUser}
+                  lastUpdated={lastUpdated}
+                  onRequestLocation={geoSupported ? requestUserLocation : null}
+                  locating={geoLoading}
+                  locationStatus={geoStatus}
+                />
                 <SpotStats
                   catchCount={spotCatches.length}
                   uniqueSpecies={uniqueSpecies}
