@@ -146,8 +146,16 @@ export default function NavBar() {
         return `${actorName} liked your catch.`;
       case 'comment':
         return `${actorName} commented on your catch.`;
-      case 'followed_catch':
+      case 'followed_catch': {
+        const metadata = notification.metadata as Record<string, unknown> | null | undefined;
+        const species = metadata && typeof metadata['species'] === 'string'
+          ? (metadata['species'] as string).trim()
+          : '';
+        if (species) {
+          return `${actorName} caught ${species}.`;
+        }
         return `${actorName} shared a new catch.`;
+      }
       case 'team_invite_accepted':
         return `${actorName} joined your team.`;
       case 'team_invite_canceled':

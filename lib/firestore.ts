@@ -2448,23 +2448,26 @@ export async function createCatch(input: CatchInput) {
       ? posterData.photoURL.trim()
       : (typeof input.userPhoto === 'string' && input.userPhoto.trim() ? input.userPhoto.trim() : null);
 
+    const speciesName = typeof input.species === 'string' ? input.species.trim() : '';
+
     const previewText = (() => {
       const caption = typeof input.caption === 'string' ? input.caption.trim() : '';
       if (caption) {
         return caption.length > 200 ? `${caption.slice(0, 197)}…` : caption;
       }
-      const species = typeof input.species === 'string' ? input.species.trim() : '';
-      if (!species) return null;
+      if (!speciesName) return null;
       const location = input.locationPrivate ? '' : (typeof input.location === 'string' ? input.location.trim() : '');
       if (location) {
-        return `${species} • ${location}`;
+        return `${speciesName} • ${location}`;
       }
-      return species;
+      return speciesName;
     })();
 
-    const baseMetadata: Record<string, unknown> = previewText
-      ? { catchId: cRef.id, preview: previewText }
-      : { catchId: cRef.id };
+    const baseMetadata: Record<string, unknown> = {
+      catchId: cRef.id,
+      ...(previewText ? { preview: previewText } : {}),
+      ...(speciesName ? { species: speciesName } : {}),
+    };
 
     const notificationPayloads = followerUids.map((recipientUid) => ({
       recipientUid,
