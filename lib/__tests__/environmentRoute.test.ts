@@ -1,9 +1,6 @@
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
-import { createRequire } from 'node:module';
-
-const require = createRequire(import.meta.url);
-const openmeteo = require('openmeteo') as typeof import('openmeteo');
+const openmeteoPromise = import('openmeteo');
 
 import recordedOpenMeteo from './fixtures/recordedOpenMeteoLat10Lng20May2024.json' assert { type: 'json' };
 
@@ -101,11 +98,12 @@ const recordedFixture = recordedOpenMeteo as {
 
 async function loadGet() {
   const unique = Math.random().toString(36).slice(2);
-  const module = await import(`@/app/api/environment/route?test=${unique}`);
-  return module.GET;
+  const routeModule = await import(`@/app/api/environment/route?test=${unique}`);
+  return routeModule.GET;
 }
 
 test('GET returns 422 when timestamp is outside supported lead/lag', async () => {
+  const openmeteo = await openmeteoPromise;
   const originalFetchWeatherApi = openmeteo.fetchWeatherApi;
   let fetchWeatherApiCalled = false;
   openmeteo.fetchWeatherApi = (async () => {
@@ -138,6 +136,7 @@ test('GET returns 422 when timestamp is outside supported lead/lag', async () =>
 });
 
 test('GET populates weather data from weather_code responses', async () => {
+  const openmeteo = await openmeteoPromise;
   const originalFetchWeatherApi = openmeteo.fetchWeatherApi;
   const requests: { url: string; params: Record<string, string> }[] = [];
 
