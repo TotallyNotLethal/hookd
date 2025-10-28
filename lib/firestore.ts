@@ -206,14 +206,16 @@ export type NotificationVerb =
   | 'like'
   | 'comment'
   | 'team_invite_accepted'
-  | 'team_invite_canceled';
+  | 'team_invite_canceled'
+  | 'chat_mention';
 
 export type NotificationResource =
   | { type: 'user'; uid: string }
   | { type: 'catch'; catchId: string; ownerUid?: string | null }
   | { type: 'directThread'; threadId: string; otherUid?: string | null }
   | { type: 'team'; teamId: string }
-  | { type: 'teamInvite'; teamId: string; inviteeUid?: string | null };
+  | { type: 'teamInvite'; teamId: string; inviteeUid?: string | null }
+  | { type: 'chatMessage'; messageId: string };
 
 export type Notification = {
   id: string;
@@ -277,6 +279,9 @@ function sanitizeNotificationResource(input: any): NotificationResource | null {
       teamId: input.teamId,
       inviteeUid: typeof input.inviteeUid === 'string' ? input.inviteeUid : null,
     };
+  }
+  if (type === 'chatMessage' && typeof input.messageId === 'string') {
+    return { type: 'chatMessage', messageId: input.messageId };
   }
   return null;
 }
@@ -2105,6 +2110,24 @@ export function subscribeToFeedCatches(cb: (arr: any[]) => void) {
   });
 }
 
+export async function getCatchById(catchId: string) {
+  if (!catchId) {
+    return null;
+  }
+
+  try {
+    const ref = doc(db, 'catches', catchId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      return null;
+    }
+    return { id: snap.id, ...snap.data() };
+  } catch (error) {
+    console.error('Failed to load catch', error);
+    return null;
+  }
+}
+
 export function subscribeToTeamFeedCatches(memberUids: string[], cb: (arr: any[]) => void) {
   const cleaned = Array.from(
     new Set(
@@ -2626,7 +2649,7 @@ export async function sendChatMessage(data: {
     }, [])
     : [];
 
-  await addDoc(collection(db, 'chatMessages'), {
+  const messageRef = await addDoc(collection(db, 'chatMessages'), {
     uid: data.uid,
     displayName: data.displayName,
     text: normalized.slice(0, 2000),
@@ -2635,6 +2658,32 @@ export async function sendChatMessage(data: {
     createdAt: serverTimestamp(),
     mentions,
   });
+
+  if (mentions.length) {
+    const preview = normalized.slice(0, 140);
+    const payloads = mentions
+      .filter((mention) => mention.uid && mention.uid !== data.uid)
+      .map((mention) => ({
+        recipientUid: mention.uid,
+        actorUid: data.uid,
+        actorDisplayName: data.displayName,
+        actorPhotoURL: data.photoURL ?? null,
+        verb: 'chat_mention' as const,
+        resource: { type: 'chatMessage', messageId: messageRef.id },
+        metadata: {
+          preview,
+          mentionUsername: mention.username,
+        },
+      }));
+
+    await Promise.all(payloads.map(async (payload) => {
+      try {
+        await createNotification(payload);
+      } catch (error) {
+        console.error('Failed to create chat mention notification', error);
+      }
+    }));
+  }
 }
 
 export function getDirectMessageThreadId(uidA: string, uidB: string) {

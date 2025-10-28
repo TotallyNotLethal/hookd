@@ -145,6 +145,8 @@ export default function NavBar() {
         return `${actorName} joined your team.`;
       case 'team_invite_canceled':
         return `${actorName} updated a team invite.`;
+      case 'chat_mention':
+        return `${actorName} mentioned you in chat.`;
       default:
         return 'You have a new notification.';
     }
@@ -155,12 +157,26 @@ export default function NavBar() {
       case 'follow':
         return `/profile/${notification.actorUid}`;
       case 'direct_message':
+        if (notification.resource?.type === 'directThread') {
+          const targetUid = notification.resource.otherUid || notification.actorUid;
+          if (targetUid) {
+            return `/messages/${targetUid}`;
+          }
+        }
         return `/messages/${notification.actorUid}`;
       case 'like':
       case 'comment':
         if (notification.resource?.type === 'catch') {
+          const catchId = notification.resource.catchId
+            || (typeof notification.metadata?.catchId === 'string' ? notification.metadata.catchId : null);
+          if (catchId) {
+            return `/feed?catchId=${catchId}`;
+          }
           const owner = notification.resource.ownerUid || notification.actorUid;
           return `/profile/${owner}`;
+        }
+        if (typeof notification.metadata?.catchId === 'string') {
+          return `/feed?catchId=${notification.metadata.catchId}`;
         }
         return `/profile/${notification.actorUid}`;
       case 'team_invite_accepted':
@@ -169,6 +185,8 @@ export default function NavBar() {
           return `/teams/${notification.resource.teamId}`;
         }
         return '/teams';
+      case 'chat_mention':
+        return '/chat';
       default:
         return null;
     }
