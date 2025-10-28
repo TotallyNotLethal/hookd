@@ -90,6 +90,7 @@ export type HookdUser = {
   badges?: string[];
   unreadNotificationsCount?: number;
   lastNotificationAt?: any;
+  notificationPreferences?: NotificationPreferences;
 };
 
 export type ProfileAccentKey = "tide" | "ember" | "kelp" | "midnight";
@@ -210,6 +211,32 @@ export type NotificationVerb =
   | 'chat_mention'
   | 'followed_catch';
 
+export const NOTIFICATION_PREFERENCE_KEYS = [
+  'follow',
+  'direct_message',
+  'like',
+  'comment',
+  'team_invite_accepted',
+  'team_invite_canceled',
+  'chat_mention',
+  'followed_catch',
+] as const;
+
+export type NotificationPreferenceKey = typeof NOTIFICATION_PREFERENCE_KEYS[number];
+
+export type NotificationPreferences = Record<NotificationPreferenceKey, boolean>;
+
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  follow: true,
+  direct_message: true,
+  like: true,
+  comment: true,
+  team_invite_accepted: true,
+  team_invite_canceled: true,
+  chat_mention: true,
+  followed_catch: true,
+};
+
 export type NotificationResource =
   | { type: 'user'; uid: string }
   | { type: 'catch'; catchId: string; ownerUid?: string | null }
@@ -292,6 +319,23 @@ function sanitizeMetadata(input: any): Record<string, unknown> | null {
   const entries = Object.entries(input).filter(([, value]) => value !== undefined);
   if (!entries.length) return null;
   return Object.fromEntries(entries);
+}
+
+export function sanitizeNotificationPreferences(input: unknown): NotificationPreferences {
+  const base: NotificationPreferences = { ...DEFAULT_NOTIFICATION_PREFERENCES };
+
+  if (!input || typeof input !== 'object') {
+    return base;
+  }
+
+  for (const key of NOTIFICATION_PREFERENCE_KEYS) {
+    const value = (input as Record<string, unknown>)[key];
+    if (typeof value === 'boolean') {
+      base[key] = value;
+    }
+  }
+
+  return base;
 }
 
 function deserializeNotification(id: string, data: NotificationDocData): Notification {
@@ -399,6 +443,12 @@ export async function createNotification(data: {
   await runTransaction(db, async (tx) => {
     const userSnap = await tx.get(userRef);
     if (!userSnap.exists()) {
+      return;
+    }
+
+    const userData = userSnap.data() as HookdUser;
+    const preferences = sanitizeNotificationPreferences(userData.notificationPreferences);
+    if (!preferences[data.verb]) {
       return;
     }
 
@@ -1049,6 +1099,7 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
       badges: [],
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      notificationPreferences: { ...DEFAULT_NOTIFICATION_PREFERENCES },
     };
     await setDoc(refUser, payload);
   } else {
@@ -1087,6 +1138,14 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
     const normalizedBadges = syncBadgesForAge(existing.badges ?? [], normalizedAge);
     if (JSON.stringify(existing.badges ?? []) !== JSON.stringify(normalizedBadges)) {
       updates.badges = normalizedBadges;
+    }
+
+    const sanitizedPreferences = sanitizeNotificationPreferences(existing.notificationPreferences);
+    if (
+      !existing.notificationPreferences
+      || JSON.stringify(existing.notificationPreferences) !== JSON.stringify(sanitizedPreferences)
+    ) {
+      updates.notificationPreferences = sanitizedPreferences;
     }
 
     await updateDoc(refUser, updates);
@@ -1164,6 +1223,67 @@ export async function updateUserProfile(
   });
 }
 
+export async function getNotificationPreferences(uid: string | null | undefined): Promise<NotificationPreferences> {
+  if (!uid) {
+    return { ...DEFAULT_NOTIFICATION_PREFERENCES };
+  }
+
+  const refUser = doc(db, 'users', uid);
+  const snap = await getDoc(refUser);
+  if (!snap.exists()) {
+    return { ...DEFAULT_NOTIFICATION_PREFERENCES };
+  }
+
+  const data = snap.data() as HookdUser;
+  return sanitizeNotificationPreferences(data.notificationPreferences);
+}
+
+export async function updateNotificationPreferences(
+  uid: string,
+  preferences: Partial<NotificationPreferences>,
+): Promise<void> {
+  if (!uid) {
+    throw new Error('A user ID is required to update notification preferences.');
+  }
+
+  const refUser = doc(db, 'users', uid);
+
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(refUser);
+    const existing = snap.exists()
+      ? sanitizeNotificationPreferences((snap.data() as HookdUser).notificationPreferences)
+      : { ...DEFAULT_NOTIFICATION_PREFERENCES };
+
+    const next: NotificationPreferences = { ...existing };
+    let changed = !snap.exists();
+
+    for (const key of NOTIFICATION_PREFERENCE_KEYS) {
+      if (!Object.prototype.hasOwnProperty.call(preferences, key)) {
+        continue;
+      }
+
+      const value = preferences[key];
+      if (typeof value !== 'boolean') {
+        continue;
+      }
+
+      if (next[key] !== value) {
+        next[key] = value;
+        changed = true;
+      }
+    }
+
+    if (!changed) {
+      return;
+    }
+
+    tx.set(refUser, {
+      notificationPreferences: next,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  });
+}
+
 export function subscribeToUser(uid: string, cb: (u: HookdUser | null) => void) {
   const refUser = doc(db, 'users', uid);
   return onSnapshot(refUser, (snap) => {
@@ -1178,6 +1298,7 @@ export function subscribeToUser(uid: string, cb: (u: HookdUser | null) => void) 
       uid,
       age: normalizeUserAge(data.age ?? null),
       badges: sanitizeUserBadges(data.badges),
+      notificationPreferences: sanitizeNotificationPreferences(data.notificationPreferences),
     });
   });
 }
