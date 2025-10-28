@@ -5,7 +5,7 @@ import {
   doc, setDoc, getDoc, updateDoc, serverTimestamp,
   addDoc, collection, onSnapshot, orderBy, query, where,
   deleteDoc, increment, runTransaction, getDocs, limit,
-  GeoPoint, Timestamp,
+  GeoPoint, Timestamp, writeBatch, DocumentReference,
 } from "firebase/firestore";
 import { getStorage, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import {
@@ -288,6 +288,20 @@ export function applyAcceptedMemberToTeamArrays(team: TeamArrays, memberUid: str
     pendingInviteUids: Array.from(pendingSet),
     memberCount: memberSet.size,
   };
+}
+
+async function deleteDocumentReferences(refs: DocumentReference[]): Promise<void> {
+  if (refs.length === 0) return;
+
+  const CHUNK_SIZE = 400;
+  for (let index = 0; index < refs.length; index += CHUNK_SIZE) {
+    const chunk = refs.slice(index, index + CHUNK_SIZE);
+    if (chunk.length === 0) continue;
+
+    const batch = writeBatch(db);
+    chunk.forEach((ref) => batch.delete(ref));
+    await batch.commit();
+  }
 }
 
 function deserializeTeam(docId: string, data: Record<string, any>): Team {
@@ -1022,6 +1036,53 @@ export async function updateTeamLogo(teamId: string, actorUid: string, file: Fil
   });
 
   return logoURL;
+}
+
+export async function deleteTeam(teamId: string, actorUid: string): Promise<void> {
+  const teamRef = doc(db, 'teams', teamId);
+  const actorRef = doc(db, 'users', actorUid);
+
+  await runTransaction(db, async (tx) => {
+    const [teamSnap, actorSnap] = await Promise.all([
+      tx.get(teamRef),
+      tx.get(actorRef),
+    ]);
+
+    if (!teamSnap.exists()) {
+      throw new Error('Team not found.');
+    }
+
+    if (!actorSnap.exists()) {
+      throw new Error('We could not verify your account.');
+    }
+
+    const teamData = teamSnap.data() as Record<string, any>;
+    if (teamData.ownerUid !== actorUid) {
+      throw new Error('Only the team captain can delete this team.');
+    }
+
+    const members = Array.isArray(teamData.memberUids)
+      ? teamData.memberUids.filter((value): value is string => typeof value === 'string')
+      : [];
+
+    members.forEach((uid) => {
+      if (!uid) return;
+      const membershipRef = doc(db, 'teamMemberships', uid);
+      tx.delete(membershipRef);
+    });
+
+    tx.delete(teamRef);
+  });
+
+  const inviteSnap = await getDocs(query(collection(db, 'teamInvites'), where('teamId', '==', teamId)));
+  const inviteRefs = inviteSnap.docs.map((docSnap) => docSnap.ref);
+  await deleteDocumentReferences(inviteRefs);
+
+  const messageSnap = await getDocs(collection(db, 'teamChats', teamId, 'messages'));
+  const messageRefs = messageSnap.docs.map((docSnap) => docSnap.ref);
+  await deleteDocumentReferences(messageRefs);
+
+  await deleteDoc(doc(db, 'teamChats', teamId));
 }
 
 export async function inviteUserToTeam({

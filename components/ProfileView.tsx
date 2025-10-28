@@ -322,7 +322,7 @@ export default function ProfileView({
     () => Boolean(isOwner && isProMember && onOpenLogbook),
     [isOwner, isProMember, onOpenLogbook],
   );
-  const canOpenTeams = useMemo(() => Boolean(isOwner && isProMember), [isOwner, isProMember]);
+  const canOpenTeams = useMemo(() => Boolean(isOwner), [isOwner]);
 
   const handleCatchKeyDown = (event: KeyboardEvent<HTMLDivElement>, catchItem: Catch) => {
     if (!onCatchSelect) return;
