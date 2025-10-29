@@ -381,7 +381,7 @@ export default function NavBar() {
                 </button>
 
                 {isNotificationsOpen ? (
-                  <div className="absolute left-1/2 right-auto mt-3 w-[min(90vw,22rem)] -translate-x-1/2 transform sm:left-auto sm:right-0 sm:w-96 sm:translate-x-0 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/95 shadow-2xl backdrop-blur z-50">
+                  <div className="absolute right-0 sm:right-0 mt-3 w-screen max-w-[min(90vw,22rem)] sm:w-96 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/95 shadow-2xl backdrop-blur z-50">
                     <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
                       <p className="text-sm font-semibold text-white">Notifications</p>
                       <div className="flex items-center gap-2">
