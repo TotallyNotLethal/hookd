@@ -21,6 +21,8 @@ const MAX_FORWARD_HOURS = 6;
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const CACHE_MAX_ENTRIES = 64;
 const MAX_LEAD_LAG_MS = MAX_LEAD_LAG_DAYS * 24 * 60 * 60 * 1000;
+const HISTORICAL_THRESHOLD_DAYS = 7;
+const HISTORICAL_THRESHOLD_MS = HISTORICAL_THRESHOLD_DAYS * 24 * 60 * 60 * 1000;
 
 type EnvironmentCachePayload = {
   capture: EnvironmentSnapshot | null;
@@ -412,12 +414,14 @@ export async function GET(request: Request) {
     baseTimestamp = parsed;
   }
 
-  const diff = Math.abs(baseTimestamp.getTime() - now);
+  const baseTimestampMs = baseTimestamp.getTime();
+  const diff = Math.abs(baseTimestampMs - now);
   if (diff > MAX_LEAD_LAG_MS) {
     return NextResponse.json({ capture: null, slices: [] }, { status: 422 });
   }
 
   const forwardHours = clampForward(Number.parseInt(forwardParam ?? '0', 10));
+  const isHistoricalCapture = baseTimestampMs < now - HISTORICAL_THRESHOLD_MS;
   const targets: Date[] = [];
   for (let hour = 0; hour <= forwardHours; hour += 1) {
     targets.push(new Date(baseTimestamp.getTime() + hour * 60 * 60 * 1000));
@@ -469,6 +473,10 @@ export async function GET(request: Request) {
       end_date: endDate,
     };
 
+    const weatherUrl = isHistoricalCapture
+      ? 'https://archive-api.open-meteo.com/v1/archive'
+      : 'https://api.open-meteo.com/v1/forecast';
+
     const marinePromise = fetchWeatherApi('https://marine-api.open-meteo.com/v1/marine', marineParams)
       .then((responses) => responses[0] ?? null)
       .catch((error) => {
@@ -477,7 +485,7 @@ export async function GET(request: Request) {
       });
 
     const [forecastResponses, astronomyResponses, marineResponse] = await Promise.all([
-      fetchWeatherApi('https://api.open-meteo.com/v1/forecast', forecastParams),
+      fetchWeatherApi(weatherUrl, forecastParams),
       fetchWeatherApi('https://api.open-meteo.com/v1/astronomy', astronomyParams),
       marinePromise,
     ]);
