@@ -330,81 +330,32 @@ export default function NavBar() {
         className="fixed top-0 left-0 right-0 z-[1000] bg-slate-950/95 backdrop-blur border-b border-white/10"
       >
         <div className="container py-4">
-        <div className="flex items-center justify-between">
-          {/* Logo */}
-          <Link href="/" className="flex items-center gap-3">
-            <Image src="/logo.svg" alt="Hook'd" width={36} height={36} className="rounded-xl shadow-glow" />
-            <span className="text-xl font-semibold tracking-tight">Hook&apos;d</span>
-          </Link>
+          <div className="flex items-center justify-between">
+            {/* Logo */}
+            <Link href="/" className="flex items-center gap-3">
+              <Image src="/logo.svg" alt="Hook'd" width={36} height={36} className="rounded-xl shadow-glow" />
+              <span className="text-xl font-semibold tracking-tight">Hook&apos;d</span>
+            </Link>
 
-          <div className="flex items-center gap-3">
-            {/* Desktop actions */}
-            <div className="hidden sm:flex items-center gap-3">
-              <Link href="/map" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Map</Link>
-              <Link href="/chat" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Chat</Link>
-              <Link
-                href="/tools/fish-identifier"
-                className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-              >
-                Fish ID
-                <span className="rounded-full border border-amber-300/60 bg-amber-500/20 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-200">
-                  Pro
-                </span>
-              </Link>
+            <div className="flex items-center gap-3">
               <Link
                 href="/tools/fishing-assistant"
-                className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                className="hidden sm:inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
               >
                 AI Guide
                 <span className="rounded-full border border-amber-300/60 bg-amber-500/20 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-200">
                   Pro
                 </span>
               </Link>
-              {!user ? (
-                <>
-                  <Link href="/login" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Log in</Link>
-                  <Link href="/login" className="btn-primary">Sign up</Link>
-                </>
-              ) : (
-                <>
-                  <Link href="/feed" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Feed</Link>
-                  <button
-                    onClick={() => signOut(getAuth(app))}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-                  >
-                    <LogOut className="w-4 h-4" /> Logout
-                  </button>
-                  <Link
-                    href="/profile"
-                    aria-label="Profile"
-                    className="relative inline-flex rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-                  >
-                    <Image
-                      src={profile?.photoURL || user?.photoURL || '/logo.svg'}
-                      alt={profile?.displayName || user?.displayName || 'Account avatar'}
-                      width={32}
-                      height={32}
-                      className="rounded-full"
-                    />
-                    {isProMember && (
-                      <span className="absolute -bottom-1 -right-1 rounded-full border border-amber-300/60 bg-amber-500/80 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-950 shadow-lg">
-                        <span aria-hidden>Pro</span>
-                        <span className="sr-only">Pro member</span>
-                      </span>
-                    )}
-                  </Link>
-                </>
-              )}
-            </div>
 
-            {/* Notifications dropdown (shared) */}
-            {user ? (
-              <div ref={notificationsContainerRef} className="relative order-2 sm:order-none">
-                <button
-                  type="button"
-                  onClick={() => setIsNotificationsOpen((prev) => !prev)}
-                  className="relative hidden sm:inline-flex items-center justify-center rounded-xl border border-white/15 p-2 text-white transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-                  aria-label="View notifications"
+              {/* Notifications dropdown (shared) */}
+              {user ? (
+                <div ref={notificationsContainerRef} className="relative order-2 sm:order-none">
+                  <button
+                    type="button"
+                    onClick={() => setIsNotificationsOpen((prev) => !prev)}
+                    className="relative hidden sm:inline-flex items-center justify-center rounded-xl border border-white/15 p-2 text-white transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                    aria-label="View notifications"
                 >
                   <Bell className={`h-5 w-5 ${hasUnreadNotifications ? 'fill-brand-400 text-brand-300' : ''}`} />
                   {hasUnreadNotifications ? (
@@ -517,6 +468,58 @@ export default function NavBar() {
                 ) : null}
               </div>
             ) : null}
+
+              {user ? (
+                <Link
+                  href="/profile"
+                  aria-label="Profile"
+                  className="relative hidden sm:inline-flex rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                >
+                  <Image
+                    src={profile?.photoURL || user?.photoURL || '/logo.svg'}
+                    alt={profile?.displayName || user?.displayName || 'Account avatar'}
+                    width={32}
+                    height={32}
+                    className="rounded-full"
+                  />
+                  {isProMember && (
+                    <span className="absolute -bottom-1 -right-1 rounded-full border border-amber-300/60 bg-amber-500/80 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-950 shadow-lg">
+                      <span aria-hidden>Pro</span>
+                      <span className="sr-only">Pro member</span>
+                    </span>
+                  )}
+                </Link>
+              ) : null}
+
+              <div className="hidden sm:flex items-center gap-3 ml-4 pl-4 border-l border-white/10">
+                <Link href="/map" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Map</Link>
+                <Link href="/chat" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Chat</Link>
+                <Link
+                  href="/tools/fish-identifier"
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                >
+                  Fish ID
+                  <span className="rounded-full border border-amber-300/60 bg-amber-500/20 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                    Pro
+                  </span>
+                </Link>
+                {user ? (
+                  <>
+                    <Link href="/feed" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Feed</Link>
+                    <button
+                      onClick={() => signOut(getAuth(app))}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                    >
+                      <LogOut className="w-4 h-4" /> Logout
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <Link href="/login" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Log in</Link>
+                    <Link href="/login" className="btn-primary">Sign up</Link>
+                  </>
+                )}
+              </div>
 
             {/* Mobile actions */}
             <div className="flex items-center gap-2 order-1 sm:order-none sm:hidden">
