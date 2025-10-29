@@ -26,8 +26,14 @@ const FISHING_KEYWORDS = [
   'fish',
   'fishing',
   'angler',
+  'angling',
   'bait',
   'tackle',
+  'rig',
+  'rigs',
+  'setup',
+  'setups',
+  'gear',
   'rod',
   'reel',
   'boat',
@@ -35,6 +41,8 @@ const FISHING_KEYWORDS = [
   'boating',
   'kayak',
   'charter',
+  'guide',
+  'guides',
   'coral',
   'reef',
   'lure',
@@ -53,6 +61,7 @@ const FISHING_KEYWORDS = [
   'ice fishing',
   'line',
   'leader',
+  'knot',
   'tide',
   'current',
   'lake',
@@ -61,8 +70,40 @@ const FISHING_KEYWORDS = [
   'offshore',
   'inshore',
   'harbor',
+  'marina',
   'marine',
   'baitfish',
+  'spot',
+  'spots',
+  'hotspot',
+  'hotspots',
+  'location',
+  'locations',
+  'report',
+  'reports',
+  'forecast',
+  'weather',
+  'wind',
+  'barometer',
+  'temperature',
+  'regulation',
+  'regulations',
+  'regs',
+  'license',
+  'permit',
+  'season',
+  'seasons',
+  'limit',
+  'limits',
+  'bag limit',
+  'bag limits',
+  'catch limit',
+  'catch limits',
+  'conservation',
+  'safety',
+  'weather window',
+  'tip',
+  'tips',
 ];
 
 function isFishingTopic(content: string | undefined) {
@@ -134,12 +175,16 @@ export async function POST(request: Request) {
       content: item.content.slice(0, 2000),
     }));
 
-  const lastUserMessage = [...sanitized].reverse().find((message) => message.role === 'user');
-  const fishingFocused = isFishingTopic(lastUserMessage?.content) || Boolean(imageFile);
+  const fishingFocused =
+    sanitized.some((message) => message.role === 'user' && isFishingTopic(message.content)) ||
+    Boolean(imageFile);
 
   if (!fishingFocused) {
     return NextResponse.json(
-      { error: 'Hook\'d Guide can only chat about fishing topics. Add a fishing detail and try again.' },
+      {
+        error:
+          "Hook'd Guide can only chat about fishing topics. Add some fishing context or share a fishing photo and try again.",
+      },
       { status: 400 },
     );
   }
