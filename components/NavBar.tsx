@@ -442,6 +442,18 @@ export default function NavBar() {
 
             {/* Mobile actions */}
             <div className="flex items-center gap-2 sm:hidden">
+              <Link
+                href="/tools/fishing-assistant"
+                className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-sm font-medium text-white transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+              >
+                <Bot className="h-5 w-5" />
+                <span className="flex items-center gap-1">
+                  AI Guide
+                  <span className="rounded-full border border-amber-300/60 bg-amber-500/20 px-1.5 py-[1px] text-[9px] font-semibold uppercase tracking-wide text-amber-200">
+                    Pro
+                  </span>
+                </span>
+              </Link>
               {user ? (
                 <Link
                   href="/profile"
