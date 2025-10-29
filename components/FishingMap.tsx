@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer, Circle, CircleMarker, useMap, Pane } from "react-leaflet";
 import L from "leaflet";
 import { useRouter } from "next/navigation";
@@ -13,11 +13,46 @@ import {
   computeDistanceMiles,
   type SpeciesFilters,
 } from "@/lib/mapSpots";
-import { Check, MapPin, ShieldAlert } from "lucide-react";
+import { Check, Loader2, MapPin, Search, ShieldAlert } from "lucide-react";
 
 const DEFAULT_POSITION: [number, number] = [40.7989, -81.3784];
 
 type MarineOverlayKey = "bathymetry" | "contours" | "labels";
+
+type BaseLayerKey =
+  | "osm"
+  | "maptiler-streets"
+  | "maptiler-outdoor"
+  | "maptiler-ocean"
+  | "maptiler-satellite";
+
+type BaseLayerSource = {
+  id: BaseLayerKey;
+  label: string;
+  description: string;
+  url: string | null;
+  attribution: string;
+  requiresKey?: boolean;
+  requiresPro?: boolean;
+  format?: "png" | "jpg";
+};
+
+type MapTilerFeature = {
+  id: string;
+  place_name?: string;
+  text?: string;
+  center?: [number, number];
+  geometry?: { type: string; coordinates: [number, number] };
+  properties?: {
+    country?: string;
+    region?: string;
+    [key: string]: unknown;
+  };
+};
+
+type MapTilerGeocodingResponse = {
+  features?: MapTilerFeature[];
+};
 
 type MarineOverlaySource = {
   id: MarineOverlayKey;
@@ -81,6 +116,68 @@ const createMarineOverlaySources = (): Record<MarineOverlayKey, MarineOverlaySou
   };
 };
 
+const createBaseLayerSources = (): BaseLayerSource[] => {
+  const mapTilerKey = process.env.NEXT_PUBLIC_MAPTILER_KEY;
+  const hasKey = Boolean(mapTilerKey);
+  const buildMapTilerStyleUrl = (style: string, extension: "png" | "jpg" = "png") =>
+    hasKey ? `https://api.maptiler.com/maps/${style}/{z}/{x}/{y}.${extension}?key=${mapTilerKey}` : null;
+
+  return [
+    {
+      id: "osm",
+      label: "OpenStreetMap",
+      description: "Community-maintained basemap served by OpenStreetMap contributors.",
+      url: "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    },
+    {
+      id: "maptiler-streets",
+      label: "MapTiler Streets",
+      description: hasKey
+        ? "Vector-inspired street map suited for urban trip planning."
+        : "Requires a MapTiler API key to enable Streets.",
+      url: buildMapTilerStyleUrl("streets-v2"),
+      attribution:
+        '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &amp; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      requiresKey: true,
+    },
+    {
+      id: "maptiler-outdoor",
+      label: "MapTiler Outdoor",
+      description: hasKey
+        ? "Topographic outdoor style highlighting trails and elevation."
+        : "Requires a MapTiler API key to enable Outdoor.",
+      url: buildMapTilerStyleUrl("outdoor-v2"),
+      attribution:
+        '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &amp; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      requiresKey: true,
+    },
+    {
+      id: "maptiler-ocean",
+      label: "MapTiler Ocean",
+      description: hasKey
+        ? "Ocean-first basemap designed to complement marine overlays."
+        : "Requires a MapTiler API key to enable Ocean.",
+      url: buildMapTilerStyleUrl("ocean"),
+      attribution:
+        '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &amp; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      requiresKey: true,
+    },
+    {
+      id: "maptiler-satellite",
+      label: "MapTiler Satellite",
+      description: hasKey
+        ? "Hybrid satellite imagery with labels. Requires a MapTiler Pro plan for production use."
+        : "Requires a MapTiler API key to enable Satellite.",
+      url: buildMapTilerStyleUrl("hybrid", "jpg"),
+      attribution:
+        '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a>, <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, and <a href="https://www.maxar.com/">Maxar</a>',
+      requiresKey: true,
+      requiresPro: true,
+    },
+  ];
+};
+
 type FishingMapProps = {
   allowedUids?: string[];
   includeReferenceSpots?: boolean;
@@ -120,6 +217,7 @@ export default function FishingMap({
   const router = useRouter();
   const [userPosition, setUserPosition] = useState<[number, number]>(DEFAULT_POSITION);
   const [catchDocuments, setCatchDocuments] = useState<CatchWithCoordinates[]>([]);
+  const mapInstanceRef = useRef<L.Map | null>(null);
   const geoSupported = useMemo(
     () => typeof navigator !== "undefined" && Boolean(navigator.geolocation),
     [],
@@ -137,6 +235,35 @@ export default function FishingMap({
     [baseSpots],
   );
   const [speciesFilters, setSpeciesFilters] = useState<SpeciesFilters>(initialSpeciesFilters);
+  const mapTilerKey = process.env.NEXT_PUBLIC_MAPTILER_KEY;
+  const hasMapTilerKey = Boolean(mapTilerKey);
+  const baseLayerSources = useMemo(() => createBaseLayerSources(), []);
+  const defaultBaseLayerId = useMemo<BaseLayerKey>(() => {
+    const preferred: BaseLayerKey = hasMapTilerKey ? "maptiler-outdoor" : "osm";
+    const preferredLayer = baseLayerSources.find((layer) => layer.id === preferred && Boolean(layer.url));
+    if (preferredLayer?.id) {
+      return preferredLayer.id;
+    }
+    const fallbackLayer = baseLayerSources.find((layer) => layer.id === "osm" && Boolean(layer.url));
+    if (fallbackLayer?.id) {
+      return fallbackLayer.id;
+    }
+    return (baseLayerSources.find((layer) => Boolean(layer.url))?.id ?? "osm") as BaseLayerKey;
+  }, [baseLayerSources, hasMapTilerKey]);
+  const [activeBaseLayerId, setActiveBaseLayerId] = useState<BaseLayerKey>(defaultBaseLayerId);
+  const activeBaseLayer = useMemo(() => {
+    const selected = baseLayerSources.find((layer) => layer.id === activeBaseLayerId && Boolean(layer.url));
+    if (selected) {
+      return selected;
+    }
+    return baseLayerSources.find((layer) => layer.id === defaultBaseLayerId && Boolean(layer.url)) ??
+      baseLayerSources.find((layer) => Boolean(layer.url)) ??
+      baseLayerSources[0];
+  }, [activeBaseLayerId, baseLayerSources, defaultBaseLayerId]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<MapTilerFeature[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const defer = useCallback((fn: () => void) => {
     if (typeof queueMicrotask === "function") {
       queueMicrotask(fn);
@@ -180,6 +307,16 @@ export default function FishingMap({
       isMountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    setActiveBaseLayerId((prev) => {
+      const stillAvailable = baseLayerSources.find((layer) => layer.id === prev && Boolean(layer.url));
+      if (stillAvailable) {
+        return prev;
+      }
+      return defaultBaseLayerId;
+    });
+  }, [baseLayerSources, defaultBaseLayerId]);
 
   useEffect(() => {
     setMarineOverlayVisibility((prev) => {
@@ -296,6 +433,64 @@ export default function FishingMap({
     setMarineOverlayVisibility((prev) => ({ ...prev, [overlay]: !prev[overlay] }));
   };
 
+  const handleSearchSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    if (!mapTilerKey) {
+      setSearchError("Add a MapTiler API key to enable location search.");
+      setSearchResults([]);
+      return;
+    }
+    setSearchLoading(true);
+    setSearchError(null);
+    try {
+      const encoded = encodeURIComponent(searchQuery.trim());
+      const response = await fetch(`https://api.maptiler.com/geocoding/${encoded}.json?key=${mapTilerKey}`);
+      if (!response.ok) {
+        throw new Error(`Geocoding request failed with status ${response.status}`);
+      }
+      const data = (await response.json()) as MapTilerGeocodingResponse;
+      if (!isMountedRef.current) {
+        return;
+      }
+      setSearchResults(data.features ?? []);
+      if ((data.features ?? []).length === 0) {
+        setSearchError("No results found for that search.");
+      }
+    } catch (error) {
+      console.error("MapTiler geocoding error", error);
+      if (!isMountedRef.current) {
+        return;
+      }
+      setSearchError("We couldn't complete that search. Try again in a moment.");
+      setSearchResults([]);
+    } finally {
+      if (isMountedRef.current) {
+        setSearchLoading(false);
+      }
+    }
+  };
+
+  const handleSelectSearchResult = (feature: MapTilerFeature) => {
+    const coordinates = feature.geometry?.coordinates ?? feature.center;
+    if (!coordinates || coordinates.length < 2) {
+      return;
+    }
+    const [longitude, latitude] = coordinates;
+    const nextPosition: [number, number] = [latitude, longitude];
+    const map = mapInstanceRef.current;
+    if (map) {
+      map.flyTo(nextPosition, Math.max(map.getZoom(), 11), { duration: 1.2 });
+    }
+    setUserPosition(nextPosition);
+    setSearchResults([]);
+    setSearchQuery(feature.place_name ?? feature.text ?? searchQuery);
+    setSearchError(null);
+  };
+
   const speciesKeys = useMemo(() => Object.keys(speciesFilters).sort(), [speciesFilters]);
 
   const handleOpenSpot = (spotId: string) => {
@@ -316,23 +511,88 @@ export default function FishingMap({
               {geoLoading ? "Locating…" : "Use my location"}
             </button>
           ) : null}
+          <div className="absolute left-4 top-4 z-[401] w-full max-w-[320px] space-y-2">
+            <form
+              onSubmit={handleSearchSubmit}
+              className="flex overflow-hidden rounded-2xl border border-white/15 bg-slate-900/80 text-sm text-white shadow backdrop-blur"
+            >
+              <span className="flex items-center justify-center px-3 text-white/70">
+                {searchLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              </span>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => {
+                  setSearchQuery(event.target.value);
+                  if (searchError) {
+                    setSearchError(null);
+                  }
+                }}
+                placeholder={mapTilerKey ? "Search for water, cities, or ramps" : "Add a MapTiler key to search"}
+                className="min-w-0 flex-1 bg-transparent px-2 py-2 text-sm text-white placeholder:text-white/40 focus:outline-none"
+                disabled={!mapTilerKey}
+              />
+              <button
+                type="submit"
+                className="px-3 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:text-white/40"
+                disabled={!mapTilerKey || searchLoading}
+              >
+                Go
+              </button>
+            </form>
+            {searchError ? (
+              <p className="rounded-xl bg-slate-900/70 px-3 py-2 text-xs text-amber-200 shadow">{searchError}</p>
+            ) : null}
+            {searchResults.length > 0 ? (
+              <ul className="max-h-60 space-y-1 overflow-y-auto rounded-2xl border border-white/10 bg-slate-900/85 p-2 text-sm text-white shadow">
+                {searchResults.map((feature) => {
+                  const coordinates = feature.geometry?.coordinates ?? feature.center;
+                  const isSelectable = Boolean(coordinates && coordinates.length >= 2);
+                  const name = feature.place_name ?? feature.text ?? "Unnamed location";
+                  return (
+                    <li key={feature.id}>
+                      <button
+                        type="button"
+                        onClick={() => handleSelectSearchResult(feature)}
+                        disabled={!isSelectable}
+                        className={clsx(
+                          "w-full rounded-xl px-3 py-2 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300",
+                          isSelectable
+                            ? "bg-white/5 text-white hover:bg-white/10"
+                            : "cursor-not-allowed bg-white/5 text-white/40",
+                        )}
+                      >
+                        <span className="block text-sm font-medium">{name}</span>
+                        {feature.properties?.country || feature.properties?.region ? (
+                          <span className="mt-0.5 block text-xs text-white/60">
+                            {[feature.properties?.region, feature.properties?.country].filter(Boolean).join(", ")}
+                          </span>
+                        ) : null}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+          </div>
           <MapContainer
             center={userPosition}
             zoom={11}
             scrollWheelZoom
             style={{ height: "480px", width: "100%" }}
             className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+            whenCreated={(map) => {
+              mapInstanceRef.current = map;
+            }}
           >
             <MapRelocator position={userPosition} />
             <Pane name="base-tiles" style={{ zIndex: 200 }} />
             {marineOverlayPanes.map(([name, zIndex]) => (
               <Pane key={name} name={name} style={{ zIndex }} />
             ))}
-            <TileLayer
-              pane="base-tiles"
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png"
-            />
+            {activeBaseLayer?.url ? (
+              <TileLayer pane="base-tiles" attribution={activeBaseLayer.attribution} url={activeBaseLayer.url} key={activeBaseLayer.id} />
+            ) : null}
             {marineOverlayEntries.map(([key, overlay]) => {
               if (!overlay.url || !marineOverlayVisibility[key]) {
                 return null;
@@ -434,6 +694,49 @@ export default function FishingMap({
       </div>
 
       <aside className="glass rounded-3xl p-6 space-y-6">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Base map</h2>
+          <p className="text-sm text-white/60">Swap the foundational basemap to change context for your planning.</p>
+          {!hasMapTilerKey ? (
+            <p className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              Add a MapTiler API key to unlock premium base maps and geocoding search.
+            </p>
+          ) : null}
+          <div className="mt-4 space-y-3">
+            {baseLayerSources.map((layer) => {
+              const available = Boolean(layer.url) && !layer.requiresPro;
+              const isActive = activeBaseLayer?.id === layer.id && available;
+              return (
+                <button
+                  key={layer.id}
+                  type="button"
+                  onClick={() => available && setActiveBaseLayerId(layer.id)}
+                  disabled={!available}
+                  className={clsx(
+                    "w-full rounded-2xl border px-4 py-3 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300",
+                    isActive
+                      ? "border-brand-400 bg-brand-400/20 text-white"
+                      : "border-white/10 bg-white/5 text-white/80 hover:bg-white/10",
+                    !available && "cursor-not-allowed opacity-60",
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold">{layer.label}</span>
+                    {isActive ? <Check className="h-4 w-4" /> : null}
+                  </div>
+                  <p className="mt-1 text-xs text-white/60">{layer.description}</p>
+                  {!available && layer.requiresPro ? (
+                    <p className="mt-1 text-xs text-amber-200">Requires a MapTiler Pro plan.</p>
+                  ) : null}
+                  {!available && layer.requiresKey && !hasMapTilerKey ? (
+                    <p className="mt-1 text-xs text-amber-200">Add a MapTiler API key to enable this style.</p>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div>
           <h2 className="text-lg font-semibold text-white">Marine layers</h2>
           <p className="text-sm text-white/60">
