@@ -8,6 +8,7 @@ interface CandidatePrediction {
   species: string;
   confidence: number;
   tips?: string;
+  label: string;
 }
 
 interface PredictionResponse {
@@ -120,6 +121,9 @@ export default function FishIdentifierPage() {
               <div className="space-y-1">
                 <p className="text-sm uppercase tracking-[0.3em] text-brand-100">Top match</p>
                 <h2 className="text-2xl font-semibold text-white">{topPrediction?.species ?? "Unknown"}</h2>
+                {topPrediction && topPrediction.label !== topPrediction.species && (
+                  <p className="text-xs uppercase tracking-[0.3em] text-white/60">Model label: {topPrediction.label}</p>
+                )}
                 {topPrediction && (
                   <p className="text-sm text-white/70">Confidence: {(topPrediction.confidence * 100).toFixed(1)}%</p>
                 )}
@@ -138,13 +142,16 @@ export default function FishIdentifierPage() {
                   <ul className="space-y-2">
                     {otherPredictions.map((candidate, index) => (
                       <li
-                        key={candidate.species}
+                        key={`${candidate.label}-${index}`}
                         className="rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-white/80"
                       >
                         <div className="flex items-baseline justify-between gap-4">
                           <span className="font-medium text-white">#{index + 2} {candidate.species}</span>
                           <span>{(candidate.confidence * 100).toFixed(1)}%</span>
                         </div>
+                        {candidate.label !== candidate.species && (
+                          <p className="text-[10px] uppercase tracking-[0.3em] text-white/50">Model label: {candidate.label}</p>
+                        )}
                         {candidate.tips && <p className="mt-1 text-xs text-white/60">Tip: {candidate.tips}</p>}
                       </li>
                     ))}

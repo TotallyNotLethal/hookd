@@ -26,6 +26,23 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ['lucide-react'],
   },
+  serverExternalPackages: ['@xenova/transformers', 'sharp', 'onnxruntime-node'],
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      const externals = Array.isArray(config.externals)
+        ? config.externals
+        : config.externals
+        ? [config.externals]
+        : [];
+      externals.push({
+        sharp: 'commonjs sharp',
+        '@xenova/transformers': 'commonjs @xenova/transformers',
+        'onnxruntime-node': 'commonjs onnxruntime-node',
+      });
+      config.externals = externals;
+    }
+    return config;
+  },
 };
 
 export default nextConfig;

@@ -1,67 +1,179 @@
 import { NextResponse } from "next/server";
-import * as tf from "@tensorflow/tfjs-node";
+import { RawImage, pipeline } from "@xenova/transformers";
+
+declare global {
+  interface GlobalThis {
+    __fishIdTestHooks?: {
+      setClassifierFactory: (factory?: () => Promise<ImageClassifier>) => void;
+      setImageReader: (reader?: (buffer: Buffer, mimeType?: string) => Promise<unknown>) => void;
+    };
+  }
+}
 
 export const runtime = "nodejs";
 
 type SpeciesMetadata = {
   species: string;
-  tips: string;
+  tips?: string;
 };
 
 type ClassifierPrediction = SpeciesMetadata & {
   confidence: number;
+  label: string;
 };
 
-const SPECIES: SpeciesMetadata[] = [
+class ImageDecodeError extends Error {}
+class ClassifierLoadError extends Error {}
+class ClassifierExecutionError extends Error {}
+
+type ImageClassifier = (
+  image: unknown,
+  options?: { topk?: number },
+) => Promise<Array<{ label: string; score: number }>>;
+
+const MODEL_ID = "Xenova/vit-base-patch16-224";
+const DEFAULT_TOPK = 5;
+const LOW_CONFIDENCE_THRESHOLD = 0.55;
+
+const KNOWN_SPECIES: Array<{ pattern: RegExp; metadata: SpeciesMetadata }> = [
   {
-    species: "Largemouth Bass",
-    tips: "Work a slow-rolled spinnerbait through submerged grass or pitch a jig to timber transitions.",
+    pattern: /largemouth bass/i,
+    metadata: {
+      species: "Largemouth Bass",
+      tips: "Pitch a jig to cover or slow-roll a spinnerbait along weed edges during low light.",
+    },
   },
   {
-    species: "Channel Catfish",
-    tips: "Set a slip-sinker rig with fresh cut shad just off the channel ledge at dusk for consistent bites.",
+    pattern: /smallmouth bass/i,
+    metadata: {
+      species: "Smallmouth Bass",
+      tips: "Drag a green pumpkin tube across rocky points or throw a jerkbait across current seams.",
+    },
   },
   {
-    species: "Black Crappie",
-    tips: "Target shaded docks with 1/16 oz tube jigs and pause often to let the school regroup.",
+    pattern: /bluegill|sunfish/i,
+    metadata: {
+      species: "Bluegill",
+      tips: "Suspend a small worm or cricket under a float near shaded docks and lily pads.",
+    },
+  },
+  {
+    pattern: /crappie/i,
+    metadata: {
+      species: "Crappie",
+      tips: "Slowly vertical jig a 1/16 oz tube over brush piles and pause to let the school reset.",
+    },
+  },
+  {
+    pattern: /catfish|channel cat/i,
+    metadata: {
+      species: "Channel Catfish",
+      tips: "Fan-cast cut bait on a slip sinker rig along channel swings after sunset for steady action.",
+    },
+  },
+  {
+    pattern: /salmon/i,
+    metadata: {
+      species: "Salmon",
+      tips: "Match the hatch with spoons or spinners in faster water and keep tension steady during the run.",
+    },
+  },
+  {
+    pattern: /trout/i,
+    metadata: {
+      species: "Trout",
+      tips: "Dead-drift a small nymph through riffles or cast inline spinners to seams at dawn.",
+    },
   },
 ];
 
-const CLASSIFIER_WEIGHTS = tf.tensor2d(
-  [
-    -0.4, 0.9, 1.4,
-    1.5, 0.6, 0.4,
-    0.2, 0.6, -1.3,
-  ],
-  [3, SPECIES.length],
-);
+let classifierPromise: Promise<ImageClassifier> | null = null;
 
-const CLASSIFIER_BIASES = tf.tensor1d([-0.2, -0.5, 0.2]);
+async function defaultClassifierFactory(): Promise<ImageClassifier> {
+  if (!classifierPromise) {
+    classifierPromise = pipeline("image-classification", MODEL_ID, {
+      quantized: true,
+    }) as Promise<ImageClassifier>;
+  }
+  return classifierPromise;
+}
 
-const LOW_CONFIDENCE_THRESHOLD = 0.5;
+let loadClassifier: () => Promise<ImageClassifier> = defaultClassifierFactory;
 
-function runClassifier(imageBuffer: Buffer): number[] {
-  const probabilities = Array.from(
-    tf.tidy(() => {
-      const decoded = tf.node.decodeImage(imageBuffer, 3);
-      if (decoded.shape.length !== 3 || decoded.shape[2] !== 3) {
-        decoded.dispose();
-        throw new Error("Image must contain RGB channels.");
-      }
-      const resized = tf.image.resizeBilinear(decoded, [64, 64], true);
-      const normalized = resized.toFloat().div(255);
-      const channelMeans = normalized.mean([0, 1]);
-      const logits = channelMeans.reshape([1, 3]).matMul(CLASSIFIER_WEIGHTS).add(CLASSIFIER_BIASES);
-      const softmax = tf.softmax(logits);
-      return softmax.dataSync();
-    }),
-  );
+async function defaultImageReader(buffer: Buffer, mimeType?: string): Promise<unknown> {
+  const blob = new Blob([buffer], { type: mimeType ?? "application/octet-stream" });
+  return RawImage.fromBlob(blob);
+}
 
-  if (probabilities.length !== SPECIES.length || probabilities.some((value) => !Number.isFinite(value))) {
-    throw new Error("Classifier returned invalid probabilities.");
+let readImage: (buffer: Buffer, mimeType?: string) => Promise<unknown> = defaultImageReader;
+
+function normalizeLabel(label: string): string {
+  return label.replace(/_/g, " ").split(",")[0]?.trim() ?? label;
+}
+
+function enrichPrediction(label: string): SpeciesMetadata {
+  const normalized = normalizeLabel(label);
+  for (const entry of KNOWN_SPECIES) {
+    if (entry.pattern.test(normalized)) {
+      return entry.metadata;
+    }
+  }
+  return { species: normalized.charAt(0).toUpperCase() + normalized.slice(1) };
+}
+
+async function classifyImage(buffer: Buffer, mimeType?: string): Promise<ClassifierPrediction[]> {
+  let image: unknown;
+  try {
+    image = await readImage(buffer, mimeType);
+  } catch (error) {
+    throw new ImageDecodeError((error as Error)?.message ?? "Unable to decode image.");
   }
 
-  return probabilities;
+  let classifier: ImageClassifier;
+  try {
+    classifier = await loadClassifier();
+  } catch (error) {
+    throw new ClassifierLoadError((error as Error)?.message ?? "Unable to load classifier.");
+  }
+
+  let results: Array<{ label: string; score: number }>;
+  try {
+    results = await classifier(image, { topk: DEFAULT_TOPK });
+  } catch (error) {
+    throw new ClassifierExecutionError((error as Error)?.message ?? "Classifier inference failed.");
+  }
+
+  if (!Array.isArray(results) || results.length === 0) {
+    throw new ClassifierExecutionError("Classifier returned no predictions.");
+  }
+
+  return results
+    .filter((result) => Number.isFinite(result.score) && typeof result.label === "string")
+    .map((result) => {
+      const metadata = enrichPrediction(result.label);
+      return {
+        ...metadata,
+        label: normalizeLabel(result.label),
+        confidence: Math.max(0, Math.min(1, Number(result.score))),
+      };
+    })
+    .sort((a, b) => b.confidence - a.confidence);
+}
+
+function setClassifierFactory(factory?: () => Promise<ImageClassifier>) {
+  classifierPromise = null;
+  loadClassifier = factory ?? defaultClassifierFactory;
+}
+
+function setImageReader(reader?: (buffer: Buffer, mimeType?: string) => Promise<unknown>) {
+  readImage = reader ?? defaultImageReader;
+}
+
+if (process.env.NODE_ENV !== "production") {
+  globalThis.__fishIdTestHooks = {
+    setClassifierFactory,
+    setImageReader,
+  };
 }
 
 export async function POST(request: Request) {
@@ -82,7 +194,10 @@ export async function POST(request: Request) {
   }
 
   if (file.type && !file.type.startsWith("image/")) {
-    return NextResponse.json({ error: "Unsupported file type. Please upload a PNG or JPG photo." }, { status: 415 });
+    return NextResponse.json(
+      { error: "Unsupported file type. Please upload a PNG or JPG photo." },
+      { status: 415 },
+    );
   }
 
   let imageBuffer: Buffer;
@@ -93,30 +208,32 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unable to read uploaded file bytes." }, { status: 400 });
   }
 
-  let probabilities: number[];
+  let predictions: ClassifierPrediction[];
   try {
-    probabilities = runClassifier(imageBuffer);
+    predictions = await classifyImage(imageBuffer, file.type);
   } catch (error) {
     console.error("Fish classifier error", error);
+    if (error instanceof ImageDecodeError) {
+      return NextResponse.json(
+        { error: "We couldn't process that photo. Try uploading a different image." },
+        { status: 422 },
+      );
+    }
+
     return NextResponse.json(
-      { error: "We couldn't process that photo. Try uploading a different image." },
-      { status: 422 },
+      { error: "The classifier is temporarily unavailable. Please try again soon." },
+      { status: 502 },
     );
   }
 
-  const predictions: ClassifierPrediction[] = SPECIES.map((metadata, index) => ({
-    ...metadata,
-    confidence: Number(probabilities[index]),
-  })).sort((a, b) => b.confidence - a.confidence);
-
   const topPrediction = predictions[0];
-  const lowConfidence = topPrediction ? topPrediction.confidence < LOW_CONFIDENCE_THRESHOLD : true;
+  const lowConfidence = !topPrediction || topPrediction.confidence < LOW_CONFIDENCE_THRESHOLD;
 
   return NextResponse.json({
     predictions,
     lowConfidence,
     note: lowConfidence
-      ? "Confidence is low—try a brighter profile photo or a different angle so the classifier can lock on."
+      ? "Confidence is low—try a brighter profile photo or a side profile so the classifier can lock on."
       : undefined,
   });
 }
