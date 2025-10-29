@@ -16,6 +16,7 @@ import {
   LogOut,
   Map as MapIcon,
   Fish,
+  Bot,
   X,
   MessageSquare,
   Loader2,
@@ -271,7 +272,24 @@ export default function NavBar() {
             <div className="hidden sm:flex items-center gap-3">
               <Link href="/map" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Map</Link>
               <Link href="/chat" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Chat</Link>
-              <Link href="/tools/fish-identifier" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Fish ID</Link>
+              <Link
+                href="/tools/fish-identifier"
+                className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+              >
+                Fish ID
+                <span className="rounded-full border border-amber-300/60 bg-amber-500/20 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                  Pro
+                </span>
+              </Link>
+              <Link
+                href="/tools/fishing-assistant"
+                className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+              >
+                AI Guide
+                <span className="rounded-full border border-amber-300/60 bg-amber-500/20 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                  Pro
+                </span>
+              </Link>
               {!user ? (
                 <>
                   <Link href="/login" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Log in</Link>
@@ -518,7 +536,27 @@ export default function NavBar() {
                   className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition bg-slate-900/80 shadow-inner hover:bg-slate-900/95 hover:ring-1 hover:ring-white/10"
                 >
                   <Fish className="h-5 w-5" />
-                  <span>Fish ID</span>
+                  <span className="flex items-center gap-2">
+                    Fish ID
+                    <span className="rounded-full border border-amber-300/60 bg-amber-500/20 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                      Pro
+                    </span>
+                  </span>
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/tools/fishing-assistant"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition bg-slate-900/80 shadow-inner hover:bg-slate-900/95 hover:ring-1 hover:ring-white/10"
+                >
+                  <Bot className="h-5 w-5" />
+                  <span className="flex items-center gap-2">
+                    AI Guide
+                    <span className="rounded-full border border-amber-300/60 bg-amber-500/20 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                      Pro
+                    </span>
+                  </span>
                 </Link>
               </li>
               {!user ? (
