@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   env: {
-    NEXT_PUBLIC_MAPTILER_KEY: process.env.NEXT_PUBLIC_MAPTILER_KEY,
+    NEXT_PUBLIC_MAPTILER_KEY: "8rgoitRLGMm5tjewUhOy",
   },
   images: {
     remotePatterns: [
