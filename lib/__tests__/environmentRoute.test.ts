@@ -192,3 +192,64 @@ test('GET populates weather data from weather_code responses', async () => {
     openmeteo.fetchWeatherApi = originalFetchWeatherApi;
   }
 });
+
+test('GET uses historical archive data for captures older than a week', async () => {
+  const openmeteo = await openmeteoPromise;
+  const originalFetchWeatherApi = openmeteo.fetchWeatherApi;
+  const requests: { url: string; params: Record<string, string> }[] = [];
+
+  const originalDateNow = Date.now;
+  const fixedNow = Date.UTC(2024, 4, 12, 12, 0, 0);
+  Date.now = () => fixedNow;
+
+  const forecastResponse = createRecordedWeatherResponse(recordedFixture.forecast);
+  const astronomyResponse = createRecordedWeatherResponse(recordedFixture.astronomy);
+  const marineResponse = createRecordedWeatherResponse(recordedFixture.marine);
+
+  openmeteo.fetchWeatherApi = (async (url, params) => {
+    const capturedParams = Object.fromEntries(
+      Object.entries((params ?? {}) as Record<string, string | number | boolean | undefined>).map(
+        ([key, value]) => [key, String(value)],
+      ),
+    ) as Record<string, string>;
+    requests.push({ url, params: capturedParams });
+
+    if (url.startsWith('https://archive-api.open-meteo.com/v1/archive')) {
+      return [forecastResponse];
+    }
+    if (url.startsWith('https://api.open-meteo.com/v1/astronomy')) {
+      return [astronomyResponse];
+    }
+    if (url.startsWith('https://marine-api.open-meteo.com/v1/marine')) {
+      return [marineResponse];
+    }
+
+    throw new Error(`Unexpected fetchWeatherApi URL: ${url}`);
+  }) as typeof openmeteo.fetchWeatherApi;
+
+  try {
+    const GET = await loadGet();
+    const timestamp = new Date(Date.UTC(2024, 3, 30, 12, 0, 0)).toISOString();
+    const params = new URLSearchParams({ lat: '10', lng: '20', timestamp });
+    const response = await GET(new Request(`http://localhost/api/environment?${params.toString()}`));
+
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.ok(payload.capture);
+    const archiveCall = requests.find((call) =>
+      call.url.startsWith('https://archive-api.open-meteo.com/v1/archive'),
+    );
+    assert.ok(archiveCall);
+    assert.equal(
+      archiveCall.params.hourly,
+      'surface_pressure,temperature_2m,weather_code,wind_speed_10m,wind_direction_10m',
+    );
+    const forecastCall = requests.find((call) =>
+      call.url.startsWith('https://api.open-meteo.com/v1/forecast'),
+    );
+    assert.equal(forecastCall, undefined);
+  } finally {
+    Date.now = originalDateNow;
+    openmeteo.fetchWeatherApi = originalFetchWeatherApi;
+  }
+});
