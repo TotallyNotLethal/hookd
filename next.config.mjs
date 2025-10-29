@@ -2,6 +2,7 @@
 const nextConfig = {
   env: {
     NEXT_PUBLIC_MAPTILER_KEY: "8rgoitRLGMm5tjewUhOy",
+    OPENAI_API_KEY: "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",
   },
   images: {
     remotePatterns: [
