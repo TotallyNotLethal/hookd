@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { MapContainer, Marker, Popup, TileLayer, Circle, CircleMarker, useMap } from "react-leaflet";
+import { MapContainer, Marker, Popup, TileLayer, Circle, CircleMarker, useMap, Pane } from "react-leaflet";
 import L from "leaflet";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
@@ -16,6 +16,70 @@ import {
 import { Check, MapPin, ShieldAlert } from "lucide-react";
 
 const DEFAULT_POSITION: [number, number] = [40.7989, -81.3784];
+
+type MarineOverlayKey = "bathymetry" | "contours" | "labels";
+
+type MarineOverlaySource = {
+  id: MarineOverlayKey;
+  label: string;
+  description?: string;
+  url: string | null;
+  attribution: string;
+  pane: string;
+  zIndex: number;
+  defaultEnabled: boolean;
+  requiresKey?: boolean;
+  opacity?: number;
+};
+
+const createMarineOverlaySources = (): Record<MarineOverlayKey, MarineOverlaySource> => {
+  const mapTilerKey = process.env.NEXT_PUBLIC_MAPTILER_KEY;
+  const hasKey = Boolean(mapTilerKey);
+  const buildMapTilerUrl = (path: string) => (hasKey ? `https://api.maptiler.com${path}?key=${mapTilerKey}` : null);
+
+  return {
+    bathymetry: {
+      id: "bathymetry",
+      label: "Bathymetry shading",
+      description: hasKey
+        ? "Visualizes depth shading sourced from MapTiler's ocean basemap."
+        : "Requires a MapTiler API key to render bathymetry tiles.",
+      url: buildMapTilerUrl("/maps/ocean/{z}/{x}/{y}.png"),
+      attribution:
+        '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &amp; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      pane: "marine-bathymetry",
+      zIndex: 210,
+      defaultEnabled: true,
+      requiresKey: true,
+      opacity: 0.9,
+    },
+    contours: {
+      id: "contours",
+      label: "Depth contours",
+      description: hasKey
+        ? "Displays bathymetric contour labels for navigation planning."
+        : "Requires a MapTiler API key to render contour labels.",
+      url: buildMapTilerUrl("/tiles/bathymetry-lines/{z}/{x}/{y}.png"),
+      attribution:
+        '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a>',
+      pane: "marine-contours",
+      zIndex: 220,
+      defaultEnabled: false,
+      requiresKey: true,
+      opacity: 0.75,
+    },
+    labels: {
+      id: "labels",
+      label: "Marine navigation marks",
+      description: "OpenSeaMap seamarks and harbor annotations.",
+      url: "https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png",
+      attribution: '&copy; <a href="https://www.openseamap.org/">OpenSeaMap</a> contributors',
+      pane: "marine-labels",
+      zIndex: 230,
+      defaultEnabled: true,
+    },
+  };
+};
 
 type FishingMapProps = {
   allowedUids?: string[];
@@ -83,12 +147,55 @@ export default function FishingMap({
   const allowRegulationOverlay = includeReferenceSpots && showRegulationsToggle;
   const [showRegulations, setShowRegulations] = useState(allowRegulationOverlay);
   const isMountedRef = useRef(true);
+  const marineOverlaySources = useMemo(() => createMarineOverlaySources(), []);
+  const marineOverlayEntries = useMemo(
+    () => Object.entries(marineOverlaySources) as [MarineOverlayKey, MarineOverlaySource][],
+    [marineOverlaySources],
+  );
+  const marineOverlayPanes = useMemo(() => {
+    const seen = new Map<string, number>();
+    marineOverlayEntries.forEach(([, overlay]) => {
+      if (!seen.has(overlay.pane)) {
+        seen.set(overlay.pane, overlay.zIndex);
+      }
+    });
+    return Array.from(seen.entries());
+  }, [marineOverlayEntries]);
+  const initialMarineOverlayState = useMemo(() => {
+    const state: Record<MarineOverlayKey, boolean> = {
+      bathymetry: false,
+      contours: false,
+      labels: false,
+    };
+    marineOverlayEntries.forEach(([key, overlay]) => {
+      state[key] = Boolean(overlay.url && overlay.defaultEnabled);
+    });
+    return state;
+  }, [marineOverlayEntries]);
+  const [marineOverlayVisibility, setMarineOverlayVisibility] =
+    useState<Record<MarineOverlayKey, boolean>>(initialMarineOverlayState);
 
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    setMarineOverlayVisibility((prev) => {
+      const next = { ...prev };
+      marineOverlayEntries.forEach(([key, overlay]) => {
+        if (!overlay.url) {
+          next[key] = false;
+          return;
+        }
+        if (!(key in next)) {
+          next[key] = overlay.defaultEnabled;
+        }
+      });
+      return next;
+    });
+  }, [marineOverlayEntries]);
 
   useEffect(() => {
     setSpeciesFilters(initialSpeciesFilters);
@@ -185,6 +292,10 @@ export default function FishingMap({
     setSpeciesFilters((prev) => ({ ...prev, [species]: !prev[species] }));
   };
 
+  const toggleMarineOverlay = (overlay: MarineOverlayKey) => {
+    setMarineOverlayVisibility((prev) => ({ ...prev, [overlay]: !prev[overlay] }));
+  };
+
   const speciesKeys = useMemo(() => Object.keys(speciesFilters).sort(), [speciesFilters]);
 
   const handleOpenSpot = (spotId: string) => {
@@ -212,98 +323,153 @@ export default function FishingMap({
             style={{ height: "480px", width: "100%" }}
             className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
           >
-          <MapRelocator position={userPosition} />
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-            url="https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png"
-          />
-          {filteredSpots.map((spot) => {
-            const latest = spot.latestCatch;
-            const occurredAt = latest?.occurredAt ? formatCatchDate(latest.occurredAt) : null;
-            const circleColor = spot.fromStatic ? "#0d8be6" : "#22d3ee";
-            const showAggregationCircle =
-              !spot.fromStatic && spot.aggregationRadiusMeters && spot.pins.length > 0;
+            <MapRelocator position={userPosition} />
+            <Pane name="base-tiles" style={{ zIndex: 200 }} />
+            {marineOverlayPanes.map(([name, zIndex]) => (
+              <Pane key={name} name={name} style={{ zIndex }} />
+            ))}
+            <TileLayer
+              pane="base-tiles"
+              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+              url="https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png"
+            />
+            {marineOverlayEntries.map(([key, overlay]) => {
+              if (!overlay.url || !marineOverlayVisibility[key]) {
+                return null;
+              }
+              return (
+                <TileLayer
+                  key={overlay.id}
+                  pane={overlay.pane}
+                  attribution={overlay.attribution}
+                  url={overlay.url}
+                  opacity={overlay.opacity ?? 1}
+                />
+              );
+            })}
+            {filteredSpots.map((spot) => {
+              const latest = spot.latestCatch;
+              const occurredAt = latest?.occurredAt ? formatCatchDate(latest.occurredAt) : null;
+              const circleColor = spot.fromStatic ? "#0d8be6" : "#22d3ee";
+              const showAggregationCircle =
+                !spot.fromStatic && spot.aggregationRadiusMeters && spot.pins.length > 0;
 
-            return (
-              <Fragment key={spot.id}>
-                {showAggregationCircle && (
-                  <Circle
-                    center={[spot.latitude, spot.longitude]}
-                    radius={spot.aggregationRadiusMeters!}
-                    pathOptions={{ color: circleColor, fillOpacity: 0.08, weight: 1, dashArray: "6 4" }}
-                  />
-                )}
-                {spot.pins.map((pin) => (
-                  <CircleMarker
-                    key={`${spot.id}-pin-${pin.id}`}
-                    center={[pin.latitude, pin.longitude]}
-                    radius={4}
-                    pathOptions={{ color: circleColor, weight: 1, fillColor: circleColor, fillOpacity: 0.7 }}
-                  />
-                ))}
-                <Marker position={[spot.latitude, spot.longitude]} icon={icon}>
-                  <Popup>
-                    <div className="space-y-2">
-                      <h3 className="text-base font-semibold">{spot.name}</h3>
-                      {spot.regulations?.description && (
-                        <p className="text-sm text-slate-600">{spot.regulations.description}</p>
-                      )}
-                      <p className="text-sm text-slate-600">
-                        {spot.catchCount > 0 ? (
-                          <>
-                            Logged catches: <strong>{spot.catchCount}</strong>
-                          </>
-                        ) : (
-                          "No catches logged yet"
+              return (
+                <Fragment key={spot.id}>
+                  {showAggregationCircle && (
+                    <Circle
+                      center={[spot.latitude, spot.longitude]}
+                      radius={spot.aggregationRadiusMeters!}
+                      pathOptions={{ color: circleColor, fillOpacity: 0.08, weight: 1, dashArray: "6 4" }}
+                    />
+                  )}
+                  {spot.pins.map((pin) => (
+                    <CircleMarker
+                      key={`${spot.id}-pin-${pin.id}`}
+                      center={[pin.latitude, pin.longitude]}
+                      radius={4}
+                      pathOptions={{ color: circleColor, weight: 1, fillColor: circleColor, fillOpacity: 0.7 }}
+                    />
+                  ))}
+                  <Marker position={[spot.latitude, spot.longitude]} icon={icon}>
+                    <Popup>
+                      <div className="space-y-2">
+                        <h3 className="text-base font-semibold">{spot.name}</h3>
+                        {spot.regulations?.description && (
+                          <p className="text-sm text-slate-600">{spot.regulations.description}</p>
                         )}
-                      </p>
-                      {latest && (
-                        <p className="text-sm">
-                          Latest catch: <strong>{latest.species}</strong>
-                          {latest.weight ? ` (${latest.weight})` : ""}
-                          {latest.source === "dynamic" && latest.displayName
-                            ? ` by ${latest.displayName}`
-                            : ""}
-                          {latest.source === "dynamic" && occurredAt ? ` on ${occurredAt}` : ""}
-                          {latest.source === "static" && latest.bait ? ` on ${latest.bait}` : ""}
+                        <p className="text-sm text-slate-600">
+                          {spot.catchCount > 0 ? (
+                            <>
+                              Logged catches: <strong>{spot.catchCount}</strong>
+                            </>
+                          ) : (
+                            "No catches logged yet"
+                          )}
                         </p>
-                      )}
-                      <p className="text-xs text-slate-500">
-                        Species logged: {spot.species.length > 0 ? spot.species.join(", ") : "TBD"}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenSpot(spot.id)}
-                        className="w-full rounded-xl bg-brand-500/90 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-                      >
-                        View catches at this spot
-                      </button>
-                    </div>
-                  </Popup>
-                </Marker>
-              </Fragment>
-            );
-          })}
-          {showRegulations && allowRegulationOverlay && (
-            <>
-              {filteredSpots
-                .filter((spot) => spot.fromStatic)
-                .map((spot) => (
-                  <Circle
-                    key={`${spot.id}-regs`}
-                    center={[spot.latitude, spot.longitude]}
-                    radius={1200}
-                    pathOptions={{ color: "#0d8be6", fillOpacity: 0.08 }}
-                  />
-                ))}
-            </>
-          )}
+                        {latest && (
+                          <p className="text-sm">
+                            Latest catch: <strong>{latest.species}</strong>
+                            {latest.weight ? ` (${latest.weight})` : ""}
+                            {latest.source === "dynamic" && latest.displayName
+                              ? ` by ${latest.displayName}`
+                              : ""}
+                            {latest.source === "dynamic" && occurredAt ? ` on ${occurredAt}` : ""}
+                            {latest.source === "static" && latest.bait ? ` on ${latest.bait}` : ""}
+                          </p>
+                        )}
+                        <p className="text-xs text-slate-500">
+                          Species logged: {spot.species.length > 0 ? spot.species.join(", ") : "TBD"}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenSpot(spot.id)}
+                          className="w-full rounded-xl bg-brand-500/90 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                        >
+                          View catches at this spot
+                        </button>
+                      </div>
+                    </Popup>
+                  </Marker>
+                </Fragment>
+              );
+            })}
+            {showRegulations && allowRegulationOverlay && (
+              <>
+                {filteredSpots
+                  .filter((spot) => spot.fromStatic)
+                  .map((spot) => (
+                    <Circle
+                      key={`${spot.id}-regs`}
+                      center={[spot.latitude, spot.longitude]}
+                      radius={1200}
+                      pathOptions={{ color: "#0d8be6", fillOpacity: 0.08 }}
+                    />
+                  ))}
+              </>
+            )}
           </MapContainer>
         </div>
         {geoStatus ? <p className="text-xs text-white/60">{geoStatus}</p> : null}
       </div>
 
       <aside className="glass rounded-3xl p-6 space-y-6">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Marine layers</h2>
+          <p className="text-sm text-white/60">
+            Stack bathymetry, contour labels, and seamark overlays to plan routes without losing fishing spot context.
+          </p>
+          <div className="mt-4 space-y-3">
+            {marineOverlayEntries.map(([key, overlay]) => {
+              const available = Boolean(overlay.url);
+              return (
+                <div key={overlay.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
+                  <label
+                    className={clsx("flex items-start gap-3", available ? "cursor-pointer" : "cursor-not-allowed")}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4 rounded border-white/30 bg-white/10"
+                      checked={marineOverlayVisibility[key]}
+                      onChange={() => toggleMarineOverlay(key)}
+                      disabled={!available}
+                    />
+                    <span>
+                      <span className="text-sm font-medium text-white">{overlay.label}</span>
+                      <span className="mt-1 block text-xs text-white/60">{overlay.description}</span>
+                      {!available && overlay.requiresKey ? (
+                        <span className="mt-1 block text-xs text-amber-300">
+                          Add a MapTiler API key to enable this overlay.
+                        </span>
+                      ) : null}
+                    </span>
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
         <div>
           <h2 className="text-lg font-semibold text-white">Species filters</h2>
           <p className="text-sm text-white/60">Toggle species to highlight matching spots on the map.</p>

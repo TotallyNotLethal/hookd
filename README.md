@@ -9,6 +9,17 @@ npm run dev
 ```
 Open http://localhost:3000
 
+### Marine overlays configuration
+
+The fishing map now layers optional bathymetry, contour labels, and seamark tiles on top of the default
+OpenStreetMap basemap. To enable the MapTiler-powered bathymetry and contour layers, create a free MapTiler
+account, generate an API key, and expose it to the client by setting `NEXT_PUBLIC_MAPTILER_KEY` in your environment
+(e.g., `.env.local`). MapTiler's community plan currently includes up to 100,000 map tile requests per month—keep an
+eye on usage in production to avoid throttling.
+
+OpenSeaMap seamarks render without an API key, but please respect their usage guidelines and cache headers when
+deploying a high-traffic application.
+
 ## Pages
 - `/` landing
 - `/feed` sample feed (static demo data)
