@@ -2,21 +2,74 @@ import { NextResponse } from 'next/server';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
-const SYSTEM_PROMPT = `You are Hook'd Guide, a fishing-obsessed assistant for anglers. You must only discuss fishing, angling locations, tackle, regulations, conservation, boating safety, weather relevant to fishing, or closely-related preparation. If someone asks about an unrelated topic, politely steer them back to fishing topics. Keep answers tight—no fluff, no long essays—just the essentials an angler needs. Mention regulations, conservation, or safety reminders when relevant. Never break character.`;
+const SYSTEM_PROMPT = `You are Hook'd Guide, a fishing-obsessed assistant for anglers. You must only discuss fishing, angling locations, tackle, regulations, conservation, boating safety, weather relevant to fishing, or closely-related preparation. If someone asks about an unrelated topic, politely steer them back to fishing topics. When an angler shares a photo, analyze it only to identify fish, coral, tackle, boats, or other fishing-relevant subjects. If the image appears unrelated to fishing, respond by reminding them that you only review fishing content. Keep answers tight—no fluff, no long essays—just the essentials an angler needs. Mention regulations, conservation, or safety reminders when relevant. Never break character.`;
 
 type ChatMessage = {
   role: 'user' | 'assistant';
   content: string;
 };
 
+type UserContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
 type OpenAIMessage = {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: string | UserContentPart[];
 };
 
 type RequestPayload = {
   messages?: ChatMessage[];
 };
+
+const FISHING_KEYWORDS = [
+  'fish',
+  'fishing',
+  'angler',
+  'bait',
+  'tackle',
+  'rod',
+  'reel',
+  'boat',
+  'boats',
+  'boating',
+  'kayak',
+  'charter',
+  'coral',
+  'reef',
+  'lure',
+  'hook',
+  'fly',
+  'spearfish',
+  'salmon',
+  'trout',
+  'bass',
+  'walleye',
+  'tarpon',
+  'redfish',
+  'snook',
+  'catfish',
+  'panfish',
+  'ice fishing',
+  'line',
+  'leader',
+  'tide',
+  'current',
+  'lake',
+  'river',
+  'ocean',
+  'offshore',
+  'inshore',
+  'harbor',
+  'marine',
+  'baitfish',
+];
+
+function isFishingTopic(content: string | undefined) {
+  if (!content) return false;
+  const normalized = content.toLowerCase();
+  return FISHING_KEYWORDS.some((keyword) => normalized.includes(keyword));
+}
 
 export async function POST(request: Request) {
   if (!OPENAI_API_KEY) {
@@ -26,14 +79,48 @@ export async function POST(request: Request) {
     );
   }
 
-  let payload: RequestPayload;
-  try {
-    payload = await request.json();
-  } catch (error) {
-    return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
+  const contentType = request.headers.get('content-type') ?? '';
+  let payload: RequestPayload | null = null;
+  let imageFile: File | null = null;
+  let imagePrompt = '';
+
+  if (contentType.includes('multipart/form-data')) {
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch (error) {
+      return NextResponse.json({ error: 'Unable to read form data.' }, { status: 400 });
+    }
+
+    const messagesField = formData.get('messages');
+    if (typeof messagesField !== 'string') {
+      return NextResponse.json({ error: 'Missing chat history for the guide.' }, { status: 400 });
+    }
+
+    try {
+      payload = { messages: JSON.parse(messagesField) };
+    } catch (error) {
+      return NextResponse.json({ error: 'Invalid chat history payload.' }, { status: 400 });
+    }
+
+    const maybeImage = formData.get('image');
+    if (maybeImage instanceof File && maybeImage.size > 0) {
+      imageFile = maybeImage;
+    }
+
+    const promptField = formData.get('imagePrompt');
+    if (typeof promptField === 'string') {
+      imagePrompt = promptField;
+    }
+  } else {
+    try {
+      payload = await request.json();
+    } catch (error) {
+      return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
+    }
   }
 
-  const incomingMessages = Array.isArray(payload.messages) ? payload.messages : [];
+  const incomingMessages = Array.isArray(payload?.messages) ? payload?.messages : [];
 
   const sanitized: ChatMessage[] = incomingMessages
     .filter((item): item is ChatMessage => {
@@ -47,12 +134,57 @@ export async function POST(request: Request) {
       content: item.content.slice(0, 2000),
     }));
 
+  const lastUserMessage = [...sanitized].reverse().find((message) => message.role === 'user');
+  const fishingFocused = isFishingTopic(lastUserMessage?.content) || Boolean(imageFile);
+
+  if (!fishingFocused) {
+    return NextResponse.json(
+      { error: 'Hook\'d Guide can only chat about fishing topics. Add a fishing detail and try again.' },
+      { status: 400 },
+    );
+  }
+
+  let encodedImage: string | null = null;
+  if (imageFile) {
+    if (!imageFile.type.startsWith('image/')) {
+      return NextResponse.json({ error: 'Only image uploads are supported.' }, { status: 400 });
+    }
+
+    if (imageFile.size > 5 * 1024 * 1024) {
+      return NextResponse.json({ error: 'Fishing photos must be 5MB or smaller.' }, { status: 400 });
+    }
+
+    try {
+      const arrayBuffer = await imageFile.arrayBuffer();
+      const base64 = Buffer.from(arrayBuffer).toString('base64');
+      encodedImage = `data:${imageFile.type};base64,${base64}`;
+    } catch (error) {
+      console.error('Failed to encode fishing guide image upload', error);
+      return NextResponse.json({ error: 'We could not read that photo. Try another shot.' }, { status: 422 });
+    }
+  }
+
   const messages: OpenAIMessage[] = [
     { role: 'system', content: SYSTEM_PROMPT },
-    ...sanitized.map((message) => ({
-      role: message.role,
-      content: message.content,
-    })),
+    ...sanitized.map((message, index, array) => {
+      if (index === array.length - 1 && message.role === 'user' && encodedImage) {
+        const textContent = imagePrompt || message.content;
+        const content: UserContentPart[] = [];
+        if (textContent.trim().length > 0) {
+          content.push({ type: 'text', text: textContent.slice(0, 2000) });
+        }
+        content.push({ type: 'image_url', image_url: { url: encodedImage } });
+        return {
+          role: 'user' as const,
+          content,
+        };
+      }
+
+      return {
+        role: message.role,
+        content: message.content,
+      } as OpenAIMessage;
+    }),
   ];
 
   try {
