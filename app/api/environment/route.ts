@@ -453,6 +453,7 @@ export async function GET(request: Request) {
       timezone: 'auto',
       start_date: startDate,
       end_date: endDate,
+      wind_speed_unit: 'ms',
     };
 
     const marineParams = {
