@@ -8,6 +8,11 @@
   --bg: #0b1321;
   --card: #0f1a2b;
   --muted: #a7b2c2;
+  --nav-height: 5.5rem;
+}
+
+.leaflet-top {
+  top: var(--nav-height);
 }
 
 html, body { height: 100%; }
