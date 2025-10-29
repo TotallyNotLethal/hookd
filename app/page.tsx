@@ -13,6 +13,7 @@ import {
   subscribeToFeedCatches,
   subscribeToTournamentLeaderboardByLength,
   subscribeToTournamentLeaderboardByWeight,
+  subscribeToNewestUser,
   subscribeToUser,
 } from "@/lib/firestore";
 import type { HookdUser, Tournament, TournamentLeaderboardEntry } from "@/lib/firestore";
@@ -31,6 +32,7 @@ export default function Page() {
   const [lengthLeaders, setLengthLeaders] = useState<TournamentLeaderboardEntry[]>([]);
   const [activeTournaments, setActiveTournaments] = useState<Tournament[]>([]);
   const [profile, setProfile] = useState<HookdUser | null>(null);
+  const [newestAngler, setNewestAngler] = useState<HookdUser | null>(null);
   const [user] = useAuthState(auth);
   const defer = useCallback((fn: () => void) => {
     if (typeof queueMicrotask === "function") {
@@ -269,6 +271,16 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
+    const unsubscribe = subscribeToNewestUser((user) => {
+      setNewestAngler(user);
+    });
+
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!user?.uid) {
       defer(() => setProfile(null));
       return undefined;
@@ -289,6 +301,21 @@ export default function Page() {
   return (
     <main>
       <NavBar />
+
+      {newestAngler ? (
+        <div className="bg-brand-900/60 border-b border-white/10">
+          <div className="container py-3 text-center text-sm md:text-base">
+            <span className="text-white/90">Welcome to our newest angler: </span>
+            <Link
+              href={`/profile/${newestAngler.uid}`}
+              className="font-semibold text-brand-200 hover:text-brand-100 transition"
+            >
+              {newestAngler.displayName || 'A New Angler'}
+            </Link>
+            <span className="text-white/90">!</span>
+          </div>
+        </div>
+      ) : null}
 
       {/* --- HERO SECTION --- */}
       <section className="relative pt-28">

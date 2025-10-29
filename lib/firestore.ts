@@ -1362,6 +1362,30 @@ export async function updateNotificationPreferences(
   });
 }
 
+export function subscribeToNewestUser(cb: (user: HookdUser | null) => void) {
+  const usersRef = collection(db, "users");
+  const q = query(usersRef, orderBy("createdAt", "desc"), limit(1));
+
+  return onSnapshot(q, (snapshot) => {
+    if (snapshot.empty) {
+      cb(null);
+      return;
+    }
+
+    const docSnap = snapshot.docs[0];
+    const data = docSnap.data() as HookdUser;
+    cb({
+      ...data,
+      uid: docSnap.id,
+      age: normalizeUserAge(data.age ?? null),
+      badges: sanitizeUserBadges(data.badges),
+      notificationPreferences: sanitizeNotificationPreferences(data.notificationPreferences),
+      blockedUserIds: sanitizeUidList(data.blockedUserIds),
+      blockedByUserIds: sanitizeUidList(data.blockedByUserIds),
+    });
+  });
+}
+
 export function subscribeToUser(uid: string, cb: (u: HookdUser | null) => void) {
   const refUser = doc(db, 'users', uid);
   return onSnapshot(refUser, (snap) => {
