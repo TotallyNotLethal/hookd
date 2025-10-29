@@ -3,6 +3,10 @@
 import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Bot, ImagePlus, Loader2, RefreshCcw, Send, X } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import type { Options as RehypeSanitizeOptions } from "rehype-sanitize";
 
 import NavBar from "@/components/NavBar";
 import { useProAccess } from "@/hooks/useProAccess";
@@ -21,6 +25,19 @@ const INTRO_MESSAGE: ChatMessage = {
   role: "assistant",
   content:
     "Hey angler! I\'m Hook\'d Guide, dialed in on fishing spots, seasonal tactics, and regs. Ask about baits, patterns, or trip prep and I\'ll keep it short and sharp.",
+};
+
+const markdownSanitizeSchema: RehypeSanitizeOptions = {
+  ...defaultSchema,
+  tagNames: ["p", "strong", "em", "a", "ul", "ol", "li", "code", "pre", "br"],
+  attributes: {
+    ...defaultSchema.attributes,
+    a: ["href", "rel", "target", "title"],
+  },
+  protocols: {
+    ...(defaultSchema.protocols ?? {}),
+    href: ["http", "https", "mailto"],
+  },
 };
 
 function createMessageId(prefix: string) {
@@ -272,7 +289,21 @@ export default function FishingAssistantPage() {
                             />
                           </div>
                         ) : null}
-                        {message.content ? message.content : null}
+                        {message.content ? (
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            rehypePlugins={[[rehypeSanitize, markdownSanitizeSchema]]}
+                            linkTarget="_blank"
+                            className="prose prose-invert prose-sm max-w-none text-inherit [&_*]:text-inherit [&_p]:m-0 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0 [&_strong]:font-semibold [&_em]:italic [&_a]:underline [&_a]:text-brand-200 hover:[&_a]:text-brand-100 [&_code]:rounded [&_code]:bg-white/10 [&_code]:px-1 [&_code]:py-0.5"
+                            components={{
+                              a: ({ node, ...props }) => (
+                                <a {...props} target="_blank" rel="noopener noreferrer" />
+                              ),
+                            }}
+                          >
+                            {message.content}
+                          </ReactMarkdown>
+                        ) : null}
                       </div>
                     ))
                   ) : (
