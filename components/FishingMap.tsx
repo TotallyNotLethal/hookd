@@ -54,6 +54,25 @@ type MapTilerGeocodingResponse = {
   features?: MapTilerFeature[];
 };
 
+type WeatherSnapshot = {
+  temperatureC: number | null;
+  temperatureF: number | null;
+  windSpeedMph: number | null;
+  windDirection: number | null;
+  weatherCode: number | null;
+  observedAt: string | null;
+};
+
+type OpenMeteoResponse = {
+  current_weather?: {
+    temperature: number;
+    windspeed: number;
+    winddirection: number;
+    weathercode: number;
+    time: string;
+  };
+};
+
 type MarineOverlaySource = {
   id: MarineOverlayKey;
   label: string;
@@ -195,6 +214,58 @@ const icon = new L.Icon({
   shadowSize: [41, 41],
 });
 
+const weatherCodeDescriptions: Record<number, string> = {
+  0: "Clear sky",
+  1: "Mainly clear",
+  2: "Partly cloudy",
+  3: "Overcast",
+  45: "Fog",
+  48: "Depositing rime fog",
+  51: "Light drizzle",
+  53: "Moderate drizzle",
+  55: "Dense drizzle",
+  56: "Freezing drizzle",
+  57: "Heavy freezing drizzle",
+  61: "Slight rain",
+  63: "Moderate rain",
+  65: "Heavy rain",
+  66: "Light freezing rain",
+  67: "Heavy freezing rain",
+  71: "Slight snow fall",
+  73: "Moderate snow fall",
+  75: "Heavy snow fall",
+  77: "Snow grains",
+  80: "Slight rain showers",
+  81: "Moderate rain showers",
+  82: "Violent rain showers",
+  85: "Slight snow showers",
+  86: "Heavy snow showers",
+  95: "Thunderstorm",
+  96: "Thunderstorm with slight hail",
+  99: "Thunderstorm with heavy hail",
+};
+
+function describeWeatherCode(code: number | null): string {
+  if (code == null) {
+    return "Unknown conditions";
+  }
+  return weatherCodeDescriptions[code] ?? `Weather code ${code}`;
+}
+
+function formatObservedTime(timestamp: string | null): string | null {
+  if (!timestamp) {
+    return null;
+  }
+  const parsed = new Date(timestamp);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function formatCatchDate(date?: Date | null) {
   if (!date) return null;
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
@@ -205,6 +276,14 @@ function MapRelocator({ position }: { position: [number, number] }) {
   useEffect(() => {
     map.setView(position, 11);
   }, [map, position]);
+  return null;
+}
+
+function MapInstanceCapture({ onReady }: { onReady: (map: L.Map) => void }) {
+  const map = useMap();
+  useEffect(() => {
+    onReady(map);
+  }, [map, onReady]);
   return null;
 }
 
@@ -264,6 +343,9 @@ export default function FishingMap({
   const [searchResults, setSearchResults] = useState<MapTilerFeature[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [weatherData, setWeatherData] = useState<WeatherSnapshot | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherError, setWeatherError] = useState<string | null>(null);
   const defer = useCallback((fn: () => void) => {
     if (typeof queueMicrotask === "function") {
       queueMicrotask(fn);
@@ -305,6 +387,7 @@ export default function FishingMap({
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
+      mapInstanceRef.current = null;
     };
   }, []);
 
@@ -432,6 +515,81 @@ export default function FishingMap({
   const toggleMarineOverlay = (overlay: MarineOverlayKey) => {
     setMarineOverlayVisibility((prev) => ({ ...prev, [overlay]: !prev[overlay] }));
   };
+
+  const handleMapReady = useCallback((map: L.Map) => {
+    mapInstanceRef.current = map;
+  }, []);
+
+  const [userLatitude, userLongitude] = userPosition;
+
+  useEffect(() => {
+    if (!Number.isFinite(userLatitude) || !Number.isFinite(userLongitude)) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const fetchWeather = async () => {
+      setWeatherLoading(true);
+      setWeatherError(null);
+      try {
+        const params = new URLSearchParams({
+          latitude: userLatitude.toString(),
+          longitude: userLongitude.toString(),
+          current_weather: "true",
+        });
+        const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params.toString()}`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) {
+          throw new Error(`Weather request failed with status ${response.status}`);
+        }
+        const data = (await response.json()) as OpenMeteoResponse;
+        if (controller.signal.aborted || !isMountedRef.current) {
+          return;
+        }
+        const weather = data.current_weather;
+        if (!weather) {
+          setWeatherData(null);
+          setWeatherError("No weather data available for this location right now.");
+          return;
+        }
+        const temperatureC = Number.isFinite(weather.temperature) ? weather.temperature : null;
+        const temperatureF = temperatureC != null ? temperatureC * (9 / 5) + 32 : null;
+        const windSpeedMph = Number.isFinite(weather.windspeed) ? weather.windspeed * 0.621371 : null;
+        const windDirection = Number.isFinite(weather.winddirection) ? weather.winddirection : null;
+        const weatherCode = Number.isFinite(weather.weathercode) ? weather.weathercode : null;
+        setWeatherData({
+          temperatureC,
+          temperatureF,
+          windSpeedMph,
+          windDirection,
+          weatherCode,
+          observedAt: weather.time ?? null,
+        });
+        setWeatherError(null);
+      } catch (error) {
+        if ((error as Error).name === "AbortError") {
+          return;
+        }
+        console.error("Weather lookup error", error);
+        if (!isMountedRef.current) {
+          return;
+        }
+        setWeatherData(null);
+        setWeatherError("Weather data is temporarily unavailable.");
+      } finally {
+        if (isMountedRef.current && !controller.signal.aborted) {
+          setWeatherLoading(false);
+        }
+      }
+    };
+
+    fetchWeather();
+
+    return () => {
+      controller.abort();
+    };
+  }, [userLatitude, userLongitude]);
 
   const handleSearchSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -581,10 +739,8 @@ export default function FishingMap({
             scrollWheelZoom
             style={{ height: "480px", width: "100%" }}
             className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-            whenCreated={(map) => {
-              mapInstanceRef.current = map;
-            }}
           >
+            <MapInstanceCapture onReady={handleMapReady} />
             <MapRelocator position={userPosition} />
             <Pane name="base-tiles" style={{ zIndex: 200 }} />
             {marineOverlayPanes.map(([name, zIndex]) => (
@@ -770,6 +926,64 @@ export default function FishingMap({
                 </div>
               );
             })}
+          </div>
+        </div>
+
+        <div>
+          <h2 className="text-lg font-semibold text-white">Weather snapshot</h2>
+          <p className="text-sm text-white/60">
+            Live conditions from Open-Meteo update as you move the focus of the map.
+          </p>
+          <div className="mt-4 space-y-3">
+            {weatherError ? (
+              <p className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                {weatherError}
+              </p>
+            ) : null}
+            {weatherData ? (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-white shadow">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-3xl font-semibold">
+                    {weatherData.temperatureF != null
+                      ? `${Math.round(weatherData.temperatureF)}°F`
+                      : weatherData.temperatureC != null
+                      ? `${Math.round(weatherData.temperatureC)}°C`
+                      : "--"}
+                  </span>
+                  {weatherData.temperatureC != null ? (
+                    <span className="text-xs text-white/50">{weatherData.temperatureC.toFixed(1)}°C</span>
+                  ) : null}
+                </div>
+                <p className="mt-2 text-sm text-white/80">
+                  {describeWeatherCode(weatherData.weatherCode)}
+                </p>
+                <dl className="mt-4 grid grid-cols-2 gap-3 text-xs text-white/70">
+                  <div>
+                    <dt className="text-white/50">Wind</dt>
+                    <dd className="text-white">
+                      {weatherData.windSpeedMph != null ? `${Math.round(weatherData.windSpeedMph)} mph` : "--"}
+                      {weatherData.windDirection != null ? ` • ${Math.round(weatherData.windDirection)}°` : ""}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-white/50">Observed</dt>
+                    <dd className="text-white">
+                      {formatObservedTime(weatherData.observedAt) ?? "--"}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            ) : null}
+            {!weatherData && !weatherLoading && !weatherError ? (
+              <p className="rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-xs text-white/60">
+                Weather details will populate once the map has a location to reference.
+              </p>
+            ) : null}
+            {weatherLoading ? (
+              <p className="flex items-center gap-2 text-xs text-white/60">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading current weather…
+              </p>
+            ) : null}
           </div>
         </div>
 
