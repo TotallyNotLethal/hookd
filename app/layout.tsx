@@ -13,7 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <div className="min-h-screen pb-[calc(env(safe-area-inset-bottom)+6.5rem)] sm:pb-0">
+        <div className="min-h-screen pb-[calc(env(safe-area-inset-bottom)+4.5rem)] sm:pb-0">
           {children}
         </div>
         <MobileTabBar />

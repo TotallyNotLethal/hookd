@@ -12,7 +12,6 @@ import NotificationPreferencesModal from './NotificationPreferencesModal';
 import {
   Bell,
   Home,
-  PlusCircle,
   LogIn,
   LogOut,
   Map as MapIcon,
@@ -21,13 +20,14 @@ import {
   MessageSquare,
   Loader2,
   Settings,
+  Newspaper,
 } from 'lucide-react';
 
 export const tabs = [
   { href: '/', icon: Home, label: 'Home', type: 'link' as const },
+  { href: '/feed', icon: Newspaper, label: 'Feed', type: 'link' as const },
   { href: '/map', icon: MapIcon, label: 'Map', type: 'link' as const },
   { href: '/chat', icon: MessageSquare, label: 'Chat', type: 'link' as const },
-  { href: '/feed?compose=1', icon: PlusCircle, label: 'Add Catch', type: 'action' as const },
 ];
 
 export default function NavBar() {
