@@ -39,6 +39,7 @@ export default function NavBar() {
   const [profile, setProfile] = useState<HookdUser | null>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isNotificationPreferencesOpen, setIsNotificationPreferencesOpen] = useState(false);
+  const [isClearingNotifications, setIsClearingNotifications] = useState(false);
   const notificationsContainerRef = useRef<HTMLDivElement | null>(null);
 
   const {
@@ -47,8 +48,10 @@ export default function NavBar() {
     isLoading: notificationsLoading,
     markNotificationAsRead: markNotificationAsReadMutation,
     markAllNotificationsAsRead: markAllNotificationsAsReadMutation,
+    clearNotifications: clearNotificationsMutation,
   } = useNotifications(user?.uid ?? null);
   const hasUnreadNotifications = unreadCount > 0;
+  const hasNotifications = notifications.length > 0;
 
   useEffect(() => {
     const auth = getAuth(app);
@@ -256,6 +259,29 @@ export default function NavBar() {
     setIsNotificationsOpen(false);
   }, [markAllNotificationsAsReadMutation]);
 
+  const handleClearAllNotifications = useCallback(async () => {
+    if (isClearingNotifications || !hasNotifications) {
+      return;
+    }
+
+    const shouldClear = typeof window !== 'undefined'
+      ? window.confirm('Clear all notifications? This cannot be undone.')
+      : true;
+
+    if (!shouldClear) {
+      return;
+    }
+
+    setIsClearingNotifications(true);
+    try {
+      await clearNotificationsMutation();
+    } catch (error) {
+      console.error('Failed to clear notifications', error);
+    } finally {
+      setIsClearingNotifications(false);
+    }
+  }, [clearNotificationsMutation, hasNotifications, isClearingNotifications]);
+
   return (
     <>
       <header className="fixed top-0 left-0 right-0 z-30 bg-slate-950/95 backdrop-blur border-b border-white/10">
@@ -379,9 +405,17 @@ export default function NavBar() {
                         </button>
                         <button
                           type="button"
+                          onClick={handleClearAllNotifications}
+                          className="text-xs font-medium text-brand-200 transition hover:text-brand-100 disabled:cursor-not-allowed disabled:opacity-60"
+                          disabled={!hasNotifications || isClearingNotifications}
+                        >
+                          {isClearingNotifications ? 'Clearing…' : 'Clear all'}
+                        </button>
+                        <button
+                          type="button"
                           onClick={handleMarkAllNotificationsAsRead}
                           className="text-xs font-medium text-brand-200 transition hover:text-brand-100 disabled:cursor-not-allowed disabled:opacity-60"
-                          disabled={!hasUnreadNotifications}
+                          disabled={!hasUnreadNotifications || isClearingNotifications}
                         >
                           Mark all as read
                         </button>
