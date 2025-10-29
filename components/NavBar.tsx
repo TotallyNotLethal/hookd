@@ -355,7 +355,7 @@ export default function NavBar() {
 
             {/* Notifications dropdown (shared) */}
             {user ? (
-              <div ref={notificationsContainerRef} className="relative">
+              <div ref={notificationsContainerRef} className="relative order-2 sm:order-none">
                 <button
                   type="button"
                   onClick={() => setIsNotificationsOpen((prev) => !prev)}
@@ -386,7 +386,7 @@ export default function NavBar() {
                 </button>
 
                 {isNotificationsOpen ? (
-                  <div className="absolute right-0 mt-3 w-[min(90vw,22rem)] sm:w-96 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/95 shadow-2xl backdrop-blur z-50">
+                  <div className="absolute left-1/2 right-auto mt-3 w-[min(90vw,22rem)] -translate-x-1/2 transform sm:left-auto sm:right-0 sm:w-96 sm:translate-x-0 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/95 shadow-2xl backdrop-blur z-50">
                     <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
                       <p className="text-sm font-semibold text-white">Notifications</p>
                       <div className="flex items-center gap-2">
@@ -475,7 +475,7 @@ export default function NavBar() {
             ) : null}
 
             {/* Mobile actions */}
-            <div className="flex items-center gap-2 sm:hidden">
+            <div className="flex items-center gap-2 order-1 sm:order-none sm:hidden">
               <Link
                 href="/tools/fishing-assistant"
                 className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-3 py-2 text-sm font-medium text-white transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
