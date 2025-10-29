@@ -360,7 +360,7 @@ export default function NavBar() {
                 </button>
 
                 {isNotificationsOpen ? (
-                  <div className="absolute right-0 mt-3 w-80 sm:w-96 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/95 shadow-2xl backdrop-blur">
+                  <div className="absolute right-0 mt-3 w-[min(90vw,22rem)] sm:w-96 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/95 shadow-2xl backdrop-blur z-50">
                     <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
                       <p className="text-sm font-semibold text-white">Notifications</p>
                       <div className="flex items-center gap-2">
@@ -387,7 +387,7 @@ export default function NavBar() {
                         </button>
                       </div>
                     </div>
-                    <div className="max-h-96 overflow-y-auto">
+                    <div className="max-h-[calc(100vh-7rem)] sm:max-h-96 overflow-y-auto">
                       {notificationsLoading ? (
                         <div className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-white/70">
                           <Loader2 className="h-4 w-4 animate-spin" />
