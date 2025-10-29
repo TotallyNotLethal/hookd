@@ -581,6 +581,22 @@ export async function markAllNotificationsAsRead(recipientUid: string) {
   await batch.commit();
 }
 
+export async function clearNotifications(recipientUid: string) {
+  if (!recipientUid) return;
+
+  const notificationsRef = notificationsCollectionFor(recipientUid);
+  const snapshot = await getDocs(notificationsRef);
+  const notificationRefs = snapshot.docs.map((docSnap) => docSnap.ref);
+
+  await deleteDocumentReferences(notificationRefs);
+
+  const userRef = doc(db, 'users', recipientUid);
+  await setDoc(userRef, {
+    unreadNotificationsCount: 0,
+    lastNotificationAt: null,
+  }, { merge: true });
+}
+
 export type DirectMessageThread = {
   id: string;
   participants: string[];

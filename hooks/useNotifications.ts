@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Notification,
+  clearNotifications as clearNotificationsInFirestore,
   markAllNotificationsAsRead,
   markNotificationAsRead,
   subscribeToNotifications,
@@ -14,6 +15,7 @@ export type UseNotificationsResult = {
   isLoading: boolean;
   markNotificationAsRead: (notificationId: string) => Promise<void>;
   markAllNotificationsAsRead: () => Promise<void>;
+  clearNotifications: () => Promise<void>;
 };
 
 export function useNotifications(uid: string | null | undefined): UseNotificationsResult {
@@ -65,11 +67,22 @@ export function useNotifications(uid: string | null | undefined): UseNotificatio
     }
   }, [uid]);
 
+  const handleClearNotifications = useCallback(async () => {
+    if (!uid) return;
+    try {
+      await clearNotificationsInFirestore(uid);
+      setNotifications([]);
+    } catch (error) {
+      console.error('Failed to clear notifications', error);
+    }
+  }, [uid]);
+
   return {
     notifications,
     unreadCount,
     isLoading,
     markNotificationAsRead: handleMarkNotificationAsRead,
     markAllNotificationsAsRead: handleMarkAllNotificationsAsRead,
+    clearNotifications: handleClearNotifications,
   };
 }
