@@ -12,17 +12,23 @@ import NotificationPreferencesModal from './NotificationPreferencesModal';
 import {
   Bell,
   Home,
-  PlusCircle,
   LogIn,
   LogOut,
   Map as MapIcon,
   Fish,
-  Menu,
   X,
   MessageSquare,
   Loader2,
   Settings,
+  Newspaper,
 } from 'lucide-react';
+
+export const tabs = [
+  { href: '/', icon: Home, label: 'Home', type: 'link' as const },
+  { href: '/feed', icon: Newspaper, label: 'Feed', type: 'link' as const },
+  { href: '/map', icon: MapIcon, label: 'Map', type: 'link' as const },
+  { href: '/chat', icon: MessageSquare, label: 'Chat', type: 'link' as const },
+];
 
 export default function NavBar() {
   const pathname = usePathname();
@@ -249,13 +255,6 @@ export default function NavBar() {
     setIsNotificationsOpen(false);
   }, [markAllNotificationsAsReadMutation]);
 
-  const tabs = [
-    { href: '/', icon: Home, label: 'Home' },
-    { href: '/map', icon: MapIcon, label: 'Map' },
-    { href: '/chat', icon: MessageSquare, label: 'Chat' },
-    { href: '/feed?compose=1', icon: PlusCircle, label: 'Add Catch' },
-  ];
-
   return (
     <>
       <header className="fixed top-0 left-0 right-0 z-30 bg-slate-950/95 backdrop-blur border-b border-white/10">
@@ -445,15 +444,14 @@ export default function NavBar() {
                     </span>
                   )}
                 </Link>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => setIsMobileMenuOpen(true)}
-                className="inline-flex items-center justify-center rounded-xl border border-white/15 p-2 text-white hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-                aria-label="Open navigation menu"
-              >
-                <Menu className="h-5 w-5" />
-              </button>
+              ) : (
+                <Link
+                  href="/login"
+                  className="inline-flex items-center justify-center rounded-xl border border-white/15 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                >
+                  Log in
+                </Link>
+              )}
             </div>
           </div>
         </div>
