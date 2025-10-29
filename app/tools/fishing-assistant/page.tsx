@@ -293,7 +293,6 @@ export default function FishingAssistantPage() {
                           <ReactMarkdown
                             remarkPlugins={[remarkGfm]}
                             rehypePlugins={[[rehypeSanitize, markdownSanitizeSchema]]}
-                            linkTarget="_blank"
                             className="prose prose-invert prose-sm max-w-none text-inherit [&_*]:text-inherit [&_p]:m-0 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0 [&_strong]:font-semibold [&_em]:italic [&_a]:underline [&_a]:text-brand-200 hover:[&_a]:text-brand-100 [&_code]:rounded [&_code]:bg-white/10 [&_code]:px-1 [&_code]:py-0.5"
                             components={{
                               a: ({ node, ...props }) => (
