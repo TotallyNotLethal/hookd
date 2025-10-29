@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Bot, Loader2, RefreshCcw, Send } from "lucide-react";
+import { Bot, ImagePlus, Loader2, RefreshCcw, Send, X } from "lucide-react";
 
 import NavBar from "@/components/NavBar";
 import { useProAccess } from "@/hooks/useProAccess";
@@ -13,6 +13,7 @@ type ChatMessage = {
   id: string;
   role: ChatRole;
   content: string;
+  imageDataUrl?: string;
 };
 
 const INTRO_MESSAGE: ChatMessage = {
@@ -30,9 +31,13 @@ export default function FishingAssistantPage() {
   const { isPro, loading: proLoading, profile } = useProAccess();
   const [messages, setMessages] = useState<ChatMessage[]>([INTRO_MESSAGE]);
   const [input, setInput] = useState("");
+  const [attachedImage, setAttachedImage] = useState<File | null>(null);
+  const [attachedImagePreview, setAttachedImagePreview] = useState<string | null>(null);
+  const [attachedImageName, setAttachedImageName] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const hasConversation = useMemo(() => messages.length > 0, [messages.length]);
 
@@ -46,34 +51,106 @@ export default function FishingAssistantPage() {
     setMessages([INTRO_MESSAGE]);
     setInput("");
     setError(null);
+    setAttachedImage(null);
+    setAttachedImagePreview(null);
+    setAttachedImageName(null);
+  };
+
+  const clearAttachedImage = () => {
+    setAttachedImage(null);
+    setAttachedImagePreview(null);
+    setAttachedImageName(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const handleImageSelection = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("Only image uploads are supported for the Hook'd Guide.");
+      clearAttachedImage();
+      return;
+    }
+
+    const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+    if (file.size > MAX_FILE_SIZE) {
+      setError("Please choose an image under 5MB.");
+      clearAttachedImage();
+      return;
+    }
+
+    setError(null);
+    setAttachedImage(file);
+    setAttachedImageName(file.name);
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setAttachedImagePreview(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const sendMessage = async () => {
     const trimmed = input.trim();
-    if (!trimmed || isSending) return;
+    if ((trimmed.length === 0 && !attachedImage) || isSending) return;
+
+    const fallbackPrompt = "Please help identify the fishing subject in this photo.";
+    const messageContent = trimmed.length > 0 ? trimmed : fallbackPrompt;
+    const imageForUpload = attachedImage;
+    const imagePreview = attachedImagePreview;
 
     const userMessage: ChatMessage = {
       id: createMessageId("user"),
       role: "user",
-      content: trimmed,
+      content: trimmed.length > 0 ? trimmed : "Shared an image for identification.",
+      imageDataUrl: imagePreview ?? undefined,
     };
 
     const nextHistory = [...messages, userMessage];
     setMessages(nextHistory);
     setInput("");
+    setAttachedImage(null);
+    setAttachedImagePreview(null);
+    setAttachedImageName(null);
     setIsSending(true);
     setError(null);
 
     try {
-      const response = await fetch("/api/fishing-assistant", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messages: nextHistory.map(({ role, content }) => ({ role, content })),
-        }),
-      });
+      let response: Response;
+
+      if (imageForUpload) {
+        const formData = new FormData();
+        formData.append(
+          "messages",
+          JSON.stringify(
+            nextHistory.map(({ role, content }) => ({
+              role,
+              content,
+            })),
+          ),
+        );
+        formData.append("image", imageForUpload);
+        formData.append("imagePrompt", messageContent);
+        response = await fetch("/api/fishing-assistant", {
+          method: "POST",
+          body: formData,
+        });
+      } else {
+        response = await fetch("/api/fishing-assistant", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            messages: nextHistory.map(({ role, content }) => ({ role, content })),
+          }),
+        });
+      }
 
       const data = await response.json();
 
@@ -186,7 +263,16 @@ export default function FishingAssistantPage() {
                             : "self-end border-white/15 bg-white/10 text-white"
                         }`}
                       >
-                        {message.content}
+                        {message.imageDataUrl ? (
+                          <div className="mb-2 overflow-hidden rounded-2xl border border-white/10">
+                            <img
+                              src={message.imageDataUrl}
+                              alt="Uploaded fishing reference"
+                              className="max-h-56 w-full object-cover"
+                            />
+                          </div>
+                        ) : null}
+                        {message.content ? message.content : null}
                       </div>
                     ))
                   ) : (
@@ -216,12 +302,40 @@ export default function FishingAssistantPage() {
                   placeholder="Ask about spring smallmouth, trolling spreads, or boating prep…"
                   className="h-28 w-full resize-none rounded-3xl border border-white/15 bg-slate-950/60 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-300/40"
                 />
+                {attachedImagePreview ? (
+                  <div className="flex items-center justify-between gap-3 rounded-3xl border border-white/10 bg-white/5 p-3 text-xs text-white/70">
+                    <div className="flex items-center gap-3">
+                      <span className="inline-flex h-8 w-8 items-center justify-center rounded-2xl bg-brand-500/20 text-brand-200">
+                        <ImagePlus className="h-4 w-4" />
+                      </span>
+                      <div>
+                        <p className="font-medium text-white">{attachedImageName ?? "Fishing photo attached"}</p>
+                        <p className="text-white/60">Hook&apos;d Guide uses photos for fishing IDs only.</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={clearAttachedImage}
+                      className="inline-flex items-center justify-center rounded-full border border-white/20 p-1 text-white/70 transition hover:border-white/40 hover:text-white"
+                    >
+                      <X className="h-4 w-4" />
+                      <span className="sr-only">Remove attached image</span>
+                    </button>
+                  </div>
+                ) : null}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleImageSelection}
+                />
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   {error ? <p className="text-sm text-rose-300">{error}</p> : <span className="text-xs text-white/40">Shift + Enter for a new line</span>}
                   <button
                     type="submit"
                     className="inline-flex items-center gap-2 rounded-2xl bg-brand-400 px-4 py-2 text-sm font-medium text-slate-950 transition hover:bg-brand-300 disabled:opacity-60"
-                    disabled={isSending || input.trim().length === 0}
+                    disabled={isSending || (input.trim().length === 0 && !attachedImage)}
                   >
                     {isSending ? (
                       <>
@@ -234,6 +348,15 @@ export default function FishingAssistantPage() {
                         Ask the guide
                       </>
                     )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="inline-flex items-center gap-2 rounded-2xl border border-white/15 px-4 py-2 text-sm text-white/80 transition hover:border-white/30 hover:text-white"
+                    disabled={isSending}
+                  >
+                    <ImagePlus className="h-4 w-4" />
+                    Add fishing photo
                   </button>
                 </div>
               </form>
