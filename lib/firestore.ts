@@ -863,6 +863,36 @@ export type CatchWithCoordinates = {
   tackle?: CatchTackle | null;
 };
 
+export type SpeciesBaitTrend = {
+  lureType: string;
+  color?: string | null;
+  rigging?: string | null;
+  sampleSize: number;
+  trophyCount: number;
+  trophyRate: number;
+  lastCapturedAt: Date | null;
+  successScore: number;
+};
+
+export type SpeciesTrendingInsight = {
+  species: string;
+  totalCatches: number;
+  trophyRate: number;
+  sampleWindowStart: Date;
+  latestCatchAt: Date | null;
+  generatedAt: Date;
+  baits: SpeciesBaitTrend[];
+};
+
+export type SubscribeToSpeciesTrendingInsightsOptions = {
+  weeks?: number;
+  maxSamples?: number;
+  speciesLimit?: number;
+  minSpeciesSamples?: number;
+  minBaitSamples?: number;
+  topBaitsPerSpecies?: number;
+};
+
 const MAX_FOLLOWER_NOTIFICATIONS_PER_CATCH = 200;
 const CREATE_CATCH_NOTIFICATION_BATCH_SIZE = 20;
 
@@ -2814,6 +2844,194 @@ export function subscribeToCatchesWithCoordinates(
     unsubscribers.forEach((fn) => fn());
     chunkResults.clear();
   };
+}
+
+export function subscribeToSpeciesTrendingInsights(
+  cb: (insights: SpeciesTrendingInsight[]) => void,
+  options: SubscribeToSpeciesTrendingInsightsOptions = {},
+) {
+  const weeks = options.weeks && options.weeks > 0 ? options.weeks : 4;
+  const maxSamples = options.maxSamples && options.maxSamples > 0 ? options.maxSamples : 400;
+  const speciesLimit = options.speciesLimit && options.speciesLimit > 0 ? options.speciesLimit : undefined;
+  const minSpeciesSamples = options.minSpeciesSamples && options.minSpeciesSamples > 0 ? options.minSpeciesSamples : 2;
+  const minBaitSamples = options.minBaitSamples && options.minBaitSamples > 0 ? options.minBaitSamples : 2;
+  const topBaitsPerSpecies =
+    options.topBaitsPerSpecies && options.topBaitsPerSpecies > 0 ? options.topBaitsPerSpecies : 3;
+
+  const windowStart = new Date(Date.now() - weeks * 7 * 24 * 60 * 60 * 1000);
+  const windowStartTimestamp = Timestamp.fromDate(windowStart);
+
+  const catchesRef = collection(db, 'catches');
+  const catchesQuery = query(
+    catchesRef,
+    where('createdAt', '>=', windowStartTimestamp),
+    orderBy('createdAt', 'desc'),
+    limit(maxSamples),
+  );
+
+  return onSnapshot(
+    catchesQuery,
+    (snapshot) => {
+      const evaluationNow = Date.now();
+      const generatedAt = new Date(evaluationNow);
+      type BaitAccumulator = SpeciesBaitTrend & { trophyRate: number };
+      type SpeciesAccumulator = {
+        species: string;
+        totalCatches: number;
+        trophyCount: number;
+        latestCatchAt: Date | null;
+        baits: Map<string, BaitAccumulator>;
+      };
+
+      const speciesMap = new Map<string, SpeciesAccumulator>();
+
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data() as Record<string, any>;
+
+        const rawSpecies = typeof data.species === 'string' ? data.species.trim() : '';
+        if (!rawSpecies) {
+          return;
+        }
+
+        const tackleData = data.tackle ?? null;
+        const lureType =
+          tackleData && typeof tackleData.lureType === 'string' ? tackleData.lureType.trim() : '';
+
+        const createdAtTimestamp = data.captureNormalizedAt ?? data.capturedAt ?? data.createdAt ?? null;
+        let catchDate: Date | null = null;
+        if (createdAtTimestamp instanceof Timestamp) {
+          catchDate = createdAtTimestamp.toDate();
+        } else if (createdAtTimestamp instanceof Date) {
+          catchDate = createdAtTimestamp;
+        }
+
+        const speciesKey = rawSpecies.toLowerCase();
+        let speciesEntry = speciesMap.get(speciesKey);
+        if (!speciesEntry) {
+          speciesEntry = {
+            species: rawSpecies,
+            totalCatches: 0,
+            trophyCount: 0,
+            latestCatchAt: null,
+            baits: new Map(),
+          };
+          speciesMap.set(speciesKey, speciesEntry);
+        }
+
+        speciesEntry.totalCatches += 1;
+        if (data.trophy) {
+          speciesEntry.trophyCount += 1;
+        }
+
+        if (catchDate) {
+          if (!speciesEntry.latestCatchAt || speciesEntry.latestCatchAt < catchDate) {
+            speciesEntry.latestCatchAt = catchDate;
+          }
+        }
+
+        if (!lureType) {
+          return;
+        }
+
+        const color =
+          tackleData && typeof tackleData.color === 'string' ? tackleData.color.trim() || null : null;
+        const rigging =
+          tackleData && typeof tackleData.rigging === 'string' ? tackleData.rigging.trim() || null : null;
+
+        const baitKey = [lureType.toLowerCase(), color ?? '', rigging ?? ''].join('|');
+        let baitEntry = speciesEntry.baits.get(baitKey);
+        if (!baitEntry) {
+          baitEntry = {
+            lureType,
+            color,
+            rigging,
+            sampleSize: 0,
+            trophyCount: 0,
+            trophyRate: 0,
+            lastCapturedAt: null,
+            successScore: 0,
+          };
+          speciesEntry.baits.set(baitKey, baitEntry);
+        }
+
+        baitEntry.sampleSize += 1;
+        if (data.trophy) {
+          baitEntry.trophyCount += 1;
+        }
+
+        baitEntry.trophyRate = baitEntry.sampleSize > 0 ? baitEntry.trophyCount / baitEntry.sampleSize : 0;
+        if (catchDate) {
+          if (!baitEntry.lastCapturedAt || baitEntry.lastCapturedAt < catchDate) {
+            baitEntry.lastCapturedAt = catchDate;
+          }
+        }
+
+        const trophyBonus = baitEntry.trophyRate;
+        const recencyBonus = catchDate
+          ? Math.max(0, 1 - (evaluationNow - catchDate.getTime()) / (weeks * 7 * 24 * 60 * 60 * 1000))
+          : 0;
+        baitEntry.successScore = baitEntry.sampleSize * (1 + trophyBonus) + recencyBonus;
+      });
+
+      const insights: SpeciesTrendingInsight[] = [];
+      speciesMap.forEach((speciesEntry) => {
+        if (speciesEntry.totalCatches < minSpeciesSamples && speciesEntry.baits.size === 0) {
+          return;
+        }
+
+        const sortedBaits = Array.from(speciesEntry.baits.values())
+          .filter((bait) => bait.sampleSize >= minBaitSamples)
+          .sort((a, b) => {
+            if (b.successScore !== a.successScore) {
+              return b.successScore - a.successScore;
+            }
+            const aTime = a.lastCapturedAt ? a.lastCapturedAt.getTime() : 0;
+            const bTime = b.lastCapturedAt ? b.lastCapturedAt.getTime() : 0;
+            return bTime - aTime;
+          })
+          .slice(0, topBaitsPerSpecies)
+          .map((bait) => ({
+            ...bait,
+            lastCapturedAt: bait.lastCapturedAt ? new Date(bait.lastCapturedAt.getTime()) : null,
+            successScore: bait.successScore,
+          }));
+
+        if (sortedBaits.length === 0) {
+          return;
+        }
+
+        const latestCatchAt = speciesEntry.latestCatchAt ? new Date(speciesEntry.latestCatchAt.getTime()) : null;
+
+        insights.push({
+          species: speciesEntry.species,
+          totalCatches: speciesEntry.totalCatches,
+          trophyRate: speciesEntry.totalCatches > 0 ? speciesEntry.trophyCount / speciesEntry.totalCatches : 0,
+          sampleWindowStart: new Date(windowStart.getTime()),
+          latestCatchAt,
+          generatedAt: new Date(generatedAt.getTime()),
+          baits: sortedBaits,
+        });
+      });
+
+      insights.sort((a, b) => {
+        const aTime = a.latestCatchAt ? a.latestCatchAt.getTime() : 0;
+        const bTime = b.latestCatchAt ? b.latestCatchAt.getTime() : 0;
+        if (bTime !== aTime) {
+          return bTime - aTime;
+        }
+        if (b.totalCatches !== a.totalCatches) {
+          return b.totalCatches - a.totalCatches;
+        }
+        return a.species.localeCompare(b.species);
+      });
+
+      cb(typeof speciesLimit === 'number' ? insights.slice(0, speciesLimit) : insights);
+    },
+    (error) => {
+      console.warn('Failed to load species trending insights', error);
+      cb([]);
+    },
+  );
 }
 
 /** ---------- Likes (subcollection + counter) ---------- */
