@@ -14,17 +14,13 @@ import {
   type SpeciesFilters,
 } from "@/lib/mapSpots";
 import { Check, Loader2, MapPin, Search, ShieldAlert } from "lucide-react";
+import ProBadge from "./ProBadge";
 
 const DEFAULT_POSITION: [number, number] = [40.7989, -81.3784];
 
 type MarineOverlayKey = "bathymetry" | "contours" | "labels";
 
-type BaseLayerKey =
-  | "osm"
-  | "maptiler-streets"
-  | "maptiler-outdoor"
-  | "maptiler-ocean"
-  | "maptiler-satellite";
+type BaseLayerKey = "osm" | "maptiler-streets" | "maptiler-outdoor" | "maptiler-ocean";
 
 type BaseLayerSource = {
   id: BaseLayerKey;
@@ -83,6 +79,7 @@ type MarineOverlaySource = {
   zIndex: number;
   defaultEnabled: boolean;
   requiresKey?: boolean;
+  requiresPro?: boolean;
   opacity?: number;
 };
 
@@ -105,6 +102,7 @@ const createMarineOverlaySources = (): Record<MarineOverlayKey, MarineOverlaySou
       zIndex: 210,
       defaultEnabled: true,
       requiresKey: true,
+      requiresPro: true,
       opacity: 0.9,
     },
     contours: {
@@ -120,6 +118,7 @@ const createMarineOverlaySources = (): Record<MarineOverlayKey, MarineOverlaySou
       zIndex: 220,
       defaultEnabled: false,
       requiresKey: true,
+      requiresPro: true,
       opacity: 0.75,
     },
     labels: {
@@ -182,18 +181,6 @@ const createBaseLayerSources = (): BaseLayerSource[] => {
         '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a> &amp; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       requiresKey: true,
     },
-    {
-      id: "maptiler-satellite",
-      label: "MapTiler Satellite",
-      description: hasKey
-        ? "Hybrid satellite imagery with labels. Requires a MapTiler Pro plan for production use."
-        : "Requires a MapTiler API key to enable Satellite.",
-      url: buildMapTilerStyleUrl("hybrid", "jpg"),
-      attribution:
-        '&copy; <a href="https://www.maptiler.com/copyright/">MapTiler</a>, <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, and <a href="https://www.maxar.com/">Maxar</a>',
-      requiresKey: true,
-      requiresPro: true,
-    },
   ];
 };
 
@@ -202,6 +189,7 @@ type FishingMapProps = {
   includeReferenceSpots?: boolean;
   className?: string;
   showRegulationsToggle?: boolean;
+  isProMember?: boolean;
 };
 
 const icon = new L.Icon({
@@ -292,6 +280,7 @@ export default function FishingMap({
   includeReferenceSpots = true,
   className,
   showRegulationsToggle = true,
+  isProMember = false,
 }: FishingMapProps) {
   const router = useRouter();
   const [userPosition, setUserPosition] = useState<[number, number]>(DEFAULT_POSITION);
@@ -319,26 +308,36 @@ export default function FishingMap({
   const baseLayerSources = useMemo(() => createBaseLayerSources(), []);
   const defaultBaseLayerId = useMemo<BaseLayerKey>(() => {
     const preferred: BaseLayerKey = hasMapTilerKey ? "maptiler-outdoor" : "osm";
-    const preferredLayer = baseLayerSources.find((layer) => layer.id === preferred && Boolean(layer.url));
+    const preferredLayer = baseLayerSources.find(
+      (layer) =>
+        layer.id === preferred &&
+        Boolean(layer.url) &&
+        (!layer.requiresPro || isProMember),
+    );
     if (preferredLayer?.id) {
       return preferredLayer.id;
     }
-    const fallbackLayer = baseLayerSources.find((layer) => layer.id === "osm" && Boolean(layer.url));
+    const fallbackLayer = baseLayerSources.find(
+      (layer) => layer.id === "osm" && Boolean(layer.url) && (!layer.requiresPro || isProMember),
+    );
     if (fallbackLayer?.id) {
       return fallbackLayer.id;
     }
-    return (baseLayerSources.find((layer) => Boolean(layer.url))?.id ?? "osm") as BaseLayerKey;
-  }, [baseLayerSources, hasMapTilerKey]);
+    return (
+      baseLayerSources.find((layer) => Boolean(layer.url) && (!layer.requiresPro || isProMember))?.id ?? "osm"
+    ) as BaseLayerKey;
+  }, [baseLayerSources, hasMapTilerKey, isProMember]);
   const [activeBaseLayerId, setActiveBaseLayerId] = useState<BaseLayerKey>(defaultBaseLayerId);
   const activeBaseLayer = useMemo(() => {
-    const selected = baseLayerSources.find((layer) => layer.id === activeBaseLayerId && Boolean(layer.url));
+    const isLayerAvailable = (layer?: BaseLayerSource) => Boolean(layer?.url) && (!layer?.requiresPro || isProMember);
+    const selected = baseLayerSources.find((layer) => layer.id === activeBaseLayerId && isLayerAvailable(layer));
     if (selected) {
       return selected;
     }
-    return baseLayerSources.find((layer) => layer.id === defaultBaseLayerId && Boolean(layer.url)) ??
-      baseLayerSources.find((layer) => Boolean(layer.url)) ??
+    return baseLayerSources.find((layer) => layer.id === defaultBaseLayerId && isLayerAvailable(layer)) ??
+      baseLayerSources.find((layer) => isLayerAvailable(layer)) ??
       baseLayerSources[0];
-  }, [activeBaseLayerId, baseLayerSources, defaultBaseLayerId]);
+  }, [activeBaseLayerId, baseLayerSources, defaultBaseLayerId, isProMember]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MapTilerFeature[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -377,10 +376,11 @@ export default function FishingMap({
       labels: false,
     };
     marineOverlayEntries.forEach(([key, overlay]) => {
-      state[key] = Boolean(overlay.url && overlay.defaultEnabled);
+      const hasAccess = Boolean(overlay.url) && (!overlay.requiresPro || isProMember);
+      state[key] = Boolean(overlay.defaultEnabled && hasAccess);
     });
     return state;
-  }, [marineOverlayEntries]);
+  }, [marineOverlayEntries, isProMember]);
   const [marineOverlayVisibility, setMarineOverlayVisibility] =
     useState<Record<MarineOverlayKey, boolean>>(initialMarineOverlayState);
 
@@ -393,29 +393,32 @@ export default function FishingMap({
 
   useEffect(() => {
     setActiveBaseLayerId((prev) => {
-      const stillAvailable = baseLayerSources.find((layer) => layer.id === prev && Boolean(layer.url));
+      const stillAvailable = baseLayerSources.find(
+        (layer) => layer.id === prev && Boolean(layer.url) && (!layer.requiresPro || isProMember),
+      );
       if (stillAvailable) {
         return prev;
       }
       return defaultBaseLayerId;
     });
-  }, [baseLayerSources, defaultBaseLayerId]);
+  }, [baseLayerSources, defaultBaseLayerId, isProMember]);
 
   useEffect(() => {
     setMarineOverlayVisibility((prev) => {
       const next = { ...prev };
       marineOverlayEntries.forEach(([key, overlay]) => {
-        if (!overlay.url) {
+        const hasAccess = Boolean(overlay.url) && (!overlay.requiresPro || isProMember);
+        if (!hasAccess) {
           next[key] = false;
           return;
         }
         if (!(key in next)) {
-          next[key] = overlay.defaultEnabled;
+          next[key] = overlay.defaultEnabled && hasAccess;
         }
       });
       return next;
     });
-  }, [marineOverlayEntries]);
+  }, [marineOverlayEntries, isProMember]);
 
   useEffect(() => {
     setSpeciesFilters(initialSpeciesFilters);
@@ -513,6 +516,13 @@ export default function FishingMap({
   };
 
   const toggleMarineOverlay = (overlay: MarineOverlayKey) => {
+    const overlaySource = marineOverlaySources[overlay];
+    if (!overlaySource?.url) {
+      return;
+    }
+    if (overlaySource.requiresPro && !isProMember) {
+      return;
+    }
     setMarineOverlayVisibility((prev) => ({ ...prev, [overlay]: !prev[overlay] }));
   };
 
@@ -860,13 +870,18 @@ export default function FishingMap({
           ) : null}
           <div className="mt-4 space-y-3">
             {baseLayerSources.map((layer) => {
-              const available = Boolean(layer.url) && !layer.requiresPro;
+              const available = Boolean(layer.url) && (!layer.requiresPro || isProMember);
+              const lockedForPro = Boolean(layer.requiresPro) && !isProMember;
               const isActive = activeBaseLayer?.id === layer.id && available;
               return (
                 <button
                   key={layer.id}
                   type="button"
-                  onClick={() => available && setActiveBaseLayerId(layer.id)}
+                  onClick={() => {
+                    if (available) {
+                      setActiveBaseLayerId(layer.id);
+                    }
+                  }}
                   disabled={!available}
                   className={clsx(
                     "w-full rounded-2xl border px-4 py-3 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300",
@@ -881,10 +896,13 @@ export default function FishingMap({
                     {isActive ? <Check className="h-4 w-4" /> : null}
                   </div>
                   <p className="mt-1 text-xs text-white/60">{layer.description}</p>
-                  {!available && layer.requiresPro ? (
-                    <p className="mt-1 text-xs text-amber-200">Requires a MapTiler Pro plan.</p>
+                  {lockedForPro ? (
+                    <p className="mt-2 flex items-center gap-2 text-xs text-amber-200">
+                      <ProBadge className="text-[10px]" />
+                      <span>Upgrade to Hook&apos;d Pro to unlock this base map.</span>
+                    </p>
                   ) : null}
-                  {!available && layer.requiresKey && !hasMapTilerKey ? (
+                  {!layer.url && layer.requiresKey ? (
                     <p className="mt-1 text-xs text-amber-200">Add a MapTiler API key to enable this style.</p>
                   ) : null}
                 </button>
@@ -900,7 +918,8 @@ export default function FishingMap({
           </p>
           <div className="mt-4 space-y-3">
             {marineOverlayEntries.map(([key, overlay]) => {
-              const available = Boolean(overlay.url);
+              const available = Boolean(overlay.url) && (!overlay.requiresPro || isProMember);
+              const lockedForPro = Boolean(overlay.requiresPro) && !isProMember;
               return (
                 <div key={overlay.id} className="rounded-2xl border border-white/10 bg-white/5 p-3">
                   <label
@@ -910,13 +929,23 @@ export default function FishingMap({
                       type="checkbox"
                       className="mt-1 h-4 w-4 rounded border-white/30 bg-white/10"
                       checked={marineOverlayVisibility[key]}
-                      onChange={() => toggleMarineOverlay(key)}
+                      onChange={() => {
+                        if (available) {
+                          toggleMarineOverlay(key);
+                        }
+                      }}
                       disabled={!available}
                     />
                     <span>
                       <span className="text-sm font-medium text-white">{overlay.label}</span>
                       <span className="mt-1 block text-xs text-white/60">{overlay.description}</span>
-                      {!available && overlay.requiresKey ? (
+                      {lockedForPro ? (
+                        <span className="mt-1 flex items-center gap-2 text-xs text-amber-300">
+                          <ProBadge className="text-[10px]" />
+                          <span>Upgrade to Hook&apos;d Pro to unlock this overlay.</span>
+                        </span>
+                      ) : null}
+                      {!overlay.url && overlay.requiresKey ? (
                         <span className="mt-1 block text-xs text-amber-300">
                           Add a MapTiler API key to enable this overlay.
                         </span>

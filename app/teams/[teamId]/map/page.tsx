@@ -10,6 +10,7 @@ import { Loader2, MapPin, Users } from 'lucide-react';
 import NavBar from '@/components/NavBar';
 import { auth } from '@/lib/firebaseClient';
 import { subscribeToTeam, type Team } from '@/lib/firestore';
+import { useProAccess } from '@/hooks/useProAccess';
 
 const FishingMap = dynamic(() => import('@/components/FishingMap'), {
   ssr: false,
@@ -22,6 +23,7 @@ export default function TeamMapPage() {
   const [team, setTeam] = useState<Team | null>(null);
   const [loading, setLoading] = useState(true);
   const [authUser] = useAuthState(auth);
+  const { isPro } = useProAccess();
 
   useEffect(() => {
     if (!teamId) {
@@ -106,6 +108,7 @@ export default function TeamMapPage() {
                   allowedUids={team.memberUids}
                   includeReferenceSpots={false}
                   showRegulationsToggle={false}
+                  isProMember={isPro}
                 />
               </div>
             ) : (

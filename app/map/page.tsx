@@ -10,6 +10,7 @@ import {
   subscribeToTournamentLeaderboardByWeight,
 } from "@/lib/firestore";
 import type { Tournament, TournamentLeaderboardEntry } from "@/lib/firestore";
+import { useProAccess } from "@/hooks/useProAccess";
 
 const FishingMap = dynamic(() => import("@/components/FishingMap"), { ssr: false });
 
@@ -17,6 +18,7 @@ export default function MapPage() {
   const [activeTournaments, setActiveTournaments] = useState<Tournament[]>([]);
   const [weightLeaders, setWeightLeaders] = useState<TournamentLeaderboardEntry[]>([]);
   const [lengthLeaders, setLengthLeaders] = useState<TournamentLeaderboardEntry[]>([]);
+  const { isPro } = useProAccess();
 
   useEffect(() => {
     const unsubscribeWeight = subscribeToTournamentLeaderboardByWeight(10, (entries) => {
@@ -59,7 +61,7 @@ export default function MapPage() {
             </p>
           </header>
 
-          <FishingMap />
+          <FishingMap isProMember={isPro} />
         </div>
       </section>
 
