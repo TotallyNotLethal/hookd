@@ -187,6 +187,7 @@ test('GET populates weather data from weather_code responses', async () => {
       forecastCall.params.hourly,
       'surface_pressure,temperature_2m,weather_code,wind_speed_10m,wind_direction_10m',
     );
+    assert.equal(forecastCall.params.wind_speed_unit, 'ms');
   } finally {
     Date.now = originalDateNow;
     openmeteo.fetchWeatherApi = originalFetchWeatherApi;
@@ -244,6 +245,7 @@ test('GET uses historical archive data for captures older than a week', async ()
       archiveCall.params.hourly,
       'surface_pressure,temperature_2m,weather_code,wind_speed_10m,wind_direction_10m',
     );
+    assert.equal(archiveCall.params.wind_speed_unit, 'ms');
     const forecastCall = requests.find((call) =>
       call.url.startsWith('https://api.open-meteo.com/v1/forecast'),
     );
