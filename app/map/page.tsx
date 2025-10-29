@@ -6,10 +6,15 @@ import NavBar from "@/components/NavBar";
 import TrendingExplorer from "@/components/TrendingExplorer";
 import {
   subscribeToActiveTournaments,
+  subscribeToSpeciesTrendingInsights,
   subscribeToTournamentLeaderboardByLength,
   subscribeToTournamentLeaderboardByWeight,
 } from "@/lib/firestore";
-import type { Tournament, TournamentLeaderboardEntry } from "@/lib/firestore";
+import type {
+  SpeciesTrendingInsight,
+  Tournament,
+  TournamentLeaderboardEntry,
+} from "@/lib/firestore";
 import { useProAccess } from "@/hooks/useProAccess";
 
 const FishingMap = dynamic(() => import("@/components/FishingMap"), { ssr: false });
@@ -18,6 +23,7 @@ export default function MapPage() {
   const [activeTournaments, setActiveTournaments] = useState<Tournament[]>([]);
   const [weightLeaders, setWeightLeaders] = useState<TournamentLeaderboardEntry[]>([]);
   const [lengthLeaders, setLengthLeaders] = useState<TournamentLeaderboardEntry[]>([]);
+  const [speciesInsights, setSpeciesInsights] = useState<SpeciesTrendingInsight[]>([]);
   const { isPro } = useProAccess();
 
   useEffect(() => {
@@ -37,6 +43,21 @@ export default function MapPage() {
   useEffect(() => {
     const unsubscribe = subscribeToActiveTournaments((events) => {
       setActiveTournaments(events);
+    });
+
+    return () => {
+      if (typeof unsubscribe === "function") unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToSpeciesTrendingInsights((insights) => {
+      setSpeciesInsights(insights);
+    }, {
+      weeks: 6,
+      maxSamples: 600,
+      speciesLimit: 6,
+      minBaitSamples: 2,
     });
 
     return () => {
@@ -70,6 +91,7 @@ export default function MapPage() {
         activeTournaments={activeTournaments}
         weightLeaders={weightLeaders}
         lengthLeaders={lengthLeaders}
+        speciesInsights={speciesInsights}
       />
     </main>
   );

@@ -3,31 +3,71 @@
 import { useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
-import type { Tournament, TournamentLeaderboardEntry } from "@/lib/firestore";
+import type {
+  SpeciesTrendingInsight,
+  Tournament,
+  TournamentLeaderboardEntry,
+} from "@/lib/firestore";
 
 interface TrendingExplorerProps {
   className?: string;
   activeTournaments: Tournament[];
   weightLeaders: TournamentLeaderboardEntry[];
   lengthLeaders: TournamentLeaderboardEntry[];
+  speciesInsights: SpeciesTrendingInsight[];
   isProModerator?: boolean;
 }
 
-const featuredSpecies = [
+type DisplayBait = {
+  label: string;
+  details?: string | null;
+};
+
+type DisplaySpecies = {
+  name: string;
+  tagline: string;
+  description: string;
+  freshnessLabel?: string | null;
+  baits: DisplayBait[];
+  isFallback: boolean;
+};
+
+const EDITORIAL_SPECIES_FALLBACKS: DisplaySpecies[] = [
   {
     name: "Largemouth Bass",
-    tips: "Target weed edges with slow-rolled swimbaits.",
-    bestBaits: ["Swimbait", "Texas-rig", "Squarebill"],
+    tagline: "Hook'd editorial pick",
+    description: "Target weed edges with slow-rolled swimbaits.",
+    freshnessLabel: "Curated by the Hook'd team",
+    baits: [
+      { label: "Swimbait" },
+      { label: "Texas-rig" },
+      { label: "Squarebill" },
+    ],
+    isFallback: true,
   },
   {
     name: "Crappie",
-    tips: "Vertical jig brush piles and docks mid-morning.",
-    bestBaits: ["Mini jig", "Minnow", "Slip float"],
+    tagline: "Hook'd editorial pick",
+    description: "Vertical jig brush piles and docks mid-morning.",
+    freshnessLabel: "Curated by the Hook'd team",
+    baits: [
+      { label: "Mini jig" },
+      { label: "Minnow" },
+      { label: "Slip float" },
+    ],
+    isFallback: true,
   },
   {
     name: "Channel Catfish",
-    tips: "Fresh cut bait along drop-offs after sunset.",
-    bestBaits: ["Cut shad", "Stink bait", "Live bluegill"],
+    tagline: "Hook'd editorial pick",
+    description: "Fresh cut bait along drop-offs after sunset.",
+    freshnessLabel: "Curated by the Hook'd team",
+    baits: [
+      { label: "Cut shad" },
+      { label: "Stink bait" },
+      { label: "Live bluegill" },
+    ],
+    isFallback: true,
   },
 ];
 
@@ -77,11 +117,106 @@ export default function TrendingExplorer({
   activeTournaments,
   weightLeaders,
   lengthLeaders,
+  speciesInsights,
   isProModerator = false,
 }: TrendingExplorerProps) {
   const [selectedSpeciesIndex, setSelectedSpeciesIndex] = useState(0);
+  const recencyCutoffMs = 21 * 24 * 60 * 60 * 1000;
 
-  const selectedSpecies = featuredSpecies[selectedSpeciesIndex];
+  const dynamicSpecies = useMemo<DisplaySpecies[]>(() => {
+    return speciesInsights
+      .map<DisplaySpecies | null>((insight) => {
+        const generatedAt = insight.generatedAt instanceof Date ? insight.generatedAt : null;
+        const latest = insight.latestCatchAt instanceof Date ? insight.latestCatchAt : null;
+        if (!generatedAt || !latest) {
+          return null;
+        }
+
+        const recencyDelta = generatedAt.getTime() - latest.getTime();
+        if (recencyDelta > recencyCutoffMs) {
+          return null;
+        }
+
+        const baits = insight.baits
+          .map<DisplayBait | null>((bait) => {
+            if (!bait.lureType) {
+              return null;
+            }
+
+            const details: string[] = [];
+            if (bait.sampleSize > 0) {
+              details.push(`${bait.sampleSize} ${bait.sampleSize === 1 ? "log" : "logs"}`);
+            }
+            if (bait.trophyRate > 0) {
+              details.push(`${Math.round(bait.trophyRate * 100)}% trophy`);
+            }
+            const recencyLabel = formatRelativeDistance(bait.lastCapturedAt, generatedAt);
+            if (recencyLabel) {
+              details.push(recencyLabel);
+            }
+
+            return {
+              label: bait.lureType,
+              details: details.length > 0 ? details.join(" • ") : null,
+            };
+          })
+          .filter((bait): bait is DisplayBait => bait !== null);
+
+        if (baits.length === 0) {
+          return null;
+        }
+
+        const windowDelta = Math.max(0, generatedAt.getTime() - insight.sampleWindowStart.getTime());
+        const weeksActive = Math.max(1, Math.round(windowDelta / (7 * 24 * 60 * 60 * 1000)));
+        const trophyPercent = Math.round(insight.trophyRate * 100);
+        const taglineParts = [`${insight.totalCatches} ${insight.totalCatches === 1 ? "log" : "logs"}`];
+        if (trophyPercent > 0) {
+          taglineParts.push(`${trophyPercent}% trophy rate`);
+        }
+        taglineParts.push(`last ${weeksActive} wk${weeksActive > 1 ? "s" : ""}`);
+
+        const description =
+          trophyPercent > 0
+            ? "These presentations are producing quality bites right now."
+            : "Anglers are finding steady action with these presentations.";
+
+        return {
+          name: insight.species,
+          tagline: taglineParts.join(" · "),
+          description,
+          freshnessLabel: formatRelativeDistance(insight.latestCatchAt, generatedAt),
+          baits,
+          isFallback: false,
+        } satisfies DisplaySpecies;
+      })
+      .filter((value): value is DisplaySpecies => value !== null);
+  }, [speciesInsights, recencyCutoffMs]);
+
+  const speciesOptions = useMemo<DisplaySpecies[]>(() => {
+    const seen = new Set<string>();
+    const combined: DisplaySpecies[] = [];
+
+    for (const entry of dynamicSpecies) {
+      const key = entry.name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      combined.push(entry);
+    }
+
+    for (const fallback of EDITORIAL_SPECIES_FALLBACKS) {
+      const key = fallback.name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      combined.push(fallback);
+    }
+
+    return combined.slice(0, 5);
+  }, [dynamicSpecies]);
+
+  const safeSelectedIndex = speciesOptions.length > 0
+    ? Math.min(selectedSpeciesIndex, speciesOptions.length - 1)
+    : 0;
+  const selectedSpecies = speciesOptions[safeSelectedIndex] ?? EDITORIAL_SPECIES_FALLBACKS[0];
   const tournamentsSorted = useMemo(() => {
     return [...activeTournaments].sort((a, b) => {
       const aTime = Math.min(getMillis(a.endAt), getMillis(a.startAt));
@@ -242,8 +377,8 @@ export default function TrendingExplorer({
               Target a species
             </h3>
             <div className="mt-4 flex flex-wrap gap-2" role="tablist" aria-label="Featured species">
-              {featuredSpecies.map((species, index) => {
-                const isSelected = index === selectedSpeciesIndex;
+              {speciesOptions.map((species, index) => {
+                const isSelected = index === safeSelectedIndex;
                 return (
                   <button
                     key={species.name}
@@ -264,19 +399,76 @@ export default function TrendingExplorer({
             </div>
 
             <div className="mt-4 rounded-2xl border border-white/10 bg-slate-900/60 p-4">
-              <p className="text-sm text-white/80">{selectedSpecies.tips}</p>
-              <p className="mt-4 text-xs uppercase tracking-wide text-white/50">Confidence baits</p>
-              <ul className="mt-2 flex flex-wrap gap-2">
-                {selectedSpecies.bestBaits.map((bait) => (
-                  <li key={bait} className="rounded-full bg-brand-400/20 px-3 py-1 text-xs text-brand-100">
-                    {bait}
-                  </li>
-                ))}
-              </ul>
+              <p className="text-xs uppercase tracking-wide text-brand-200">{selectedSpecies.tagline}</p>
+              <p className="mt-2 text-sm text-white/80">{selectedSpecies.description}</p>
+              {selectedSpecies.freshnessLabel ? (
+                <p className="mt-2 text-xs text-white/60">{selectedSpecies.freshnessLabel}</p>
+              ) : null}
+              <p className="mt-4 text-xs uppercase tracking-wide text-white/50">Trending baits</p>
+              {selectedSpecies.baits.length > 0 ? (
+                <ul className="mt-2 space-y-2">
+                  {selectedSpecies.baits.map((bait) => (
+                    <li
+                      key={bait.label}
+                      className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80"
+                    >
+                      <p className="font-medium text-white">{bait.label}</p>
+                      {bait.details ? (
+                        <p className="mt-1 text-xs text-white/60">{bait.details}</p>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-xs text-white/60">
+                  No tackle intel logged for this species yet. Check back soon for fresh data.
+                </p>
+              )}
             </div>
           </div>
         </div>
       </div>
     </section>
   );
+}
+
+function formatRelativeDistance(
+  date: Date | null | undefined,
+  reference: Date | null | undefined,
+): string | null {
+  if (!date) return null;
+  const referenceTime = reference instanceof Date && !Number.isNaN(reference.getTime())
+    ? reference.getTime()
+    : Date.now();
+  const diffMs = referenceTime - date.getTime();
+  if (!Number.isFinite(diffMs)) {
+    return null;
+  }
+
+  if (diffMs <= 0) {
+    return "just now";
+  }
+
+  const minutes = Math.round(diffMs / (60 * 1000));
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) {
+    return `${hours}h ago`;
+  }
+
+  const days = Math.round(hours / 24);
+  if (days < 14) {
+    return `${days}d ago`;
+  }
+
+  const weeks = Math.round(days / 7);
+  if (weeks < 12) {
+    return `${weeks}w ago`;
+  }
+
+  const months = Math.round(days / 30);
+  return `${months}mo ago`;
 }

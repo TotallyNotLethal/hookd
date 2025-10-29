@@ -11,12 +11,18 @@ import {
   subscribeToActiveTournaments,
   subscribeToChallengeCatches,
   subscribeToFeedCatches,
+  subscribeToSpeciesTrendingInsights,
   subscribeToTournamentLeaderboardByLength,
   subscribeToTournamentLeaderboardByWeight,
   subscribeToNewestUser,
   subscribeToUser,
 } from "@/lib/firestore";
-import type { HookdUser, Tournament, TournamentLeaderboardEntry } from "@/lib/firestore";
+import type {
+  HookdUser,
+  SpeciesTrendingInsight,
+  Tournament,
+  TournamentLeaderboardEntry,
+} from "@/lib/firestore";
 import { reverseGeocodeLocation } from "@/lib/location";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthState } from "react-firebase-hooks/auth";
@@ -31,6 +37,7 @@ export default function Page() {
   const [weightLeaders, setWeightLeaders] = useState<TournamentLeaderboardEntry[]>([]);
   const [lengthLeaders, setLengthLeaders] = useState<TournamentLeaderboardEntry[]>([]);
   const [activeTournaments, setActiveTournaments] = useState<Tournament[]>([]);
+  const [speciesInsights, setSpeciesInsights] = useState<SpeciesTrendingInsight[]>([]);
   const [profile, setProfile] = useState<HookdUser | null>(null);
   const [newestAngler, setNewestAngler] = useState<HookdUser | null>(null);
   const [user] = useAuthState(auth);
@@ -271,6 +278,21 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
+    const unsubscribe = subscribeToSpeciesTrendingInsights((insights) => {
+      setSpeciesInsights(insights);
+    }, {
+      weeks: 6,
+      maxSamples: 600,
+      speciesLimit: 6,
+      minBaitSamples: 2,
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
     const unsubscribe = subscribeToNewestUser((user) => {
       setNewestAngler(user);
     });
@@ -433,6 +455,7 @@ export default function Page() {
         activeTournaments={activeTournaments}
         weightLeaders={weightLeaders}
         lengthLeaders={lengthLeaders}
+        speciesInsights={speciesInsights}
         isProModerator={isProModerator}
       />
 
