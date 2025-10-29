@@ -6,6 +6,7 @@ import L from "leaflet";
 import { useRouter } from "next/navigation";
 import clsx from "clsx";
 import { fishingSpots } from "@/lib/fishingSpots";
+import { findFishSpeciesByName, normalizeFishName } from "@/lib/fishSpecies";
 import { subscribeToCatchesWithCoordinates, type CatchWithCoordinates } from "@/lib/firestore";
 import {
   aggregateSpots,
@@ -13,23 +14,11 @@ import {
   computeDistanceMiles,
   type SpeciesFilters,
 } from "@/lib/mapSpots";
-import { Check, ChevronDown, ChevronUp, Loader2, MapPin, Search, ShieldAlert } from "lucide-react";
+import { Check, Loader2, MapPin, Search, ShieldAlert } from "lucide-react";
 import ProBadge from "./ProBadge";
 
 const DEFAULT_POSITION: [number, number] = [40.7989, -81.3784];
-
-const groupSpeciesByInitial = (speciesList: string[]): Record<string, string[]> => {
-  return speciesList.reduce<Record<string, string[]>>((acc, species) => {
-    const trimmed = species.trim();
-    const firstCharacter = trimmed.charAt(0).toUpperCase();
-    const key = /[A-Z]/.test(firstCharacter) ? firstCharacter : "#";
-    if (!acc[key]) {
-      acc[key] = [];
-    }
-    acc[key].push(species);
-    return acc;
-  }, {});
-};
+const NEARBY_DISTANCE_LIMIT_MILES = 20;
 
 type MarineOverlayKey = "bathymetry" | "contours" | "labels";
 
@@ -521,6 +510,7 @@ export default function FishingMap({
         const distance = computeDistanceMiles(userPosition, [spot.latitude, spot.longitude]);
         return { ...spot, distance };
       })
+      .filter((spot) => Number.isFinite(spot.distance) && spot.distance <= NEARBY_DISTANCE_LIMIT_MILES)
       .sort((a, b) => a.distance - b.distance);
   }, [filteredSpots, userPosition]);
 
@@ -672,34 +662,64 @@ export default function FishingMap({
     setSearchError(null);
   };
 
-  const speciesKeys = useMemo(() => Object.keys(speciesFilters).sort(), [speciesFilters]);
-  const speciesGroups = useMemo(() => groupSpeciesByInitial(speciesKeys), [speciesKeys]);
-  const [openSpeciesGroups, setOpenSpeciesGroups] = useState<Record<string, boolean>>(() => {
-    const initialGroups = groupSpeciesByInitial(speciesKeys);
-    return Object.keys(initialGroups).reduce<Record<string, boolean>>((acc, key) => {
-      acc[key] = true;
-      return acc;
-    }, {});
-  });
-
-  useEffect(() => {
-    setOpenSpeciesGroups((prev) => {
-      const next: Record<string, boolean> = {};
-      let changed = false;
-      Object.keys(speciesGroups).forEach((key) => {
-        next[key] = key in prev ? prev[key] : true;
-        if (next[key] !== prev[key]) {
-          changed = true;
-        }
-      });
-      Object.keys(prev).forEach((key) => {
-        if (!(key in next)) {
-          changed = true;
-        }
-      });
-      return changed ? next : prev;
+  const speciesKeys = useMemo(() => Object.keys(speciesFilters).sort((a, b) => a.localeCompare(b)), [speciesFilters]);
+  const [speciesSearchQuery, setSpeciesSearchQuery] = useState("");
+  const speciesSearchIndex = useMemo(() => {
+    return speciesKeys.map((name) => {
+      const match = findFishSpeciesByName(name);
+      const tokens = new Set<string>();
+      tokens.add(normalizeFishName(name));
+      tokens.add(name.toLowerCase());
+      if (match) {
+        [match.name, ...match.aliases].forEach((alias) => tokens.add(normalizeFishName(alias)));
+      } else {
+        name
+          .split(/\s+/)
+          .filter(Boolean)
+          .forEach((segment) => tokens.add(normalizeFishName(segment)));
+      }
+      return { name, tokens: Array.from(tokens) };
     });
-  }, [speciesGroups]);
+  }, [speciesKeys]);
+
+  const filteredSpeciesNames = useMemo(() => {
+    const query = normalizeFishName(speciesSearchQuery);
+    const queryTokens = query.split(/\s+/).filter(Boolean);
+    if (!queryTokens.length) {
+      return speciesKeys;
+    }
+
+    return speciesSearchIndex
+      .filter(({ tokens }) => queryTokens.every((token) => tokens.some((alias) => alias.includes(token))))
+      .map(({ name }) => name);
+  }, [speciesKeys, speciesSearchIndex, speciesSearchQuery]);
+
+  const totalSpeciesCount = speciesKeys.length;
+  const selectedSpeciesCount = useMemo(
+    () => speciesKeys.filter((species) => Boolean(speciesFilters[species])).length,
+    [speciesFilters, speciesKeys],
+  );
+  const allSpeciesSelected = totalSpeciesCount > 0 && selectedSpeciesCount === totalSpeciesCount;
+
+  const handleSelectAllSpecies = useCallback(() => {
+    setSpeciesFilters((prev) => {
+      const next: SpeciesFilters = { ...prev };
+      speciesKeys.forEach((species) => {
+        next[species] = true;
+      });
+      return next;
+    });
+  }, [speciesKeys]);
+
+  const handleClearAllSpecies = useCallback(() => {
+    setSpeciesFilters((prev) => {
+      const next: SpeciesFilters = { ...prev };
+      speciesKeys.forEach((species) => {
+        next[species] = false;
+      });
+      return next;
+    });
+  }, [speciesKeys]);
 
   const handleOpenSpot = (spotId: string) => {
     router.push(`/map/${encodeURIComponent(spotId)}`);
@@ -1064,66 +1084,66 @@ export default function FishingMap({
         <div>
           <h2 className="text-lg font-semibold text-white">Species filters</h2>
           <p className="text-sm text-white/60">Toggle species to highlight matching spots on the map.</p>
-          <div className="mt-4 space-y-3">
-            {Object.entries(speciesGroups)
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([group, groupSpecies]) => {
-                const isOpen = openSpeciesGroups[group];
-                return (
-                  <div key={group} className="rounded-2xl border border-white/10 bg-white/5">
-                    <button
-                      type="button"
-                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-                      onClick={() =>
-                        setOpenSpeciesGroups((prev) => ({
-                          ...prev,
-                          [group]: !prev[group],
-                        }))
-                      }
-                      aria-expanded={isOpen}
-                    >
-                      <span>
-                        Group {group === "#" ? "Other" : group}
-                        <span className="ml-2 text-xs font-normal text-white/60">{groupSpecies.length}</span>
-                      </span>
-                      {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    </button>
-                    <div
-                      className={clsx(
-                        "border-t border-white/10 px-4 transition-[max-height] duration-300 ease-in-out",
-                        isOpen ? "max-h-64 py-3" : "max-h-0 overflow-hidden py-0",
-                      )}
-                    >
-                      {isOpen ? (
-                        <div className="max-h-52 overflow-y-auto pr-2">
-                          <div className="flex flex-wrap gap-2">
-                            {groupSpecies.map((species) => {
-                              const isActive = speciesFilters[species];
-                              return (
-                                <button
-                                  key={species}
-                                  type="button"
-                                  onClick={() => toggleSpecies(species)}
-                                  aria-pressed={isActive}
-                                  className={clsx(
-                                    "flex items-center gap-1 rounded-full border px-3 py-1 text-xs transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300",
-                                    isActive
-                                      ? "border-brand-400 bg-brand-400/20 text-brand-100"
-                                      : "border-white/15 bg-white/5 text-white/60 hover:bg-white/10",
-                                  )}
-                                >
-                                  {isActive ? <Check className="h-3.5 w-3.5" /> : null}
-                                  {species}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                );
-              })}
+          <div className="mt-4 space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-white/60">
+                {selectedSpeciesCount} of {totalSpeciesCount} species selected
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleSelectAllSpecies}
+                  className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/80 transition hover:border-white/30 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300 disabled:opacity-40 disabled:hover:border-white/15 disabled:hover:text-white/80"
+                  disabled={allSpeciesSelected}
+                >
+                  Select all
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearAllSpecies}
+                  className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-medium text-white/80 transition hover:border-white/30 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300 disabled:opacity-40 disabled:hover:border-white/15 disabled:hover:text-white/80"
+                  disabled={selectedSpeciesCount === 0}
+                >
+                  Clear all
+                </button>
+              </div>
+            </div>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
+              <input
+                type="search"
+                value={speciesSearchQuery}
+                onChange={(event) => setSpeciesSearchQuery(event.target.value)}
+                placeholder="Search species…"
+                className="w-full rounded-xl border border-white/10 bg-white/10 py-2 pl-9 pr-3 text-sm text-white/90 placeholder:text-white/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+              />
+            </div>
+            <div className="max-h-64 overflow-y-auto pr-1">
+              {filteredSpeciesNames.length > 0 ? (
+                <ul className="space-y-2">
+                  {filteredSpeciesNames.map((species) => {
+                    const isActive = Boolean(speciesFilters[species]);
+                    return (
+                      <li key={species}>
+                        <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-transparent px-3 py-2 text-sm text-white/80 transition hover:border-white/20 hover:bg-white/10">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-white/30 bg-white/10"
+                            checked={isActive}
+                            onChange={() => toggleSpecies(species)}
+                          />
+                          <span className={clsx("flex-1", isActive ? "text-white" : "text-white/70")}>{species}</span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (
+                <p className="rounded-xl border border-dashed border-white/10 px-3 py-6 text-center text-xs text-white/50">
+                  No species match that search. Try a different name or clear the search.
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1147,51 +1167,58 @@ export default function FishingMap({
 
         <div>
           <h3 className="text-lg font-semibold text-white">Nearby waters</h3>
-          <ul className="mt-3 space-y-3">
-            {sortedSpots.map((spot) => {
-              const latest = spot.latestCatch;
-              const occurredAt = latest?.occurredAt ? formatCatchDate(latest.occurredAt) : null;
+          {sortedSpots.length > 0 ? (
+            <ul className="mt-3 space-y-3">
+              {sortedSpots.map((spot) => {
+                const latest = spot.latestCatch;
+                const occurredAt = latest?.occurredAt ? formatCatchDate(latest.occurredAt) : null;
 
-              return (
-                <li key={spot.id} className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-white">{spot.name}</p>
-                      <p className="text-xs uppercase tracking-wide text-white/50">
-                        {spot.distance} mi • {spot.species.slice(0, 2).join(", ") || "Various species"}
-                      </p>
+                return (
+                  <li key={spot.id} className="rounded-2xl border border-white/10 bg-slate-900/60 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-white">{spot.name}</p>
+                        <p className="text-xs uppercase tracking-wide text-white/50">
+                          {spot.distance} mi • {spot.species.slice(0, 2).join(", ") || "Various species"}
+                        </p>
+                      </div>
+                      <MapPin className="h-4 w-4 text-brand-300" />
                     </div>
-                    <MapPin className="h-4 w-4 text-brand-300" />
-                  </div>
-                  {spot.regulations?.description && (
-                    <p className="mt-3 text-sm text-white/70">{spot.regulations.description}</p>
-                  )}
-                  {spot.regulations?.bagLimit && (
-                    <p className="mt-2 text-xs text-white/60">Bag limit: {spot.regulations.bagLimit}</p>
-                  )}
-                  <p className="mt-2 text-xs text-white/60">
-                    Logged catches: {spot.catchCount > 0 ? spot.catchCount : "No data yet"}
-                  </p>
-                  {latest && (
-                    <p className="mt-2 text-xs text-brand-200">
-                      Latest catch: {latest.species}
-                      {latest.weight ? ` (${latest.weight})` : ""}
-                      {latest.source === "dynamic" && latest.displayName ? ` by ${latest.displayName}` : ""}
-                      {latest.source === "dynamic" && occurredAt ? ` on ${occurredAt}` : ""}
-                      {latest.source === "static" && latest.bait ? ` on ${latest.bait}` : ""}
+                    {spot.regulations?.description && (
+                      <p className="mt-3 text-sm text-white/70">{spot.regulations.description}</p>
+                    )}
+                    {spot.regulations?.bagLimit && (
+                      <p className="mt-2 text-xs text-white/60">Bag limit: {spot.regulations.bagLimit}</p>
+                    )}
+                    <p className="mt-2 text-xs text-white/60">
+                      Logged catches: {spot.catchCount > 0 ? spot.catchCount : "No data yet"}
                     </p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => handleOpenSpot(spot.id)}
-                    className="mt-3 inline-flex items-center justify-center rounded-xl bg-brand-500/90 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-                  >
-                    View catches at this spot
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+                    {latest && (
+                      <p className="mt-2 text-xs text-brand-200">
+                        Latest catch: {latest.species}
+                        {latest.weight ? ` (${latest.weight})` : ""}
+                        {latest.source === "dynamic" && latest.displayName ? ` by ${latest.displayName}` : ""}
+                        {latest.source === "dynamic" && occurredAt ? ` on ${occurredAt}` : ""}
+                        {latest.source === "static" && latest.bait ? ` on ${latest.bait}` : ""}
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenSpot(spot.id)}
+                      className="mt-3 inline-flex items-center justify-center rounded-xl bg-brand-500/90 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white transition hover:bg-brand-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                    >
+                      View catches at this spot
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
+              No waters within {NEARBY_DISTANCE_LIMIT_MILES} miles match your filters. Try moving the map or adjusting the
+              species selection.
+            </p>
+          )}
         </div>
       </aside>
     </div>
