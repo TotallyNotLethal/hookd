@@ -410,7 +410,7 @@ export default function ProfileView({
                 </p>
                 {teamAffiliations.length > 0 ? (
                   <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-white/60">
-                    <span className="uppercase tracking-[0.2em] text-white/40">Teams</span>
+                    <span className="uppercase tracking-[0.2em] text-white/40">Team</span>
                     {teamAffiliations.map((team) => (
                       <Link
                         key={team.id}
