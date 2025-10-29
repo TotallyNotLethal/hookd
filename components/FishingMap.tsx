@@ -13,10 +13,23 @@ import {
   computeDistanceMiles,
   type SpeciesFilters,
 } from "@/lib/mapSpots";
-import { Check, Loader2, MapPin, Search, ShieldAlert } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Loader2, MapPin, Search, ShieldAlert } from "lucide-react";
 import ProBadge from "./ProBadge";
 
 const DEFAULT_POSITION: [number, number] = [40.7989, -81.3784];
+
+const groupSpeciesByInitial = (speciesList: string[]): Record<string, string[]> => {
+  return speciesList.reduce<Record<string, string[]>>((acc, species) => {
+    const trimmed = species.trim();
+    const firstCharacter = trimmed.charAt(0).toUpperCase();
+    const key = /[A-Z]/.test(firstCharacter) ? firstCharacter : "#";
+    if (!acc[key]) {
+      acc[key] = [];
+    }
+    acc[key].push(species);
+    return acc;
+  }, {});
+};
 
 type MarineOverlayKey = "bathymetry" | "contours" | "labels";
 
@@ -660,26 +673,59 @@ export default function FishingMap({
   };
 
   const speciesKeys = useMemo(() => Object.keys(speciesFilters).sort(), [speciesFilters]);
+  const speciesGroups = useMemo(() => groupSpeciesByInitial(speciesKeys), [speciesKeys]);
+  const [openSpeciesGroups, setOpenSpeciesGroups] = useState<Record<string, boolean>>(() => {
+    const initialGroups = groupSpeciesByInitial(speciesKeys);
+    return Object.keys(initialGroups).reduce<Record<string, boolean>>((acc, key) => {
+      acc[key] = true;
+      return acc;
+    }, {});
+  });
+
+  useEffect(() => {
+    setOpenSpeciesGroups((prev) => {
+      const next: Record<string, boolean> = {};
+      let changed = false;
+      Object.keys(speciesGroups).forEach((key) => {
+        next[key] = key in prev ? prev[key] : true;
+        if (next[key] !== prev[key]) {
+          changed = true;
+        }
+      });
+      Object.keys(prev).forEach((key) => {
+        if (!(key in next)) {
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [speciesGroups]);
 
   const handleOpenSpot = (spotId: string) => {
     router.push(`/map/${encodeURIComponent(spotId)}`);
   };
 
   return (
-    <div className={clsx("grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]", className)}>
-      <div className="space-y-2">
+    <div
+      className={clsx(
+        "grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)] lg:items-start",
+        "xl:gap-8",
+        className,
+      )}
+    >
+      <div className="space-y-4 sm:space-y-5">
         <div className="relative overflow-hidden rounded-3xl border border-white/10">
           {geoSupported ? (
             <button
               type="button"
               onClick={requestUserPosition}
-              className="absolute right-4 top-4 z-[401] rounded-full border border-white/20 bg-slate-900/80 px-4 py-1.5 text-sm font-medium text-white/90 shadow transition hover:border-white/40 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300 disabled:cursor-not-allowed disabled:opacity-60"
+              className="absolute bottom-4 right-4 z-[401] rounded-full border border-white/20 bg-slate-900/80 px-4 py-1.5 text-sm font-medium text-white/90 shadow transition hover:border-white/40 hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300 disabled:cursor-not-allowed disabled:opacity-60 sm:bottom-auto sm:right-4 sm:top-4"
               disabled={geoLoading}
             >
               {geoLoading ? "Locating…" : "Use my location"}
             </button>
           ) : null}
-          <div className="absolute left-4 top-4 z-[401] w-full max-w-[320px] space-y-2">
+          <div className="absolute inset-x-4 top-4 z-[401] space-y-2 sm:inset-auto sm:left-4 sm:right-auto sm:top-4 sm:w-full sm:max-w-[320px]">
             <form
               onSubmit={handleSearchSubmit}
               className="flex overflow-hidden rounded-2xl border border-white/15 bg-slate-900/80 text-sm text-white shadow backdrop-blur"
@@ -747,8 +793,7 @@ export default function FishingMap({
             center={userPosition}
             zoom={11}
             scrollWheelZoom
-            style={{ height: "480px", width: "100%" }}
-            className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+            className="h-[60vh] min-h-[320px] w-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300 sm:h-[65vh] lg:h-[70vh]"
           >
             <MapInstanceCapture onReady={handleMapReady} />
             <MapRelocator position={userPosition} />
@@ -859,7 +904,7 @@ export default function FishingMap({
         {geoStatus ? <p className="text-xs text-white/60">{geoStatus}</p> : null}
       </div>
 
-      <aside className="glass rounded-3xl p-6 space-y-6">
+      <aside className="glass rounded-3xl p-4 sm:p-6 space-y-8 lg:sticky lg:top-6 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
         <div>
           <h2 className="text-lg font-semibold text-white">Base map</h2>
           <p className="text-sm text-white/60">Swap the foundational basemap to change context for your planning.</p>
@@ -1019,26 +1064,66 @@ export default function FishingMap({
         <div>
           <h2 className="text-lg font-semibold text-white">Species filters</h2>
           <p className="text-sm text-white/60">Toggle species to highlight matching spots on the map.</p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {speciesKeys.map((species) => {
-              const isActive = speciesFilters[species];
-              return (
-                <button
-                  key={species}
-                  type="button"
-                  onClick={() => toggleSpecies(species)}
-                  aria-pressed={isActive}
-                  className={`flex items-center gap-1 rounded-full border px-3 py-1 text-xs transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300 ${
-                    isActive
-                      ? "border-brand-400 bg-brand-400/20 text-brand-100"
-                      : "border-white/15 bg-white/5 text-white/60 hover:bg-white/10"
-                  }`}
-                >
-                  {isActive && <Check className="h-3.5 w-3.5" />}
-                  {species}
-                </button>
-              );
-            })}
+          <div className="mt-4 space-y-3">
+            {Object.entries(speciesGroups)
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([group, groupSpecies]) => {
+                const isOpen = openSpeciesGroups[group];
+                return (
+                  <div key={group} className="rounded-2xl border border-white/10 bg-white/5">
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-semibold text-white transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                      onClick={() =>
+                        setOpenSpeciesGroups((prev) => ({
+                          ...prev,
+                          [group]: !prev[group],
+                        }))
+                      }
+                      aria-expanded={isOpen}
+                    >
+                      <span>
+                        Group {group === "#" ? "Other" : group}
+                        <span className="ml-2 text-xs font-normal text-white/60">{groupSpecies.length}</span>
+                      </span>
+                      {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </button>
+                    <div
+                      className={clsx(
+                        "border-t border-white/10 px-4 transition-[max-height] duration-300 ease-in-out",
+                        isOpen ? "max-h-64 py-3" : "max-h-0 overflow-hidden py-0",
+                      )}
+                    >
+                      {isOpen ? (
+                        <div className="max-h-52 overflow-y-auto pr-2">
+                          <div className="flex flex-wrap gap-2">
+                            {groupSpecies.map((species) => {
+                              const isActive = speciesFilters[species];
+                              return (
+                                <button
+                                  key={species}
+                                  type="button"
+                                  onClick={() => toggleSpecies(species)}
+                                  aria-pressed={isActive}
+                                  className={clsx(
+                                    "flex items-center gap-1 rounded-full border px-3 py-1 text-xs transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300",
+                                    isActive
+                                      ? "border-brand-400 bg-brand-400/20 text-brand-100"
+                                      : "border-white/15 bg-white/5 text-white/60 hover:bg-white/10",
+                                  )}
+                                >
+                                  {isActive ? <Check className="h-3.5 w-3.5" /> : null}
+                                  {species}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
           </div>
         </div>
 

@@ -47,7 +47,7 @@ export default function MapPage() {
   return (
     <main>
       <NavBar />
-      <section className="pt-28 pb-16">
+      <section className="px-4 pt-28 pb-16 sm:px-6">
         <div className="container space-y-10">
           <header className="max-w-3xl space-y-4">
             <p className="text-sm uppercase tracking-[0.3em] text-white/60">Plan smarter</p>
