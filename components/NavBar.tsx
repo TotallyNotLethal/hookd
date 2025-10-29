@@ -2,7 +2,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getAuth, onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { app } from '@/lib/firebaseClient';
@@ -40,7 +40,9 @@ export default function NavBar() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isNotificationPreferencesOpen, setIsNotificationPreferencesOpen] = useState(false);
   const [isClearingNotifications, setIsClearingNotifications] = useState(false);
+  const [navHeight, setNavHeight] = useState<string>('5.5rem');
   const notificationsContainerRef = useRef<HTMLDivElement | null>(null);
+  const headerRef = useRef<HTMLElement | null>(null);
 
   const {
     notifications,
@@ -110,6 +112,44 @@ export default function NavBar() {
       document.removeEventListener('keydown', handleKeyDown);
     };
   }, [isNotificationsOpen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const updateNavHeight = () => {
+      if (!headerRef.current) {
+        return;
+      }
+
+      const height = headerRef.current.offsetHeight;
+      const value = `${height}px`;
+      setNavHeight(value);
+      document.documentElement.style.setProperty('--nav-height', value);
+    };
+
+    updateNavHeight();
+
+    let resizeObserver: ResizeObserver | null = null;
+
+    if (typeof ResizeObserver !== 'undefined' && headerRef.current) {
+      resizeObserver = new ResizeObserver(() => {
+        updateNavHeight();
+      });
+      resizeObserver.observe(headerRef.current);
+    } else {
+      window.addEventListener('resize', updateNavHeight);
+    }
+
+    return () => {
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      } else {
+        window.removeEventListener('resize', updateNavHeight);
+      }
+    };
+  }, []);
 
   const isProMember = useMemo(() => Boolean(profile?.isPro), [profile?.isPro]);
 
@@ -284,7 +324,11 @@ export default function NavBar() {
 
   return (
     <>
-      <header className="fixed top-0 left-0 right-0 z-[1000] bg-slate-950/95 backdrop-blur border-b border-white/10">
+      <header
+        ref={headerRef}
+        style={{ '--nav-height': navHeight } as CSSProperties}
+        className="fixed top-0 left-0 right-0 z-[1000] bg-slate-950/95 backdrop-blur border-b border-white/10"
+      >
         <div className="container py-4">
         <div className="flex items-center justify-between">
           {/* Logo */}
