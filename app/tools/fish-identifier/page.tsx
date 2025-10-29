@@ -4,16 +4,23 @@ import { FormEvent, useEffect, useState } from "react";
 import NavBar from "@/components/NavBar";
 import Image from "next/image";
 
-interface Prediction {
+interface CandidatePrediction {
   species: string;
   confidence: number;
-  tips: string;
+  tips?: string;
+  label: string;
+}
+
+interface PredictionResponse {
+  predictions: CandidatePrediction[];
+  lowConfidence?: boolean;
+  note?: string;
 }
 
 export default function FishIdentifierPage() {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [prediction, setPrediction] = useState<Prediction | null>(null);
+  const [result, setResult] = useState<PredictionResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +37,7 @@ export default function FishIdentifierPage() {
     }
     setError(null);
     setIsLoading(true);
-    setPrediction(null);
+    setResult(null);
 
     const formData = new FormData();
     formData.append("file", file);
@@ -47,13 +54,16 @@ export default function FishIdentifierPage() {
         throw new Error(data.error || "Unable to identify fish right now.");
       }
 
-      setPrediction(data as Prediction);
+      setResult(data as PredictionResponse);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unexpected error identifying fish.");
     } finally {
       setIsLoading(false);
     }
   };
+
+  const topPrediction = result?.predictions?.[0];
+  const otherPredictions = result?.predictions?.slice(1) ?? [];
 
   return (
     <main>
@@ -80,7 +90,7 @@ export default function FishIdentifierPage() {
               onChange={(event) => {
                 const nextFile = event.target.files?.[0] ?? null;
                 setFile(nextFile);
-                setPrediction(null);
+                setResult(null);
                 if (nextFile) {
                   const url = URL.createObjectURL(nextFile);
                   setPreviewUrl(url);
@@ -90,7 +100,9 @@ export default function FishIdentifierPage() {
               }}
               className="mt-2 w-full rounded-xl border border-dashed border-white/20 bg-white/5 px-4 py-3 text-sm text-white/70 focus:outline-none focus:ring-2 focus:ring-brand-400"
             />
-            <p className="mt-2 text-xs text-white/50">Supported formats: JPG, PNG. Photos never leave your device in this demo.</p>
+            <p className="mt-2 text-xs text-white/50">
+              Supported formats: JPG, PNG. Photos never leave your device in this demo.
+            </p>
           </div>
 
           {previewUrl && (
@@ -104,14 +116,50 @@ export default function FishIdentifierPage() {
           </button>
 
           {error && <p className="text-sm text-red-300">{error}</p>}
-          {prediction && (
-            <div className="rounded-3xl border border-brand-500/40 bg-brand-500/10 p-5 space-y-2">
-              <p className="text-sm uppercase tracking-[0.3em] text-brand-100">Prediction</p>
-              <h2 className="text-2xl font-semibold text-white">{prediction.species}</h2>
-              <p className="text-sm text-white/70">Confidence: {(prediction.confidence * 100).toFixed(0)}%</p>
-              <p className="text-sm text-brand-100">Tip: {prediction.tips}</p>
+          {result && result.predictions?.length ? (
+            <div className="rounded-3xl border border-brand-500/40 bg-brand-500/10 p-5 space-y-4">
+              <div className="space-y-1">
+                <p className="text-sm uppercase tracking-[0.3em] text-brand-100">Top match</p>
+                <h2 className="text-2xl font-semibold text-white">{topPrediction?.species ?? "Unknown"}</h2>
+                {topPrediction && topPrediction.label !== topPrediction.species && (
+                  <p className="text-xs uppercase tracking-[0.3em] text-white/60">Model label: {topPrediction.label}</p>
+                )}
+                {topPrediction && (
+                  <p className="text-sm text-white/70">Confidence: {(topPrediction.confidence * 100).toFixed(1)}%</p>
+                )}
+                {topPrediction?.tips && <p className="text-sm text-brand-100">Tip: {topPrediction.tips}</p>}
+              </div>
+
+              {result.lowConfidence && (
+                <p className="rounded-2xl border border-yellow-200/30 bg-yellow-200/10 p-3 text-sm text-yellow-100">
+                  {result.note ?? "The classifier isn&apos;t confident—try sharper lighting or a closer profile view."}
+                </p>
+              )}
+
+              {otherPredictions.length > 0 && (
+                <div className="space-y-3">
+                  <p className="text-xs uppercase tracking-[0.3em] text-white/60">Other candidates</p>
+                  <ul className="space-y-2">
+                    {otherPredictions.map((candidate, index) => (
+                      <li
+                        key={`${candidate.label}-${index}`}
+                        className="rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-white/80"
+                      >
+                        <div className="flex items-baseline justify-between gap-4">
+                          <span className="font-medium text-white">#{index + 2} {candidate.species}</span>
+                          <span>{(candidate.confidence * 100).toFixed(1)}%</span>
+                        </div>
+                        {candidate.label !== candidate.species && (
+                          <p className="text-[10px] uppercase tracking-[0.3em] text-white/50">Model label: {candidate.label}</p>
+                        )}
+                        {candidate.tips && <p className="mt-1 text-xs text-white/60">Tip: {candidate.tips}</p>}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
-          )}
+          ) : null}
         </form>
       </section>
     </main>
