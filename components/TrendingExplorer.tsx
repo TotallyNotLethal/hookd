@@ -125,7 +125,7 @@ export default function TrendingExplorer({
 
   const dynamicSpecies = useMemo<DisplaySpecies[]>(() => {
     return speciesInsights
-      .map((insight) => {
+      .map<DisplaySpecies | null>((insight) => {
         const generatedAt = insight.generatedAt instanceof Date ? insight.generatedAt : null;
         const latest = insight.latestCatchAt instanceof Date ? insight.latestCatchAt : null;
         if (!generatedAt || !latest) {
@@ -189,7 +189,7 @@ export default function TrendingExplorer({
           isFallback: false,
         } satisfies DisplaySpecies;
       })
-      .filter((value): value is DisplaySpecies => Boolean(value));
+      .filter((value): value is DisplaySpecies => value !== null);
   }, [speciesInsights, recencyCutoffMs]);
 
   const speciesOptions = useMemo<DisplaySpecies[]>(() => {
