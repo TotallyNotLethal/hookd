@@ -307,6 +307,21 @@ function FeedContent() {
     router.replace(params.toString() ? `/feed?${params}` : "/feed", { scroll: false });
   }, [router, searchParamsString]);
 
+  const activeIndex = useMemo(
+    () => (active ? items.findIndex((item) => item.id === active.id) : -1),
+    [active, items],
+  );
+
+  const previousPost = useMemo(
+    () => (activeIndex > 0 ? items[activeIndex - 1] : null),
+    [activeIndex, items],
+  );
+
+  const nextPost = useMemo(
+    () => (activeIndex >= 0 && activeIndex < items.length - 1 ? items[activeIndex + 1] : null),
+    [activeIndex, items],
+  );
+
   useEffect(() => {
     if (!catchIdParam) {
       defer(() => {
@@ -439,7 +454,13 @@ function FeedContent() {
         />
       )}
       {active && (
-        <PostDetailModal post={active} onClose={closeDetail} size="wide" />
+        <PostDetailModal
+          post={active}
+          onClose={closeDetail}
+          size="wide"
+          onNavigatePrevious={previousPost ? () => openDetail(previousPost) : undefined}
+          onNavigateNext={nextPost ? () => openDetail(nextPost) : undefined}
+        />
       )}
     </main>
   );
