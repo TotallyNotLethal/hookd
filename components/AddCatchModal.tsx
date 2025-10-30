@@ -1,6 +1,6 @@
 'use client';
 
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChangeEvent, FormEvent, Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import type { LeafletEvent } from 'leaflet';
@@ -127,6 +127,12 @@ interface Coordinates {
   lat: number;
   lng: number;
 }
+
+type UploadSelection = {
+  id: string;
+  file: File;
+  previewUrl: string;
+};
 
 const parseGpsPositionString = (value: unknown): Coordinates | null => {
   if (typeof value !== 'string') {
@@ -264,6 +270,12 @@ const formatWeight = ({ pounds, ounces }: WeightValue) => {
 
 export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [file, setFile] = useState<File | null>(null);
+  const [allUploads, setAllUploads] = useState<UploadSelection[]>([]);
+  const [pendingUploads, setPendingUploads] = useState<UploadSelection[]>([]);
+  const [currentCatchUploads, setCurrentCatchUploads] = useState<UploadSelection[]>([]);
+  const [isSelectingCatchUploads, setIsSelectingCatchUploads] = useState(false);
+  const [selectedUploadIds, setSelectedUploadIds] = useState<Set<string>>(new Set());
+  const [completedCatchCount, setCompletedCatchCount] = useState(0);
   const [species, setSpecies] = useState('');
   const [weight, setWeight] = useState<WeightValue>({ pounds: 0, ounces: 0 });
   const [verifiedWeight, setVerifiedWeight] = useState<WeightValue | null>(null);
@@ -567,6 +579,41 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     [],
   );
 
+  const resetCatchDetails = useCallback(() => {
+    setFile(null);
+    setSpecies('');
+    setWeight({ pounds: 0, ounces: 0 });
+    setVerifiedWeight(null);
+    setVerifiedLength('');
+    setOriginalFile(null);
+    setLocation('');
+    setIsLocationPrivate(false);
+    setCaption('');
+    setTackleLureType('');
+    setTackleColor('');
+    setTackleRigging('');
+    setTackleNotes('');
+    setSelectedTackleFavorite(null);
+    setTackleError(null);
+    setIsTrophy(false);
+    setCaptureDate('');
+    setCaptureTime('');
+    setCoordinates(null);
+    initialCaptureRef.current = null;
+    setCaptureWasCorrected(false);
+    setEnvironmentSnapshot(null);
+    setEnvironmentBands(null);
+    setEnvironmentError(null);
+    setEnvironmentLoading(false);
+    updateMapZoom(4);
+    userAdjustedZoomRef.current = false;
+    setLocationDirty(false);
+    setLocationError(null);
+    setGeolocationStatus(null);
+    setGeolocationPending(false);
+    setReadingMetadata(false);
+  }, [updateMapZoom]);
+
   const handleZoomChange = useCallback(
     (nextZoom: number, isUserInteraction: boolean) => {
       if (isUserInteraction) {
@@ -672,26 +719,29 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     setIsNativeApp(isCapacitorNative());
   }, []);
 
-  useEffect(() => {
-    isMountedRef.current = true;
-    const supported = typeof navigator !== 'undefined' && Boolean(navigator.geolocation);
-    setGeolocationSupported(supported);
-
-    if (!supported) {
-      setGeolocationStatus('Location services are not available in this browser.');
-      updateMapZoom(4);
-      userAdjustedZoomRef.current = false;
-    }
-
-    return () => {
-      isMountedRef.current = false;
+  const makeUploadSelection = useCallback((selectedFile: File): UploadSelection => {
+    return {
+      id: crypto.randomUUID(),
+      file: selectedFile,
+      previewUrl: URL.createObjectURL(selectedFile),
     };
-  }, [updateMapZoom]);
+  }, []);
 
-  const handleFileSelection = useCallback(
-    async (selectedFile: File) => {
-      setFile(selectedFile);
-      setOriginalFile(selectedFile);
+  const initializeCatchFromUploads = useCallback(
+    async (uploads: UploadSelection[]) => {
+      if (!uploads.length) {
+        return;
+      }
+
+      resetCatchDetails();
+      setCurrentCatchUploads(uploads);
+      const primaryFile = uploads[0]?.file ?? null;
+      if (!primaryFile) {
+        return;
+      }
+
+      setFile(primaryFile);
+      setOriginalFile(primaryFile);
       setReadingMetadata(true);
       setCaptureDate('');
       setCaptureTime('');
@@ -707,8 +757,9 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       setLocation('');
       setLocationDirty(false);
       setLocationError(null);
+
       try {
-        const metadata = (await parse(selectedFile, {
+        const metadata = (await parse(primaryFile, {
           pick: [
             'DateTimeOriginal',
             'GPSLatitude',
@@ -732,10 +783,10 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
             }
           | undefined;
 
-        const capturedAt = parseExifDateTime(metadata?.DateTimeOriginal);
-        if (capturedAt) {
+        const capturedAtMetadata = parseExifDateTime(metadata?.DateTimeOriginal);
+        if (capturedAtMetadata) {
           const iso = new Date(
-            capturedAt.getTime() - capturedAt.getTimezoneOffset() * 60 * 1000,
+            capturedAtMetadata.getTime() - capturedAtMetadata.getTimezoneOffset() * 60 * 1000,
           )
             .toISOString()
             .slice(0, 16);
@@ -774,24 +825,152 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
             await lookupLocationName(fallbackPosition.lat, fallbackPosition.lng);
           }
         }
-      } catch (err) {
-        console.warn('Unable to read photo metadata', err);
+      } catch (error) {
+        console.warn('Unable to read photo metadata', error);
       } finally {
         setReadingMetadata(false);
       }
     },
-    [lookupLocationName, updateMapZoom],
+    [lookupLocationName, resetCatchDetails, updateMapZoom],
   );
 
-  const handleFileChange = useCallback(
+  const loadSingleFile = useCallback(
+    async (selectedFile: File) => {
+      const upload = makeUploadSelection(selectedFile);
+      setAllUploads([upload]);
+      setPendingUploads([]);
+      setIsSelectingCatchUploads(false);
+      setSelectedUploadIds(new Set([upload.id]));
+      setCompletedCatchCount(0);
+      await initializeCatchFromUploads([upload]);
+    },
+    [initializeCatchFromUploads, makeUploadSelection],
+  );
+
+  const handleUploadInputChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
       const files = event.target.files;
-      if (files && files[0]) {
-        await handleFileSelection(files[0]);
+      if (!files || files.length === 0) {
+        return;
       }
+
+      const uploads = Array.from(files, (item) => makeUploadSelection(item));
+      setAllUploads(uploads);
+      setCompletedCatchCount(0);
+
+      if (uploads.length === 1) {
+        await initializeCatchFromUploads(uploads);
+        setPendingUploads([]);
+        setIsSelectingCatchUploads(false);
+        setSelectedUploadIds(new Set([uploads[0]!.id]));
+      } else {
+        resetCatchDetails();
+        setCurrentCatchUploads([]);
+        setPendingUploads(uploads);
+        setIsSelectingCatchUploads(true);
+        setSelectedUploadIds(new Set(uploads.map((upload) => upload.id)));
+      }
+
+      // allow re-selecting the same files
+      event.target.value = '';
     },
-    [handleFileSelection],
+    [initializeCatchFromUploads, makeUploadSelection, resetCatchDetails],
   );
+
+  const handleToggleUploadSelection = useCallback((id: string) => {
+    setSelectedUploadIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectAllUploads = useCallback(() => {
+    setSelectedUploadIds(new Set(pendingUploads.map((upload) => upload.id)));
+  }, [pendingUploads]);
+
+  const handleConfirmSelection = useCallback(async () => {
+    if (selectedUploadIds.size === 0) {
+      alert('Select at least one photo for this catch.');
+      return;
+    }
+
+    const selected = pendingUploads.filter((upload) => selectedUploadIds.has(upload.id));
+    if (!selected.length) {
+      alert('Select at least one photo for this catch.');
+      return;
+    }
+
+    const remaining = pendingUploads.filter((upload) => !selectedUploadIds.has(upload.id));
+    setPendingUploads(remaining);
+    setIsSelectingCatchUploads(false);
+    setSelectedUploadIds(new Set());
+    await initializeCatchFromUploads(selected);
+  }, [initializeCatchFromUploads, pendingUploads, selectedUploadIds]);
+
+  const handleChangePhotos = useCallback(() => {
+    if (!currentCatchUploads.length) {
+      return;
+    }
+
+    resetCatchDetails();
+    setPendingUploads((previous) => {
+      const merged = [...currentCatchUploads, ...previous];
+      const seen = new Set<string>();
+      const deduped: UploadSelection[] = [];
+      for (const item of merged) {
+        if (seen.has(item.id)) continue;
+        seen.add(item.id);
+        deduped.push(item);
+      }
+      return deduped;
+    });
+    setSelectedUploadIds(new Set(currentCatchUploads.map((upload) => upload.id)));
+    setCurrentCatchUploads([]);
+    setIsSelectingCatchUploads(true);
+  }, [currentCatchUploads, resetCatchDetails]);
+
+  useEffect(() => {
+    if (!isSelectingCatchUploads) {
+      return;
+    }
+
+    setSelectedUploadIds((previous) => {
+      const validIds = new Set(
+        Array.from(previous).filter((id) => pendingUploads.some((upload) => upload.id === id)),
+      );
+      if (validIds.size > 0) {
+        return validIds;
+      }
+      return new Set(pendingUploads.map((upload) => upload.id));
+    });
+  }, [isSelectingCatchUploads, pendingUploads]);
+
+  useEffect(() => {
+    return () => {
+      allUploads.forEach((upload) => URL.revokeObjectURL(upload.previewUrl));
+    };
+  }, [allUploads]);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    const supported = typeof navigator !== 'undefined' && Boolean(navigator.geolocation);
+    setGeolocationSupported(supported);
+
+    if (!supported) {
+      setGeolocationStatus('Location services are not available in this browser.');
+      updateMapZoom(4);
+      userAdjustedZoomRef.current = false;
+    }
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [updateMapZoom]);
 
   const markCaptureManualChange = useCallback((nextDate: string, nextTime: string) => {
     const initial = initialCaptureRef.current;
@@ -856,26 +1035,30 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const handleNativeCatchPhoto = useCallback(() => {
     void handleNativePhotoFlow(
       'camera',
-      (selected) => handleFileSelection(selected),
+      async (selected) => {
+        await loadSingleFile(selected);
+      },
       {
         permissionMessage:
           'Camera access is required to capture a catch photo. Please enable camera permissions and try again.',
         genericMessage: 'Unable to capture a photo. Please try again or choose one from your library.',
       },
     );
-  }, [handleFileSelection, handleNativePhotoFlow]);
+  }, [handleNativePhotoFlow, loadSingleFile]);
 
   const handleNativeCatchPhotoFromLibrary = useCallback(() => {
     void handleNativePhotoFlow(
       'gallery',
-      (selected) => handleFileSelection(selected),
+      async (selected) => {
+        await loadSingleFile(selected);
+      },
       {
         permissionMessage:
           'Photo library access is required to select a catch photo. Please enable photo permissions and try again.',
         genericMessage: 'Unable to select a photo from your library. Please try again.',
       },
     );
-  }, [handleFileSelection, handleNativePhotoFlow]);
+  }, [handleNativePhotoFlow, loadSingleFile]);
 
   const handleNativeOriginalPhoto = useCallback(() => {
     void handleNativePhotoFlow(
@@ -1086,7 +1269,13 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!user) return alert('Sign in first!');
-    if (!file) return alert('Upload an image');
+    const filesForCatch = currentCatchUploads.map((upload) => upload.file);
+    if (!filesForCatch.length) {
+      alert('Select at least one photo for this catch.');
+      return;
+    }
+
+    const primaryFile = file ?? filesForCatch[0]!;
     const trimmedSpecies = species.trim();
     if (!trimmedSpecies) return alert('Please choose a species or enter one manually.');
     if (!weight.pounds && !weight.ounces) return alert('Please select a weight.');
@@ -1217,7 +1406,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         locationPrivate: isLocationPrivate,
         caption,
         trophy: isTrophy,
-        file,
+        file: primaryFile,
+        files: filesForCatch,
         captureDate: captureDate || null,
         captureTime: captureTime || null,
         capturedAt: capturedAtDate,
@@ -1298,6 +1488,16 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       }
 
       alert('Catch uploaded!');
+      setCompletedCatchCount((count) => count + 1);
+
+      if (pendingUploads.length > 0) {
+        resetCatchDetails();
+        setCurrentCatchUploads([]);
+        setIsSelectingCatchUploads(true);
+        setSelectedUploadIds(new Set(pendingUploads.map((upload) => upload.id)));
+        return;
+      }
+
       onClose();
     } catch (err) {
       console.error(err);
@@ -1328,48 +1528,157 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-4 pr-1">
-          {/* Photo */}
-          <div className="space-y-1">
-            <label
-              className="text-sm text-white/70"
-              htmlFor={isNativeApp ? undefined : 'catch-file'}
-            >
-              Catch photo
-            </label>
-            {isNativeApp ? (
-              <>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={handleNativeCatchPhoto}
-                    className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
-                  >
-                    Take photo
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleNativeCatchPhotoFromLibrary}
-                    className="rounded-lg border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white/80 transition hover:border-white/30 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
-                  >
-                    Choose from library
-                  </button>
-                </div>
-                {file?.name && (
-                  <p className="text-xs text-white/60">Selected: {file.name}</p>
+          {isSelectingCatchUploads ? (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <h3 className="text-base font-semibold text-white">Group your catch photos</h3>
+                <p className="text-sm text-white/70">
+                  Choose which photos belong to catch {completedCatchCount + 1}. Selected photos will be uploaded together.
+                </p>
+                {pendingUploads.length > 1 && (
+                  <p className="text-xs text-white/60">
+                    You can create multiple catches by grouping different photos in each step.
+                  </p>
                 )}
-              </>
-            ) : (
-              <input
-                id="catch-file"
-                type="file"
-                accept="image/*"
-                onChange={handleFileChange}
-                required
-                className="input file:mr-3 file:rounded-lg file:border-0 file:bg-brand-500 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
-              />
-            )}
-            {readingMetadata && <p className="text-xs text-white/50">Reading photo metadata…</p>}
-          </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {pendingUploads.map((upload, index) => {
+                  const selected = selectedUploadIds.has(upload.id);
+                  return (
+                    <label
+                      key={upload.id}
+                      className={`relative block cursor-pointer overflow-hidden rounded-xl border transition ${
+                        selected ? 'border-brand-400 ring-2 ring-brand-400/60' : 'border-white/15 hover:border-white/30'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                        checked={selected}
+                        onChange={() => handleToggleUploadSelection(upload.id)}
+                      />
+                      <img
+                        src={upload.previewUrl}
+                        alt={`Catch upload ${index + 1}`}
+                        className="h-32 w-full object-cover"
+                      />
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
+                      <div className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-2 text-xs font-semibold text-white">
+                        <span
+                          className={`flex h-6 w-6 items-center justify-center rounded-full border ${
+                            selected
+                              ? 'border-brand-200 bg-brand-500 text-white'
+                              : 'border-white/50 bg-black/50 text-white/70'
+                          }`}
+                        >
+                          {selected ? '✓' : index + 1}
+                        </span>
+                        <span>{selected ? 'Selected' : 'Tap to select'}</span>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-white/50">
+                Tip: Group multiple angles of the same fish together. Leave photos unchecked to log them as separate catches.
+              </p>
+            </div>
+          ) : (
+            <Fragment>
+              {/* Photo */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label
+                    className="text-sm text-white/70"
+                    htmlFor={isNativeApp ? undefined : 'catch-file'}
+                  >
+                    Catch photos
+                  </label>
+                  {allUploads.length > 1 && (
+                    <span className="text-xs text-white/60">
+                      Catch {completedCatchCount + 1}
+                      {pendingUploads.length
+                        ? ` • ${pendingUploads.length} photo${pendingUploads.length === 1 ? '' : 's'} remaining`
+                        : ''}
+                    </span>
+                  )}
+                </div>
+                {currentCatchUploads.length > 0 ? (
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {currentCatchUploads.map((upload, index) => (
+                      <div
+                        key={upload.id}
+                        className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg border border-white/10"
+                      >
+                        <img
+                          src={upload.previewUrl}
+                          alt={`Catch photo ${index + 1}`}
+                          className="h-full w-full object-cover"
+                        />
+                        {currentCatchUploads.length > 1 && (
+                          <span className="absolute bottom-1 right-1 rounded-full bg-black/60 px-2 text-[10px] font-medium text-white">
+                            {index + 1}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-white/50">Select one or more photos to start logging your catch.</p>
+                )}
+                {allUploads.length > 1 && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-white/60">
+                    <span>
+                      {pendingUploads.length
+                        ? `${pendingUploads.length} photo${pendingUploads.length === 1 ? '' : 's'} waiting to be grouped.`
+                        : 'All uploaded photos are assigned to this catch.'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleChangePhotos}
+                      className="text-brand-200 transition hover:text-brand-100"
+                    >
+                      Change photos
+                    </button>
+                  </div>
+                )}
+                {isNativeApp ? (
+                  <Fragment>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleNativeCatchPhoto}
+                        className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                      >
+                        Take photo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleNativeCatchPhotoFromLibrary}
+                        className="rounded-lg border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white/80 transition hover:border-white/30 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                      >
+                        Choose from library
+                      </button>
+                    </div>
+                    {currentCatchUploads.length > 0 && (
+                      <p className="text-xs text-white/60">
+                        Selected: {currentCatchUploads.map((upload) => upload.file.name).join(', ')}
+                      </p>
+                    )}
+                  </Fragment>
+                ) : (
+                  <input
+                    id="catch-file"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleUploadInputChange}
+                    required={!currentCatchUploads.length}
+                    className="input file:mr-3 file:rounded-lg file:border-0 file:bg-brand-500 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white"
+                  />
+                )}
+                {readingMetadata && <p className="text-xs text-white/50">Reading photo metadata…</p>}
+              </div>
 
           {/* Inputs */}
           <div className="grid gap-3 sm:grid-cols-2">
@@ -1683,83 +1992,112 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
                 {isSearchingLocation ? 'Searching for location…' : 'Confirming location…'}
               </p>
             )}
-              {(geolocationStatus || geolocationSupported) && (
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  {geolocationStatus && <span className="text-white/50">{geolocationStatus}</span>}
-                  {geolocationSupported && (
-                    <button
-                      type="button"
-                      onClick={requestGeolocation}
-                      className="rounded-full border border-white/20 px-3 py-1 text-white/70 transition hover:border-white/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={geolocationPending}
-                    >
-                      {geolocationPending ? 'Locating…' : 'Use my location'}
-                    </button>
-                  )}
-                </div>
-              )}
-              {locationError && (
-                <p className="text-xs text-red-400">{locationError}</p>
-              )}
-              <div className="h-56 w-full overflow-hidden rounded-xl border border-white/10">
-            <MapContainer
-              center={coordinates ? [coordinates.lat, coordinates.lng] : [DEFAULT_CENTER.lat, DEFAULT_CENTER.lng]}
-              zoom={mapZoom}
-              scrollWheelZoom
-              className="h-full w-full"
-            >
-              <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            {(geolocationStatus || geolocationSupported) && (
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                {geolocationStatus && <span className="text-white/50">{geolocationStatus}</span>}
+                {geolocationSupported && (
+                  <button
+                    type="button"
+                    onClick={requestGeolocation}
+                    className="rounded-full border border-white/20 px-3 py-1 text-white/70 transition hover:border-white/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={geolocationPending}
+                  >
+                    {geolocationPending ? 'Locating…' : 'Use my location'}
+                  </button>
+                )}
+              </div>
+            )}
+            {locationError && <p className="text-xs text-red-400">{locationError}</p>}
+            <div className="h-56 w-full overflow-hidden rounded-xl border border-white/10">
+              <MapContainer
+                center={coordinates ? [coordinates.lat, coordinates.lng] : [DEFAULT_CENTER.lat, DEFAULT_CENTER.lng]}
+                zoom={mapZoom}
+                scrollWheelZoom
+                className="h-full w-full"
+              >
+                <TileLayer
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                />
+                <LocationUpdater coordinates={coordinates} zoom={mapZoom} />
+                <ZoomTracker onZoomChange={handleZoomChange} />
+                {coordinates && <Marker position={[coordinates.lat, coordinates.lng]} icon={markerIcon} />}
+                <LocationClickHandler onSelect={handleCoordinatesChange} />
+              </MapContainer>
+            </div>
+            <div className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+              <input
+                id="location-private"
+                type="checkbox"
+                checked={isLocationPrivate}
+                onChange={(event) => handleLocationPrivacyChange(event.target.checked)}
+                className="mt-1"
               />
-              <LocationUpdater coordinates={coordinates} zoom={mapZoom} />
-              <ZoomTracker onZoomChange={handleZoomChange} />
-              {coordinates && <Marker position={[coordinates.lat, coordinates.lng]} icon={markerIcon} />}
-              <LocationClickHandler onSelect={handleCoordinatesChange} />
-            </MapContainer>
-          </div>
-          <div className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
-            <input
-              id="location-private"
-              type="checkbox"
-              checked={isLocationPrivate}
-              onChange={(event) => handleLocationPrivacyChange(event.target.checked)}
-              className="mt-1"
+              <div>
+                <label htmlFor="location-private" className="text-sm font-semibold text-white">
+                  Keep location private
+                </label>
+                <p className="text-xs text-white/60">
+                  When enabled, your catch location stays visible only to you and will not appear on the public map.
+                </p>
+              </div>
+            </div>
+              </div>
+            </Fragment>
+          )}
+        </div>
+
+        {!isSelectingCatchUploads && (
+          <Fragment>
+            {/* Caption */}
+            <textarea
+              className="input"
+              placeholder="Caption or notes"
+              value={caption}
+              onChange={(e) => setCaption(e.target.value)}
+              rows={3}
             />
-            <div>
-              <label htmlFor="location-private" className="text-sm font-semibold text-white">
-                Keep location private
-              </label>
-              <p className="text-xs text-white/60">
-                When enabled, your catch location stays visible only to you and will not appear on the public map.
-              </p>
+
+            <label className="flex items-center gap-2 text-sm pt-2 flex-shrink-0">
+              <input type="checkbox" checked={isTrophy} onChange={(e) => setIsTrophy(e.target.checked)} />
+              Mark as Trophy Catch
+            </label>
+          </Fragment>
+        )}
+
+        {isSelectingCatchUploads ? (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-3 flex-shrink-0">
+            <button type="button" onClick={onClose} className="btn-secondary w-full sm:w-auto">
+              Cancel
+            </button>
+            <div className="flex flex-col gap-2 sm:flex-row sm:gap-3 w-full sm:w-auto">
+              <button
+                type="button"
+                onClick={handleSelectAllUploads}
+                className="rounded-lg border border-white/15 px-4 py-2 text-sm font-medium text-white/80 transition hover:border-white/30 hover:text-white"
+              >
+                Select all
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSelection}
+                className="btn-primary w-full sm:w-auto"
+                disabled={selectedUploadIds.size === 0}
+              >
+                Continue
+              </button>
             </div>
           </div>
-        </div>
-
-          {/* Caption */}
-          <textarea
-            className="input"
-            placeholder="Caption or notes"
-            value={caption}
-            onChange={(e) => setCaption(e.target.value)}
-            rows={3}
-          />
-        </div>
-
-        <label className="flex items-center gap-2 text-sm pt-2 flex-shrink-0">
-          <input type="checkbox" checked={isTrophy} onChange={(e) => setIsTrophy(e.target.checked)} />
-          Mark as Trophy Catch
-        </label>
-
-        <div className="flex flex-col gap-3 sm:flex-row sm:justify-end pt-3 flex-shrink-0">
-          <button type="button" onClick={onClose} className="btn-secondary w-full sm:w-auto">
-            Cancel
-          </button>
-          <button type="submit" disabled={uploading} className="btn-primary w-full sm:w-auto">
-            {uploading ? 'Uploading…' : 'Upload'}
-          </button>
-        </div>
+        ) : (
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-end pt-3 flex-shrink-0">
+            <button type="button" onClick={onClose} className="btn-secondary w-full sm:w-auto">
+              Cancel
+            </button>
+            <button type="submit" disabled={uploading} className="btn-primary w-full sm:w-auto">
+              {uploading ? 'Uploading…' : 'Upload'}
+            </button>
+          </div>
+        )}
       </form>
     </div>
   );

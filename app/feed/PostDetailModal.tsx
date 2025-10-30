@@ -1,5 +1,6 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
+import type { MouseEvent } from 'react';
 import {
   addComment,
   deleteCatch,
@@ -44,6 +45,39 @@ export default function PostDetailModal({ post, onClose, size = 'default' }: Pos
   const canShowLocation =
     post?.location && (!locationIsPrivate || (user && user.uid === post.uid));
   const isOwner = user?.uid === post?.uid;
+  const images = useMemo(() => {
+    if (Array.isArray(post?.imageUrls) && post.imageUrls.length > 0) {
+      return post.imageUrls.filter((url: unknown): url is string => typeof url === 'string');
+    }
+    return post?.imageUrl ? [post.imageUrl] : [];
+  }, [post?.imageUrl, post?.imageUrls]);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+
+  useEffect(() => {
+    setActiveImageIndex(0);
+  }, [post?.id, images.length]);
+
+  const showPrevImage = useCallback(
+    (event: MouseEvent) => {
+      event.stopPropagation();
+      setActiveImageIndex((prev) => {
+        if (images.length === 0) return prev;
+        return prev === 0 ? images.length - 1 : prev - 1;
+      });
+    },
+    [images.length],
+  );
+
+  const showNextImage = useCallback(
+    (event: MouseEvent) => {
+      event.stopPropagation();
+      setActiveImageIndex((prev) => {
+        if (images.length === 0) return prev;
+        return prev === images.length - 1 ? 0 : prev + 1;
+      });
+    },
+    [images.length],
+  );
 
   useEffect(() => {
     if (!user?.uid || !post?.id) return;
@@ -158,12 +192,46 @@ export default function PostDetailModal({ post, onClose, size = 'default' }: Pos
                 animate={{ scale: 1 }}
                 transition={{ duration: 0.4 }}
               >
-                {post.imageUrl && (
-                  <img
-                    src={post.imageUrl}
-                    alt={post.species}
-                    className="max-h-full max-w-full object-contain"
-                  />
+                {images.length > 0 ? (
+                  <div className="relative flex h-full w-full items-center justify-center">
+                    <img
+                      src={images[activeImageIndex]}
+                      alt={post.species}
+                      className="max-h-full max-w-full object-contain"
+                    />
+                    {images.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={showPrevImage}
+                          className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-black/60 px-3 py-2 text-lg text-white transition hover:bg-black/80"
+                        >
+                          ‹
+                        </button>
+                        <button
+                          type="button"
+                          onClick={showNextImage}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-black/60 px-3 py-2 text-lg text-white transition hover:bg-black/80"
+                        >
+                          ›
+                        </button>
+                        <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-1">
+                          {images.map((_, index) => (
+                            <span
+                              key={index}
+                              className={`h-2.5 w-2.5 rounded-full transition ${
+                                index === activeImageIndex ? 'bg-white' : 'bg-white/40'
+                              }`}
+                            />
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-white/60">
+                    No photo available
+                  </div>
                 )}
               </motion.div>
 

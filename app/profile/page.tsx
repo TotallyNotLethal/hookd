@@ -55,6 +55,7 @@ type UserCatch = {
   species?: string;
   weight?: string;
   imageUrl?: string;
+  imageUrls?: string[];
   trophy?: boolean;
   [key: string]: any;
 };

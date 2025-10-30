@@ -105,6 +105,7 @@ type Profile = {
 type Catch = {
   id: string;
   imageUrl?: string;
+  imageUrls?: string[];
   species?: string;
   weight?: string;
   trophy?: boolean;
@@ -242,6 +243,14 @@ export default function ProfileView({
   const featuredCatch = theme.featuredCatchId
     ? catches.find((catchItem) => catchItem.id === theme.featuredCatchId)
     : null;
+  const featuredImage = useMemo(() => {
+    if (!featuredCatch) return null;
+    if (Array.isArray(featuredCatch.imageUrls) && featuredCatch.imageUrls.length > 0) {
+      const primary = featuredCatch.imageUrls.find((url): url is string => typeof url === 'string');
+      return primary ?? featuredCatch.imageUrl ?? null;
+    }
+    return featuredCatch.imageUrl ?? null;
+  }, [featuredCatch]);
 
   const wrapperClasses = clsx(
     'profile-theme flex flex-col',
@@ -520,11 +529,11 @@ export default function ProfileView({
           </div>
         ) : null}
 
-        {featuredCatch && featuredCatch.imageUrl && (
+        {featuredCatch && featuredImage && (
           <div className={heroCardClasses}>
             <div className="relative h-full min-h-[220px] w-full">
               <Image
-                src={featuredCatch.imageUrl}
+                src={featuredImage}
                 alt={featuredCatch.species || 'Featured catch'}
                 fill
                 className="object-cover"
@@ -675,7 +684,10 @@ export default function ProfileView({
         {trophyCatches.length ? (
           <div className="flex gap-4 overflow-auto pb-2">
             {trophyCatches.map((trophy) => {
-              const imageSrc = trophy.imageUrl || '/logo.svg';
+              const imageSrc =
+                (Array.isArray(trophy.imageUrls) && trophy.imageUrls.length > 0
+                  ? trophy.imageUrls.find((url): url is string => typeof url === 'string')
+                  : trophy.imageUrl) || '/logo.svg';
               return (
                 <div
                   key={trophy.id}
@@ -711,7 +723,10 @@ export default function ProfileView({
         {standardCatches.length ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {standardCatches.map((catchItem) => {
-              const imageSrc = catchItem.imageUrl || '/logo.svg';
+              const imageSrc =
+                (Array.isArray(catchItem.imageUrls) && catchItem.imageUrls.length > 0
+                  ? catchItem.imageUrls.find((url): url is string => typeof url === 'string')
+                  : catchItem.imageUrl) || '/logo.svg';
               return (
                 <div
                   key={catchItem.id}

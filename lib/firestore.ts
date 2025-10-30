@@ -841,6 +841,7 @@ export type CatchInput = {
   caption?: string;
   trophy?: boolean;
   file: File;
+  files?: File[];
   captureDate?: string | null;
   captureTime?: string | null;
   capturedAt?: Date | null;
@@ -871,6 +872,7 @@ export type CatchWithCoordinates = {
   capturedAt?: Timestamp | null;
   capturedAtDate?: Date | null;
   imageUrl?: string | null;
+  imageUrls?: string[] | null;
   likesCount?: number | null;
   commentsCount?: number | null;
   trophy?: boolean | null;
@@ -2369,14 +2371,22 @@ export async function sendTeamChatMessage(teamId: string, data: {
 
 /** ---------- Catches ---------- */
 export async function createCatch(input: CatchInput) {
-  const path = `catches/${input.uid}/${crypto.randomUUID()}`;
-  const storageRef = ref(storage, path);
+  const uploadFiles = input.files && input.files.length > 0 ? input.files : [input.file];
+  if (!uploadFiles.length) {
+    throw new Error('No photos provided for catch upload.');
+  }
 
-  // ✅ Wait for the upload to finish
-  await uploadBytes(storageRef, input.file);
+  const baseId = crypto.randomUUID();
+  const imageUrls: string[] = [];
 
-  // ✅ Fetch download URL AFTER upload completes
-  const imageUrl = await getDownloadURL(storageRef);
+  for (let index = 0; index < uploadFiles.length; index += 1) {
+    const fileRef = ref(storage, `catches/${input.uid}/${baseId}-${index}`);
+    await uploadBytes(fileRef, uploadFiles[index]!);
+    const url = await getDownloadURL(fileRef);
+    imageUrls.push(url);
+  }
+
+  const imageUrl = imageUrls[0] ?? '';
 
   // Extract hashtags from the caption
   const hashtags = input.caption
@@ -2443,6 +2453,7 @@ export async function createCatch(input: CatchInput) {
     locationPrivate: !!input.locationPrivate,
     hashtags,
     imageUrl,
+    imageUrls,
     trophy: !!input.trophy,
     likesCount: 0,
     commentsCount: 0,
@@ -2786,6 +2797,11 @@ export function subscribeToCatchesWithCoordinates(
       capturedAt: capturedAtTimestamp,
       capturedAtDate: capturedAtTimestamp ? capturedAtTimestamp.toDate() : null,
       imageUrl: data.imageUrl ?? null,
+      imageUrls: Array.isArray(data.imageUrls)
+        ? data.imageUrls.filter((url): url is string => typeof url === 'string')
+        : data.imageUrl
+        ? [data.imageUrl]
+        : null,
       likesCount: typeof data.likesCount === 'number' ? data.likesCount : null,
       commentsCount: typeof data.commentsCount === 'number' ? data.commentsCount : null,
       trophy: typeof data.trophy === 'boolean' ? data.trophy : null,
