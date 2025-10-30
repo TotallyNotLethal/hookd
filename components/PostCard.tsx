@@ -1,6 +1,10 @@
 'use client';
-import { useState, useEffect, useMemo, useCallback } from 'react';
-import type { MouseEvent } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import type {
+  MouseEvent,
+  PointerEvent as ReactPointerEvent,
+  TouchEvent as ReactTouchEvent,
+} from 'react';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth } from '@/lib/firebaseClient';
 import {
@@ -34,14 +38,37 @@ export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any
     return post?.imageUrl ? [post.imageUrl] : [];
   }, [post?.imageUrl, post?.imageUrls]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const imageGestureStateRef = useRef<
+    | {
+        pointerId: number | null;
+        startX: number;
+        startY: number;
+        isActive: boolean;
+      }
+    | null
+  >(null);
+  const touchGestureStateRef = useRef<
+    | {
+        startX: number;
+        startY: number;
+        isActive: boolean;
+      }
+    | null
+  >(null);
+  const supportsPointerEvents = useMemo(
+    () => typeof window !== 'undefined' && 'PointerEvent' in window,
+    [],
+  );
 
   useEffect(() => {
     setCurrentImageIndex(0);
   }, [post?.id, images.length]);
 
+  type StopEvent = { stopPropagation: () => void };
+
   const showPrevImage = useCallback(
-    (event: MouseEvent) => {
-      event.stopPropagation();
+    (event?: StopEvent) => {
+      event?.stopPropagation?.();
       setCurrentImageIndex((prev) => {
         if (images.length === 0) return prev;
         return prev === 0 ? images.length - 1 : prev - 1;
@@ -51,8 +78,8 @@ export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any
   );
 
   const showNextImage = useCallback(
-    (event: MouseEvent) => {
-      event.stopPropagation();
+    (event?: StopEvent) => {
+      event?.stopPropagation?.();
       setCurrentImageIndex((prev) => {
         if (images.length === 0) return prev;
         return prev === images.length - 1 ? 0 : prev + 1;
@@ -60,6 +87,127 @@ export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any
     },
     [images.length],
   );
+
+  const startImageGesture = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (images.length <= 1) return;
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      const targetNode = event.target as HTMLElement | null;
+      if (targetNode?.closest('button, a, input, textarea, select')) {
+        return;
+      }
+      event.stopPropagation();
+      const target = event.currentTarget;
+      try {
+        target.setPointerCapture(event.pointerId);
+      } catch (error) {
+        // Ignore errors from unsupported pointer capture.
+      }
+      imageGestureStateRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        isActive: true,
+      };
+    },
+    [images.length],
+  );
+
+  const moveImageGesture = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const state = imageGestureStateRef.current;
+      if (!state) return;
+      if (state.pointerId !== null && state.pointerId !== event.pointerId) return;
+      event.stopPropagation();
+      if (!state.isActive) return;
+
+      const deltaX = event.clientX - state.startX;
+      const deltaY = event.clientY - state.startY;
+      const threshold = 40;
+      if (Math.abs(deltaX) < threshold || Math.abs(deltaX) < Math.abs(deltaY)) {
+        return;
+      }
+
+      if (deltaX < 0) {
+        showNextImage();
+      } else {
+        showPrevImage();
+      }
+
+      imageGestureStateRef.current = {
+        pointerId: state.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        isActive: false,
+      };
+    },
+    [showNextImage, showPrevImage],
+  );
+
+  const endImageGesture = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const state = imageGestureStateRef.current;
+    if (!state) return;
+    if (state.pointerId !== null && state.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch (error) {
+      // Ignore errors from unsupported pointer capture.
+    }
+    imageGestureStateRef.current = null;
+  }, []);
+
+  const startImageTouchGesture = useCallback(
+    (event: ReactTouchEvent<HTMLDivElement>) => {
+      if (supportsPointerEvents) return;
+      if (images.length <= 1) return;
+      if (event.touches.length !== 1) return;
+      const touch = event.touches[0];
+      touchGestureStateRef.current = {
+        startX: touch.clientX,
+        startY: touch.clientY,
+        isActive: true,
+      };
+    },
+    [images.length, supportsPointerEvents],
+  );
+
+  const moveImageTouchGesture = useCallback(
+    (event: ReactTouchEvent<HTMLDivElement>) => {
+      if (supportsPointerEvents) return;
+      const state = touchGestureStateRef.current;
+      if (!state || !state.isActive) return;
+      if (event.touches.length !== 1) {
+        touchGestureStateRef.current = null;
+        return;
+      }
+      const touch = event.touches[0];
+      const deltaX = touch.clientX - state.startX;
+      const deltaY = touch.clientY - state.startY;
+      const threshold = 40;
+      if (Math.abs(deltaX) < threshold || Math.abs(deltaX) < Math.abs(deltaY)) {
+        return;
+      }
+
+      if (deltaX < 0) {
+        showNextImage();
+      } else {
+        showPrevImage();
+      }
+
+      touchGestureStateRef.current = {
+        startX: touch.clientX,
+        startY: touch.clientY,
+        isActive: false,
+      };
+    },
+    [showNextImage, showPrevImage, supportsPointerEvents],
+  );
+
+  const endImageTouchGesture = useCallback(() => {
+    if (supportsPointerEvents) return;
+    touchGestureStateRef.current = null;
+  }, [supportsPointerEvents]);
 
 
   useEffect(() => {
@@ -182,11 +330,26 @@ export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any
       </div>
 
       {images.length > 0 && (
-        <div className="relative w-full mb-3 overflow-hidden rounded-xl bg-black/40 aspect-[4/5]">
+        <div
+          className="relative w-full mb-3 overflow-hidden rounded-xl bg-black/40 aspect-[4/5]"
+          style={images.length > 1 ? { touchAction: 'pan-y' } : undefined}
+          onPointerDown={images.length > 1 ? startImageGesture : undefined}
+          onPointerMove={images.length > 1 ? moveImageGesture : undefined}
+          onPointerUp={images.length > 1 ? endImageGesture : undefined}
+          onPointerCancel={images.length > 1 ? endImageGesture : undefined}
+          onPointerLeave={images.length > 1 ? endImageGesture : undefined}
+          onTouchStart={
+            !supportsPointerEvents && images.length > 1 ? startImageTouchGesture : undefined
+          }
+          onTouchMove={!supportsPointerEvents && images.length > 1 ? moveImageTouchGesture : undefined}
+          onTouchEnd={!supportsPointerEvents && images.length > 1 ? endImageTouchGesture : undefined}
+          onTouchCancel={!supportsPointerEvents && images.length > 1 ? endImageTouchGesture : undefined}
+        >
           <img
             src={images[currentImageIndex]}
             alt={post.species}
             className="absolute inset-0 h-full w-full object-cover"
+            draggable={false}
           />
           {images.length > 1 && (
             <>
