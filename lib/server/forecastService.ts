@@ -95,6 +95,14 @@ const SYNTHETIC_TIDES_SOURCE: ForecastSourceSummary = {
   disclaimer: "Synthetic tide curve for preview purposes – replace with NOAA/USGS data in production.",
 };
 
+const SYNTHETIC_WEATHER_SOURCE: ForecastSourceSummary = {
+  id: "synthetic-weather",
+  label: "Synthetic weather model",
+  url: null,
+  disclaimer:
+    "Generated locally when upstream weather services are unavailable. Data is approximate and for preview only.",
+};
+
 function toCacheKey(latitude: number, longitude: number) {
   return `${latitude.toFixed(3)}:${longitude.toFixed(3)}`;
 }
@@ -335,6 +343,102 @@ async function fetchOpenMeteo({
   return payload;
 }
 
+function generateSyntheticForecast({
+  latitude,
+  longitude,
+  baseTime,
+}: {
+  latitude: number;
+  longitude: number;
+  baseTime: Date;
+}): OpenMeteoForecastResponse {
+  const timezoneOffsetHours = Math.max(-12, Math.min(12, Math.round(longitude / 15)));
+  const timezone =
+    timezoneOffsetHours === 0 ? "UTC" : `UTC${timezoneOffsetHours > 0 ? "+" : ""}${timezoneOffsetHours}`;
+
+  const horizon = clampForecastHorizon(FORECAST_HORIZON_HOURS);
+  const base = new Date(baseTime);
+  base.setUTCMinutes(0, 0, 0);
+
+  const hourlyTime: string[] = [];
+  const temperature2m: number[] = [];
+  const apparentTemperature: number[] = [];
+  const pressure: number[] = [];
+  const windSpeed: number[] = [];
+  const windDirection: number[] = [];
+  const precipitationProbability: number[] = [];
+  const weatherCode: number[] = [];
+
+  const latitudeInfluence = Math.max(-8, Math.min(8, (Math.abs(latitude) / 90) * -6));
+  const temperatureBaseline = 18 + latitudeInfluence;
+  const temperatureAmplitude = 7 - Math.min(5, Math.abs(latitude) * 0.05);
+  const humiditySeed = Math.sin((latitude + longitude) * 0.3);
+
+  for (let index = 0; index < horizon; index += 1) {
+    const timestamp = new Date(base.getTime() + index * 60 * 60 * 1000);
+    hourlyTime.push(timestamp.toISOString());
+    const dayFraction = ((timestamp.getUTCHours() + timestamp.getUTCMinutes() / 60) / 24) * 2 * Math.PI;
+    const tempC = temperatureBaseline + temperatureAmplitude * Math.sin(dayFraction - 0.5);
+    const feelsLike = tempC - 0.6 * Math.cos(dayFraction + humiditySeed);
+    const pressureValue = 1012 + 6 * Math.sin(dayFraction + latitude / 15);
+    const windSpeedValue = 8 + 4 * Math.abs(Math.sin(dayFraction + longitude / 20));
+    const windDirectionValue = ((Math.abs(longitude) * 17 + index * 25) % 360 + 360) % 360;
+    const precipitationValue = Math.max(
+      5,
+      Math.min(95, 45 + 35 * Math.sin(dayFraction + humiditySeed + latitude / 10)),
+    );
+
+    temperature2m.push(Math.round(tempC * 10) / 10);
+    apparentTemperature.push(Math.round(feelsLike * 10) / 10);
+    pressure.push(Math.round(pressureValue));
+    windSpeed.push(Math.round(windSpeedValue * 10) / 10);
+    windDirection.push(Math.round(windDirectionValue));
+    precipitationProbability.push(Math.round(precipitationValue));
+
+    let code = 1;
+    if (precipitationValue > 70) {
+      code = 63;
+    } else if (precipitationValue > 45) {
+      code = 51;
+    }
+    if (tempC <= 0) {
+      code = precipitationValue > 40 ? 71 : 2;
+    }
+    weatherCode.push(code);
+  }
+
+  const dayStart = new Date(base);
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const sunrise = new Date(dayStart.getTime() + (6 - timezoneOffsetHours) * 60 * 60 * 1000).toISOString();
+  const sunset = new Date(dayStart.getTime() + (18 - timezoneOffsetHours) * 60 * 60 * 1000).toISOString();
+  const knownNewMoon = Date.UTC(2000, 0, 6, 18, 14);
+  const synodicPeriodDays = 29.530588853;
+  const currentDays = (base.getTime() - knownNewMoon) / (1000 * 60 * 60 * 24);
+  const moonPhase = ((currentDays / synodicPeriodDays) % 1 + 1) % 1;
+
+  return {
+    latitude,
+    longitude,
+    timezone,
+    hourly: {
+      time: hourlyTime,
+      temperature_2m: temperature2m,
+      apparent_temperature: apparentTemperature,
+      pressure_msl: pressure,
+      wind_speed_10m: windSpeed,
+      wind_direction_10m: windDirection,
+      precipitation_probability: precipitationProbability,
+      weather_code: weatherCode,
+    },
+    daily: {
+      time: [dayStart.toISOString()],
+      sunrise: [sunrise],
+      sunset: [sunset],
+      moon_phase: [moonPhase],
+    },
+  } satisfies OpenMeteoForecastResponse;
+}
+
 export async function getForecastBundle({
   latitude,
   longitude,
@@ -344,15 +448,37 @@ export async function getForecastBundle({
 }): Promise<ForecastBundle> {
   const cacheKey = toCacheKey(latitude, longitude);
   return forecastCache.getOrSet(cacheKey, async () => {
-    const forecast = await fetchOpenMeteo({ latitude, longitude });
-    const weatherHours = mapWeatherHours(forecast);
-    const { sunrise, sunset, moonPhase } = resolveSunCycle(forecast.daily);
     const now = new Date();
+    let forecast: OpenMeteoForecastResponse | null = null;
+    let weatherSource: ForecastSourceSummary = OPEN_METEO_SOURCE;
+
+    try {
+      forecast = await fetchOpenMeteo({ latitude, longitude });
+    } catch (error) {
+      console.warn("Open-Meteo fetch failed, generating synthetic forecast", error);
+    }
+
+    if (!forecast || !forecast.hourly?.time?.length) {
+      forecast = generateSyntheticForecast({ latitude, longitude, baseTime: now });
+      weatherSource = SYNTHETIC_WEATHER_SOURCE;
+    }
+
+    let weatherHours = mapWeatherHours(forecast);
+    let { sunrise, sunset, moonPhase } = resolveSunCycle(forecast.daily);
+
+    if (weatherHours.length === 0) {
+      forecast = generateSyntheticForecast({ latitude, longitude, baseTime: now });
+      weatherSource = SYNTHETIC_WEATHER_SOURCE;
+      weatherHours = mapWeatherHours(forecast);
+      ({ sunrise, sunset, moonPhase } = resolveSunCycle(forecast.daily));
+    }
+
+    const timezone = forecast.timezone ?? "UTC";
     const biteWindows = computeBiteWindows({
       sunrise,
       sunset,
       moonPhase,
-      timezone: forecast.timezone,
+      timezone,
       now,
     });
     const tides = generateSyntheticTides({
@@ -365,7 +491,7 @@ export async function getForecastBundle({
       location: {
         latitude,
         longitude,
-        timezone: forecast.timezone,
+        timezone,
         sunrise,
         sunset,
         moonPhaseFraction: moonPhase,
@@ -373,7 +499,7 @@ export async function getForecastBundle({
       },
       weather: {
         hours: weatherHours,
-        source: OPEN_METEO_SOURCE,
+        source: weatherSource,
       },
       tides: {
         predictions: tides,
