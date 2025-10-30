@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import type { PointerEvent as ReactPointerEvent } from 'react';
+import type { PointerEvent as ReactPointerEvent, TouchEvent as ReactTouchEvent } from 'react';
 import {
   addComment,
   deleteCatch,
@@ -187,6 +187,11 @@ export default function PostDetailModal({
     startX: number;
     startY: number;
     isActive: boolean;
+  } | null>(null);
+  const imageTouchGestureStateRef = useRef<{
+    startX: number;
+    startY: number;
+    handled: boolean;
   } | null>(null);
   const touchStateRef = useRef<{ y: number; path: EventTarget[] } | null>(null);
   const wheelStateRef = useRef<{ delta: number; direction: 1 | -1 | 0 }>({ delta: 0, direction: 0 });
@@ -508,6 +513,72 @@ export default function PostDetailModal({
     imageGestureStateRef.current = null;
   }, []);
 
+  const supportsPointerEvents = useMemo(
+    () => typeof window !== 'undefined' && 'PointerEvent' in window,
+    [],
+  );
+
+  const startImageTouchGesture = useCallback(
+    (event: ReactTouchEvent<HTMLDivElement>) => {
+      if (supportsPointerEvents) return;
+      if (images.length <= 1) return;
+      const touch = event.touches[0];
+      if (!touch) return;
+      const targetNode = event.target as HTMLElement | null;
+      if (targetNode?.closest('button, a, input, textarea, select')) {
+        return;
+      }
+      event.stopPropagation();
+      imageTouchGestureStateRef.current = {
+        startX: touch.clientX,
+        startY: touch.clientY,
+        handled: false,
+      };
+    },
+    [images.length, supportsPointerEvents],
+  );
+
+  const moveImageTouchGesture = useCallback(
+    (event: ReactTouchEvent<HTMLDivElement>) => {
+      if (supportsPointerEvents) return;
+      const state = imageTouchGestureStateRef.current;
+      if (!state || state.handled) return;
+      const touch = event.touches[0];
+      if (!touch) return;
+      const deltaX = touch.clientX - state.startX;
+      const deltaY = touch.clientY - state.startY;
+      const threshold = 40;
+      if (Math.abs(deltaX) < threshold || Math.abs(deltaX) < Math.abs(deltaY)) {
+        return;
+      }
+
+      event.stopPropagation();
+
+      if (deltaX < 0) {
+        showNextImage();
+      } else {
+        showPrevImage();
+      }
+
+      imageTouchGestureStateRef.current = {
+        startX: touch.clientX,
+        startY: touch.clientY,
+        handled: true,
+      };
+    },
+    [showNextImage, showPrevImage, supportsPointerEvents],
+  );
+
+  const endImageTouchGesture = useCallback(
+    (event: ReactTouchEvent<HTMLDivElement>) => {
+      if (supportsPointerEvents) return;
+      if (!imageTouchGestureStateRef.current) return;
+      event.stopPropagation();
+      imageTouchGestureStateRef.current = null;
+    },
+    [supportsPointerEvents],
+  );
+
   return (
     <AnimatePresence>
       {post && (
@@ -563,31 +634,16 @@ export default function PostDetailModal({
                     {images.length > 0 ? (
                       <div
                         className="relative flex h-full w-full items-center justify-center overflow-hidden"
+                        style={{ touchAction: 'pan-y' }}
                         onPointerDown={startImageGesture}
                         onPointerMove={moveImageGesture}
                         onPointerUp={endImageGesture}
                         onPointerCancel={endImageGesture}
                         onPointerLeave={endImageGesture}
-                        onTouchStart={(event) => {
-                          if (images.length > 1) {
-                            event.stopPropagation();
-                          }
-                        }}
-                        onTouchMove={(event) => {
-                          if (images.length > 1) {
-                            event.stopPropagation();
-                          }
-                        }}
-                        onTouchEnd={(event) => {
-                          if (images.length > 1) {
-                            event.stopPropagation();
-                          }
-                        }}
-                        onTouchCancel={(event) => {
-                          if (images.length > 1) {
-                            event.stopPropagation();
-                          }
-                        }}
+                        onTouchStart={startImageTouchGesture}
+                        onTouchMove={moveImageTouchGesture}
+                        onTouchEnd={endImageTouchGesture}
+                        onTouchCancel={endImageTouchGesture}
                       >
                         <AnimatePresence
                           initial={false}
@@ -607,6 +663,7 @@ export default function PostDetailModal({
                               src={images[activeImageIndex]}
                               alt={post.species}
                               className="max-h-full max-w-full object-contain"
+                              draggable={false}
                             />
                           </motion.div>
                         </AnimatePresence>
