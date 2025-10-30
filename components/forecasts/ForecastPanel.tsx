@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { AlertTriangle, Clock, Loader2, RefreshCw, Waves } from "lucide-react";
+import { AlertTriangle, Clock, Loader2, RefreshCw, Sparkles, Waves } from "lucide-react";
 
 import type { ForecastBundle, BiteWindow } from "@/lib/forecastTypes";
 
@@ -105,6 +105,20 @@ export default function ForecastPanel({ latitude, longitude, locationLabel, clas
 
   const timezoneLabel = data?.location.timezone.replace("/", " • ") ?? "";
 
+  const bestWindow = data?.biteWindows.windows.reduce<
+    BiteWindow | null
+  >((currentBest, candidate) => {
+    if (!candidate) return currentBest;
+    if (!currentBest) return candidate;
+    if (candidate.score > currentBest.score) return candidate;
+    if (candidate.score === currentBest.score) {
+      return new Date(candidate.start).getTime() < new Date(currentBest.start).getTime()
+        ? candidate
+        : currentBest;
+    }
+    return currentBest;
+  }, null);
+
   return (
     <section className={`glass rounded-3xl border border-white/10 p-6 text-white ${className ?? ""}`} aria-live="polite">
       <header className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -140,6 +154,27 @@ export default function ForecastPanel({ latitude, longitude, locationLabel, clas
 
       {!loading && !error && data ? (
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,2fr),minmax(0,1fr)]">
+          {bestWindow ? (
+            <aside className="lg:col-span-2">
+              <div className="flex flex-col gap-3 rounded-2xl border border-emerald-400/50 bg-emerald-500/10 p-4 text-sm text-emerald-50 shadow-lg shadow-emerald-500/10 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-2 text-emerald-100">
+                  <Sparkles className="h-5 w-5" aria-hidden />
+                  <p className="text-sm font-semibold uppercase tracking-[0.2em]">Optimal window</p>
+                </div>
+                <div className="flex flex-col items-start gap-1 text-left md:flex-row md:items-center md:gap-4">
+                  <p className="text-base font-semibold text-white">
+                    {bestWindow.label} · {scoreLabel(bestWindow.score)}
+                  </p>
+                  <p className="text-xs text-emerald-100/80">
+                    {formatClock(bestWindow.start, { hour: "numeric", minute: "2-digit" })} –
+                    {" "}
+                    {formatClock(bestWindow.end, { hour: "numeric", minute: "2-digit" })}
+                  </p>
+                  <p className="text-xs text-emerald-100/70 max-w-xl">{bestWindow.rationale}</p>
+                </div>
+              </div>
+            </aside>
+          ) : null}
           <div className="space-y-4">
             <h3 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-white/60">
               <Clock className="h-4 w-4" aria-hidden />

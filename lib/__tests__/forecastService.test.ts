@@ -1,7 +1,11 @@
 import { strict as assert } from "node:assert";
 import test from "node:test";
 
-import { computeBiteWindows, generateSyntheticTides } from "@/lib/server/forecastService";
+import {
+  computeBiteWindows,
+  generateSyntheticTides,
+  getForecastBundle,
+} from "@/lib/server/forecastService";
 
 test("computeBiteWindows creates dawn and dusk windows with boosted scoring", () => {
   const sunrise = "2024-06-10T10:00:00.000Z";
@@ -52,4 +56,24 @@ test("generateSyntheticTides returns a smooth harmonic series", () => {
   const minHeight = Math.min(...heights);
   assert.ok(maxHeight > 0.5 && maxHeight <= 2.5);
   assert.ok(minHeight < -0.5 && minHeight >= -2.5);
+});
+
+test("getForecastBundle provides a synthetic fallback when upstream weather fails", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("network-unreachable");
+  };
+
+  try {
+    const bundle = await getForecastBundle({ latitude: 11.234, longitude: -47.891 });
+    assert.equal(bundle.weather.source.id, "synthetic-weather");
+    assert.equal(bundle.weather.hours.length, 24);
+    assert.ok(bundle.location.sunrise, "synthetic forecast should include sunrise time");
+    assert.ok(
+      bundle.biteWindows.windows.length > 0,
+      "synthetic forecast should still compute bite windows",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
