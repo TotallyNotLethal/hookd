@@ -868,7 +868,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         setCurrentCatchUploads([]);
         setPendingUploads(uploads);
         setIsSelectingCatchUploads(true);
-        setSelectedUploadIds(new Set(uploads.map((upload) => upload.id)));
+        setSelectedUploadIds(new Set());
       }
 
       // allow re-selecting the same files
@@ -940,13 +940,9 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     }
 
     setSelectedUploadIds((previous) => {
-      const validIds = new Set(
+      return new Set(
         Array.from(previous).filter((id) => pendingUploads.some((upload) => upload.id === id)),
       );
-      if (validIds.size > 0) {
-        return validIds;
-      }
-      return new Set(pendingUploads.map((upload) => upload.id));
     });
   }, [isSelectingCatchUploads, pendingUploads]);
 
@@ -1494,7 +1490,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         resetCatchDetails();
         setCurrentCatchUploads([]);
         setIsSelectingCatchUploads(true);
-        setSelectedUploadIds(new Set(pendingUploads.map((upload) => upload.id)));
+        setSelectedUploadIds(new Set());
         return;
       }
 
