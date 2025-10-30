@@ -2,6 +2,9 @@
 
 import { FormEvent, useMemo, useState } from 'react';
 
+import ForecastPanel from '@/components/forecasts/ForecastPanel';
+import { fishingSpots } from '@/lib/fishingSpots';
+
 interface CatchEntry {
   id: string;
   species: string;
@@ -38,6 +41,7 @@ type LogbookContentProps = {
 export default function LogbookContent({ showIntroduction = true }: LogbookContentProps) {
   const [form, setForm] = useState(defaultForm);
   const [entries, setEntries] = useState<CatchEntry[]>([]);
+  const [plannerSpotId, setPlannerSpotId] = useState<string>(fishingSpots[0]?.id ?? '');
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -59,6 +63,11 @@ export default function LogbookContent({ showIntroduction = true }: LogbookConte
     } as const;
   }, [entries]);
 
+  const plannerSpot = useMemo(
+    () => fishingSpots.find((spot) => spot.id === plannerSpotId) ?? fishingSpots[0] ?? null,
+    [plannerSpotId]
+  );
+
   return (
     <div className="space-y-10">
       {showIntroduction ? (
@@ -71,6 +80,36 @@ export default function LogbookContent({ showIntroduction = true }: LogbookConte
           </p>
         </header>
       ) : null}
+
+      <section className="space-y-4">
+        <div className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/5 p-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-sm font-medium text-white">Plan the next bite</p>
+            <p className="text-xs text-white/60">Preview hourly weather and optimal windows before logging a future trip.</p>
+          </div>
+          <label className="text-xs text-white/70">
+            <span className="mr-2 uppercase tracking-[0.2em] text-white/40">Spot</span>
+            <select
+              className="input bg-slate-950/80 text-sm"
+              value={plannerSpotId}
+              onChange={(event) => setPlannerSpotId(event.target.value)}
+            >
+              {fishingSpots.slice(0, 12).map((spot) => (
+                <option key={spot.id} value={spot.id}>
+                  {spot.name}, {spot.state}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {plannerSpot ? (
+          <ForecastPanel
+            latitude={plannerSpot.latitude}
+            longitude={plannerSpot.longitude}
+            locationLabel={`${plannerSpot.name}, ${plannerSpot.state}`}
+          />
+        ) : null}
+      </section>
 
       <form onSubmit={handleSubmit} className="glass rounded-3xl border border-white/10 p-6 space-y-6" aria-label="Catch log form">
         <div className="grid gap-4 md:grid-cols-2">
