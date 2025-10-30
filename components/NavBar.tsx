@@ -354,7 +354,7 @@ export default function NavBar() {
                   href="/tools/fishing-assistant"
                   className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
                 >
-                  AI Guide
+                  Guide
                   <span className="rounded-full border border-amber-300/60 bg-amber-500/20 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-200">
                     Pro
                   </span>
@@ -530,7 +530,7 @@ export default function NavBar() {
               >
                 <Bot className="h-5 w-5" />
                 <span className="flex items-center gap-1">
-                  AI Guide
+                  Guide
                   <span className="rounded-full border border-amber-300/60 bg-amber-500/20 px-1.5 py-[1px] text-[9px] font-semibold uppercase tracking-wide text-amber-200">
                     Pro
                   </span>
@@ -646,7 +646,7 @@ export default function NavBar() {
                 >
                   <Bot className="h-5 w-5" />
                   <span className="flex items-center gap-2">
-                    AI Guide
+                    Guide
                     <span className="rounded-full border border-amber-300/60 bg-amber-500/20 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-200">
                       Pro
                     </span>
