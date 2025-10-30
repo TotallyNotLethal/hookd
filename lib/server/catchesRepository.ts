@@ -1,4 +1,4 @@
-'use server';
+import 'server-only';
 
 import { FieldValue, FirestoreDataConverter, Timestamp } from 'firebase-admin/firestore';
 

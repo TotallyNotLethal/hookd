@@ -15,12 +15,12 @@ export const catchLocationSchema = z
       .min(1, 'Waterbody is required')
       .max(200, 'Waterbody must be 200 characters or fewer'),
     latitude: z
-      .number({ invalid_type_error: 'Latitude must be a number' })
+      .number('Latitude must be a number')
       .gte(-90)
       .lte(90)
       .optional(),
     longitude: z
-      .number({ invalid_type_error: 'Longitude must be a number' })
+      .number('Longitude must be a number')
       .gte(-180)
       .lte(180)
       .optional(),
@@ -84,17 +84,17 @@ export const catchGearSchema = z.object({
 export const catchMeasurementsSchema = z
   .object({
     lengthInches: z
-      .number({ invalid_type_error: 'Length must be a number' })
+      .number('Length must be a number')
       .positive('Length must be positive')
       .max(400, 'Length must be realistic')
       .optional(),
     weightPounds: z
-      .number({ invalid_type_error: 'Weight must be a number' })
+      .number('Weight must be a number')
       .positive('Weight must be positive')
       .max(400, 'Weight must be realistic')
       .optional(),
     girthInches: z
-      .number({ invalid_type_error: 'Girth must be a number' })
+      .number('Girth must be a number')
       .positive('Girth must be positive')
       .max(400, 'Girth must be realistic')
       .optional(),
@@ -111,22 +111,21 @@ export const catchMeasurementsSchema = z
   });
 
 export const catchSharingSchema = z.object({
-  visibility: z.enum(CATCH_VISIBILITIES, {
-    required_error: 'Privacy level is required.',
-    invalid_type_error: 'Privacy level is invalid.',
-  }),
+  visibility: z
+    .string('Privacy level is required.')
+    .pipe(z.enum(CATCH_VISIBILITIES, 'Privacy level is invalid.')),
   shareWithCommunity: z.boolean().default(true),
   shareLocationCoordinates: z.boolean().default(false),
 });
 
 export const catchBaseSchema = z.object({
   species: z
-    .string({ required_error: 'Species is required.' })
+    .string('Species is required.')
     .trim()
     .min(1, 'Species is required')
     .max(120, 'Species must be 120 characters or fewer'),
   caughtAt: z
-    .string({ required_error: 'Capture time is required.' })
+    .string('Capture time is required.')
     .datetime({ offset: true, message: 'Capture time must be an ISO timestamp.' }),
   notes: z
     .string()

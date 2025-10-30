@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 import {
   CATCH_VISIBILITIES,
@@ -78,7 +78,7 @@ function handleError(error: unknown) {
   return NextResponse.json({ error: 'Unexpected error' }, { status: 500 });
 }
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const user = await requireAuth(request);
     const filters = parseFilters(new URL(request.url));
@@ -90,7 +90,7 @@ export async function GET(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth(request);
     const payload = await request.json();

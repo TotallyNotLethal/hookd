@@ -1,8 +1,23 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
 import { type CatchRecord, validateCatchUpdate } from '@/lib/catches';
 import { requireAuth } from '@/lib/server/auth';
 import { getCatchRepository } from '@/lib/server/catchesRepository';
+
+type CatchRouteContext = {
+  params?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+async function resolveCatchId(context: CatchRouteContext): Promise<string> {
+  const params = (await context.params) ?? {};
+  const catchId = params.catchId;
+  if (typeof catchId !== 'string' || !catchId) {
+    const error = new Error('Catch not found.');
+    (error as Error & { code?: string }).code = 'not-found';
+    throw error;
+  }
+  return catchId;
+}
 
 function serializeCatch(record: CatchRecord) {
   const gear = record.gear && Object.keys(record.gear).length ? record.gear : null;
@@ -43,11 +58,12 @@ function handleError(error: unknown) {
   return NextResponse.json({ error: 'Unexpected error' }, { status: 500 });
 }
 
-export async function GET(request: Request, context: { params: { catchId: string } }) {
+export async function GET(request: NextRequest, context: CatchRouteContext) {
   try {
     const repo = getCatchRepository();
     const user = await requireAuth(request);
-    const record = await repo.getCatch(user.uid, context.params.catchId);
+    const catchId = await resolveCatchId(context);
+    const record = await repo.getCatch(user.uid, catchId);
     if (!record) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
@@ -57,11 +73,12 @@ export async function GET(request: Request, context: { params: { catchId: string
   }
 }
 
-export async function PATCH(request: Request, context: { params: { catchId: string } }) {
+export async function PATCH(request: NextRequest, context: CatchRouteContext) {
   try {
     const user = await requireAuth(request);
     const payload = await request.json();
-    const update = validateCatchUpdate({ ...payload, id: context.params.catchId });
+    const catchId = await resolveCatchId(context);
+    const update = validateCatchUpdate({ ...payload, id: catchId });
     const repo = getCatchRepository();
     const updated = await repo.updateCatch(user.uid, update);
     return NextResponse.json(serializeCatch(updated));
@@ -70,11 +87,12 @@ export async function PATCH(request: Request, context: { params: { catchId: stri
   }
 }
 
-export async function DELETE(request: Request, context: { params: { catchId: string } }) {
+export async function DELETE(request: NextRequest, context: CatchRouteContext) {
   try {
     const user = await requireAuth(request);
     const repo = getCatchRepository();
-    await repo.deleteCatch(user.uid, context.params.catchId);
+    const catchId = await resolveCatchId(context);
+    await repo.deleteCatch(user.uid, catchId);
     return new NextResponse(null, { status: 204 });
   } catch (error) {
     return handleError(error);

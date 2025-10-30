@@ -1,4 +1,4 @@
-'use server';
+import 'server-only';
 
 import { getAuth } from 'firebase-admin/auth';
 
