@@ -159,7 +159,7 @@ export default function PostDetailModal({
   const isWide = size === 'wide';
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const modalContainerRef = useRef<HTMLDivElement | null>(null);
-  const touchStateRef = useRef<{ y: number; path: Node[] } | null>(null);
+  const touchStateRef = useRef<{ y: number; path: EventTarget[] } | null>(null);
   const wheelStateRef = useRef<{ delta: number; direction: 1 | -1 | 0 }>({ delta: 0, direction: 0 });
   const navigationCooldownRef = useRef<number | null>(null);
 
@@ -172,7 +172,7 @@ export default function PostDetailModal({
   } bg-black/60 flex items-center justify-center`;
 
   const buildPathFromTarget = useCallback((target: EventTarget | null) => {
-    const path: Node[] = [];
+    const path: EventTarget[] = [];
     if (!target || !(target instanceof Node)) return path;
     let current: Node | null = target;
     const overlayEl = overlayRef.current;
@@ -187,7 +187,7 @@ export default function PostDetailModal({
   }, []);
 
   const canScrollInPath = useCallback(
-    (path: Node[], direction: 'up' | 'down') => {
+    (path: ReadonlyArray<EventTarget>, direction: 'up' | 'down') => {
       const overlayEl = overlayRef.current;
       if (!overlayEl) return false;
 
