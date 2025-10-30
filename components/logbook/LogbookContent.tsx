@@ -1,71 +1,378 @@
 'use client';
 
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { getAuth } from 'firebase/auth';
+import { useAuthState } from 'react-firebase-hooks/auth';
+import { Loader2, PencilLine, Trash2 } from 'lucide-react';
 
 import ForecastPanel from '@/components/forecasts/ForecastPanel';
 import { fishingSpots } from '@/lib/fishingSpots';
+import type { ForecastBundle } from '@/lib/forecastTypes';
+import type { CatchVisibility } from '@/lib/catches';
+import { app } from '@/lib/firebaseClient';
 
-interface CatchEntry {
+const auth = getAuth(app);
+
+type CatchEntry = {
   id: string;
   species: string;
+  caughtAt: string;
+  notes: string | null;
+  location: { waterbody: string; latitude?: number | null; longitude?: number | null; description?: string | null };
+  gear: {
+    bait?: string;
+    presentation?: string;
+    notes?: string;
+  } | null;
+  measurements: {
+    lengthInches?: number;
+    weightPounds?: number;
+    girthInches?: number;
+  } | null;
+  sharing: {
+    visibility: CatchVisibility;
+    shareWithCommunity: boolean;
+    shareLocationCoordinates: boolean;
+  };
+  environmentSnapshot: unknown;
+  forecastSnapshot: ForecastBundle | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type FormState = {
+  species: string;
+  waterbody: string;
   date: string;
   time: string;
   length: string;
   weight: string;
-  waterbody: string;
+  girth: string;
   bait: string;
   technique: string;
-  weather: string;
   notes: string;
-  privacy: 'public' | 'water' | 'private';
-}
+  conditions: string;
+  privacy: CatchVisibility;
+  shareWithCommunity: boolean;
+  shareCoordinates: boolean;
+};
 
-const defaultForm: Omit<CatchEntry, 'id'> = {
+type FormErrors = Partial<Record<keyof FormState, string>> & { general?: string };
+
+const defaultForm: FormState = {
   species: '',
+  waterbody: '',
   date: '',
   time: '',
   length: '',
   weight: '',
-  waterbody: '',
+  girth: '',
   bait: '',
   technique: '',
-  weather: '',
   notes: '',
+  conditions: '',
   privacy: 'public',
+  shareWithCommunity: true,
+  shareCoordinates: false,
 };
 
-type LogbookContentProps = {
-  showIntroduction?: boolean;
-};
+const VISIBILITY_FILTERS: Array<{ label: string; value: 'all' | CatchVisibility }> = [
+  { label: 'All visibility', value: 'all' },
+  { label: 'Public only', value: 'public' },
+  { label: 'Water-only', value: 'water' },
+  { label: 'Private only', value: 'private' },
+];
 
-export default function LogbookContent({ showIntroduction = true }: LogbookContentProps) {
-  const [form, setForm] = useState(defaultForm);
+function formatDateTime(iso: string) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  const datePart = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  const timePart = date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return `${datePart} • ${timePart}`;
+}
+
+function measurementSummary(entry: CatchEntry) {
+  const segments: string[] = [];
+  const length = entry.measurements?.lengthInches;
+  if (typeof length === 'number' && Number.isFinite(length)) {
+    segments.push(`${length.toFixed(1)} in`);
+  }
+  const weight = entry.measurements?.weightPounds;
+  if (typeof weight === 'number' && Number.isFinite(weight)) {
+    segments.push(`${weight.toFixed(2)} lb`);
+  }
+  const girth = entry.measurements?.girthInches;
+  if (typeof girth === 'number' && Number.isFinite(girth)) {
+    segments.push(`${girth.toFixed(1)} in girth`);
+  }
+  return segments.join(' • ');
+}
+
+function bestBiteWindow(snapshot: ForecastBundle | null) {
+  if (!snapshot?.biteWindows?.windows?.length) return null;
+  return snapshot.biteWindows.windows.reduce<ForecastBundle['biteWindows']['windows'][number] | null>((best, candidate) => {
+    if (!candidate) return best;
+    if (!best) return candidate;
+    if (candidate.score > best.score) return candidate;
+    const candidateStart = new Date(candidate.start).getTime();
+    const bestStart = new Date(best.start).getTime();
+    return candidateStart < bestStart ? candidate : best;
+  }, null);
+}
+
+export default function LogbookContent({ showIntroduction = true }: { showIntroduction?: boolean }) {
+  const [user, authLoading] = useAuthState(auth);
   const [entries, setEntries] = useState<CatchEntry[]>([]);
+  const [entriesLoading, setEntriesLoading] = useState(false);
+  const [entriesError, setEntriesError] = useState<string | null>(null);
+  const [form, setForm] = useState<FormState>(defaultForm);
+  const [formErrors, setFormErrors] = useState<FormErrors>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [plannerSpotId, setPlannerSpotId] = useState<string>(fishingSpots[0]?.id ?? '');
-
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const id = crypto.randomUUID();
-    setEntries((prev) => [{ id, ...form }, ...prev]);
-    setForm(defaultForm);
-  };
-
-  const stats = useMemo(() => {
-    if (entries.length === 0) return null;
-    const speciesCount = new Map<string, number>();
-    entries.forEach((entry) => {
-      speciesCount.set(entry.species, (speciesCount.get(entry.species) ?? 0) + 1);
-    });
-    const topSpecies = [...speciesCount.entries()].sort((a, b) => b[1] - a[1])[0];
-    return {
-      total: entries.length,
-      topSpecies,
-    } as const;
-  }, [entries]);
+  const [plannerForecast, setPlannerForecast] = useState<ForecastBundle | null>(null);
+  const [selectedVisibility, setSelectedVisibility] = useState<'all' | CatchVisibility>('all');
 
   const plannerSpot = useMemo(
     () => fishingSpots.find((spot) => spot.id === plannerSpotId) ?? fishingSpots[0] ?? null,
-    [plannerSpotId]
+    [plannerSpotId],
+  );
+
+  const stats = useMemo(() => {
+    if (!entries.length) return null;
+    const speciesCount = new Map<string, number>();
+    entries.forEach((entry) => {
+      const key = entry.species.trim().toLowerCase();
+      if (!key) return;
+      speciesCount.set(key, (speciesCount.get(key) ?? 0) + 1);
+    });
+    const top = [...speciesCount.entries()].sort((a, b) => b[1] - a[1])[0];
+    return {
+      total: entries.length,
+      topSpecies: top ? { name: top[0], count: top[1] } : null,
+    } as const;
+  }, [entries]);
+
+  const resetForm = useCallback(() => {
+    setForm(defaultForm);
+    setFormErrors({});
+    setSubmitting(false);
+    setEditingId(null);
+    setPlannerForecast(null);
+  }, []);
+
+  const fetchEntries = useCallback(async () => {
+    if (!user) return;
+    setEntriesLoading(true);
+    setEntriesError(null);
+    try {
+      const token = await user.getIdToken();
+      const params = new URLSearchParams();
+      if (selectedVisibility !== 'all') {
+        params.set('visibility', selectedVisibility);
+      }
+      const response = await fetch(`/api/catches${params.toString() ? `?${params.toString()}` : ''}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to load catches (${response.status})`);
+      }
+      const payload = (await response.json()) as { entries?: CatchEntry[] };
+      setEntries(payload.entries ?? []);
+    } catch (error) {
+      setEntriesError(error instanceof Error ? error.message : 'Unable to load logbook entries.');
+    } finally {
+      setEntriesLoading(false);
+    }
+  }, [selectedVisibility, user]);
+
+  useEffect(() => {
+    if (user) {
+      void fetchEntries();
+    } else if (!authLoading) {
+      setEntries([]);
+    }
+  }, [authLoading, fetchEntries, user]);
+
+  const populateFormForEditing = useCallback((entry: CatchEntry) => {
+    const caughtAt = new Date(entry.caughtAt);
+    const isoDate = Number.isNaN(caughtAt.getTime()) ? '' : caughtAt.toISOString();
+    const nextForm: FormState = {
+      species: entry.species ?? '',
+      waterbody: entry.location?.waterbody ?? '',
+      date: isoDate ? isoDate.slice(0, 10) : '',
+      time: isoDate ? isoDate.slice(11, 16) : '',
+      length: entry.measurements?.lengthInches != null ? String(entry.measurements.lengthInches) : '',
+      weight: entry.measurements?.weightPounds != null ? String(entry.measurements.weightPounds) : '',
+      girth: entry.measurements?.girthInches != null ? String(entry.measurements.girthInches) : '',
+      bait: entry.gear?.bait ?? '',
+      technique: entry.gear?.presentation ?? '',
+      notes: entry.notes ?? '',
+      conditions: entry.gear?.notes ?? '',
+      privacy: entry.sharing.visibility,
+      shareWithCommunity: entry.sharing.shareWithCommunity,
+      shareCoordinates: entry.sharing.shareLocationCoordinates,
+    };
+    setForm(nextForm);
+    setFormErrors({});
+    setPlannerForecast(entry.forecastSnapshot ?? null);
+    setEditingId(entry.id);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      if (!user) return;
+      if (typeof window !== 'undefined') {
+        const confirm = window.confirm('Delete this catch?');
+        if (!confirm) return;
+      }
+      try {
+        const token = await user.getIdToken();
+        const response = await fetch(`/api/catches/${id}`, {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (!response.ok && response.status !== 204) {
+          throw new Error(`Delete failed (${response.status})`);
+        }
+        if (editingId === id) {
+          resetForm();
+        }
+        await fetchEntries();
+      } catch (error) {
+        setEntriesError(error instanceof Error ? error.message : 'Unable to delete catch.');
+      }
+    },
+    [editingId, fetchEntries, resetForm, user],
+  );
+
+  const handleSubmit = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!user) {
+        setFormErrors({ general: 'Please sign in to save catches.' });
+        return;
+      }
+      setSubmitting(true);
+      setFormErrors({});
+
+      const errors: FormErrors = {};
+      const species = form.species.trim();
+      if (!species) {
+        errors.species = 'Species is required.';
+      }
+      const waterbody = form.waterbody.trim();
+      if (!waterbody) {
+        errors.waterbody = 'Water or location is required.';
+      }
+      if (!form.date) {
+        errors.date = 'Date is required.';
+      }
+      const timeInput = form.time.trim() || '00:00';
+      let caughtAtIso: string | null = null;
+      if (!errors.date) {
+        const candidate = new Date(`${form.date}T${timeInput}`);
+        if (Number.isNaN(candidate.getTime())) {
+          errors.time = 'Provide a valid time.';
+        } else {
+          caughtAtIso = candidate.toISOString();
+        }
+      }
+      if (form.shareCoordinates && form.privacy === 'private') {
+        errors.shareCoordinates = 'Coordinates cannot be shared for private catches.';
+      }
+
+      const measurements: Record<string, number> = {};
+      const lengthValue = form.length.trim();
+      if (lengthValue) {
+        const numeric = Number.parseFloat(lengthValue);
+        if (Number.isNaN(numeric)) {
+          errors.length = 'Length must be a number.';
+        } else {
+          measurements.lengthInches = Math.round(numeric * 100) / 100;
+        }
+      }
+      const weightValue = form.weight.trim();
+      if (weightValue) {
+        const numeric = Number.parseFloat(weightValue);
+        if (Number.isNaN(numeric)) {
+          errors.weight = 'Weight must be a number.';
+        } else {
+          measurements.weightPounds = Math.round(numeric * 100) / 100;
+        }
+      }
+      const girthValue = form.girth.trim();
+      if (girthValue) {
+        const numeric = Number.parseFloat(girthValue);
+        if (Number.isNaN(numeric)) {
+          errors.girth = 'Girth must be a number.';
+        } else {
+          measurements.girthInches = Math.round(numeric * 100) / 100;
+        }
+      }
+
+      if (Object.keys(errors).length) {
+        setFormErrors(errors);
+        setSubmitting(false);
+        return;
+      }
+
+      const gear: CatchEntry['gear'] = {};
+      if (form.bait.trim()) gear.bait = form.bait.trim();
+      if (form.technique.trim()) gear.presentation = form.technique.trim();
+      if (form.conditions.trim()) gear.notes = form.conditions.trim();
+      const payload: Record<string, unknown> = {
+        species,
+        caughtAt: caughtAtIso!,
+        location: { waterbody },
+        sharing: {
+          visibility: form.privacy,
+          shareWithCommunity: form.shareWithCommunity,
+          shareLocationCoordinates: form.shareCoordinates && form.privacy !== 'private',
+        },
+      };
+      if (form.notes.trim()) {
+        payload.notes = form.notes.trim();
+      }
+      if (Object.keys(gear).length) {
+        payload.gear = gear;
+      }
+      if (Object.keys(measurements).length) {
+        payload.measurements = measurements;
+      }
+      if (plannerForecast) {
+        payload.forecastSnapshot = plannerForecast;
+      }
+
+      try {
+        const token = await user.getIdToken();
+        const response = await fetch(editingId ? `/api/catches/${editingId}` : '/api/catches', {
+          method: editingId ? 'PATCH' : 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          const message = typeof body?.error === 'string' ? body.error : `Save failed (${response.status})`;
+          throw new Error(message);
+        }
+        await fetchEntries();
+        resetForm();
+      } catch (error) {
+        setFormErrors({ general: error instanceof Error ? error.message : 'Unable to save catch.' });
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [editingId, fetchEntries, form, plannerForecast, resetForm, user],
   );
 
   return (
@@ -75,8 +382,8 @@ export default function LogbookContent({ showIntroduction = true }: LogbookConte
           <p className="text-sm uppercase tracking-[0.3em] text-white/60">Personal logbook</p>
           <h1 className="text-3xl md:text-4xl font-semibold text-white">Document every catch with location privacy</h1>
           <p className="text-white/70">
-            Keep a detailed record of species, techniques, weather, and results. Choose who can see the location of each catch —
-            the entire community, anglers on that water, or only you.
+            Track techniques, conditions, and results for every outing. Choose who can see the location of each catch and keep
+            sensitive coordinates private.
           </p>
         </header>
       ) : null}
@@ -107,6 +414,7 @@ export default function LogbookContent({ showIntroduction = true }: LogbookConte
             latitude={plannerSpot.latitude}
             longitude={plannerSpot.longitude}
             locationLabel={`${plannerSpot.name}, ${plannerSpot.state}`}
+            onSnapshot={setPlannerForecast}
           />
         ) : null}
       </section>
@@ -124,6 +432,7 @@ export default function LogbookContent({ showIntroduction = true }: LogbookConte
               value={form.species}
               onChange={(event) => setForm((prev) => ({ ...prev, species: event.target.value }))}
             />
+            {formErrors.species ? <p className="mt-1 text-xs text-red-400">{formErrors.species}</p> : null}
           </div>
           <div>
             <label htmlFor="waterbody" className="block text-sm font-medium text-white">
@@ -136,6 +445,7 @@ export default function LogbookContent({ showIntroduction = true }: LogbookConte
               value={form.waterbody}
               onChange={(event) => setForm((prev) => ({ ...prev, waterbody: event.target.value }))}
             />
+            {formErrors.waterbody ? <p className="mt-1 text-xs text-red-400">{formErrors.waterbody}</p> : null}
           </div>
           <div>
             <label htmlFor="date" className="block text-sm font-medium text-white">
@@ -149,6 +459,7 @@ export default function LogbookContent({ showIntroduction = true }: LogbookConte
               value={form.date}
               onChange={(event) => setForm((prev) => ({ ...prev, date: event.target.value }))}
             />
+            {formErrors.date ? <p className="mt-1 text-xs text-red-400">{formErrors.date}</p> : null}
           </div>
           <div>
             <label htmlFor="time" className="block text-sm font-medium text-white">
@@ -161,6 +472,7 @@ export default function LogbookContent({ showIntroduction = true }: LogbookConte
               value={form.time}
               onChange={(event) => setForm((prev) => ({ ...prev, time: event.target.value }))}
             />
+            {formErrors.time ? <p className="mt-1 text-xs text-red-400">{formErrors.time}</p> : null}
           </div>
           <div>
             <label htmlFor="length" className="block text-sm font-medium text-white">
@@ -172,6 +484,7 @@ export default function LogbookContent({ showIntroduction = true }: LogbookConte
               value={form.length}
               onChange={(event) => setForm((prev) => ({ ...prev, length: event.target.value }))}
             />
+            {formErrors.length ? <p className="mt-1 text-xs text-red-400">{formErrors.length}</p> : null}
           </div>
           <div>
             <label htmlFor="weight" className="block text-sm font-medium text-white">
@@ -183,6 +496,19 @@ export default function LogbookContent({ showIntroduction = true }: LogbookConte
               value={form.weight}
               onChange={(event) => setForm((prev) => ({ ...prev, weight: event.target.value }))}
             />
+            {formErrors.weight ? <p className="mt-1 text-xs text-red-400">{formErrors.weight}</p> : null}
+          </div>
+          <div>
+            <label htmlFor="girth" className="block text-sm font-medium text-white">
+              Girth (in)
+            </label>
+            <input
+              id="girth"
+              className="input"
+              value={form.girth}
+              onChange={(event) => setForm((prev) => ({ ...prev, girth: event.target.value }))}
+            />
+            {formErrors.girth ? <p className="mt-1 text-xs text-red-400">{formErrors.girth}</p> : null}
           </div>
           <div>
             <label htmlFor="bait" className="block text-sm font-medium text-white">
@@ -207,15 +533,15 @@ export default function LogbookContent({ showIntroduction = true }: LogbookConte
             />
           </div>
           <div>
-            <label htmlFor="weather" className="block text-sm font-medium text-white">
-              Weather snapshot
+            <label htmlFor="conditions" className="block text-sm font-medium text-white">
+              Conditions snapshot
             </label>
             <input
-              id="weather"
-              placeholder="e.g. 68°F, overcast, light wind"
+              id="conditions"
               className="input"
-              value={form.weather}
-              onChange={(event) => setForm((prev) => ({ ...prev, weather: event.target.value }))}
+              placeholder="e.g. 68°F, overcast, light wind"
+              value={form.conditions}
+              onChange={(event) => setForm((prev) => ({ ...prev, conditions: event.target.value }))}
             />
           </div>
         </div>
@@ -235,96 +561,172 @@ export default function LogbookContent({ showIntroduction = true }: LogbookConte
         <fieldset className="space-y-3">
           <legend className="text-sm font-semibold text-white">Location visibility</legend>
           <p className="text-xs text-white/60">Choose how your spot is shared when you post this catch.</p>
-          <label className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+          {(['public', 'water', 'private'] as CatchVisibility[]).map((value) => (
+            <label key={value} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+              <input
+                type="radio"
+                name="privacy"
+                value={value}
+                checked={form.privacy === value}
+                onChange={(event) =>
+                  setForm((prev) => ({ ...prev, privacy: event.target.value as CatchVisibility }))
+                }
+                className="mt-1"
+              />
+              <div>
+                <p className="text-sm font-semibold text-white">{value === 'water' ? 'Water-only' : value.charAt(0).toUpperCase() + value.slice(1)}</p>
+                <p className="text-xs text-white/60">
+                  {value === 'public'
+                    ? 'Share catch card with map pin visible to all anglers.'
+                    : value === 'water'
+                    ? 'Waterbody name is visible but the precise pin stays hidden.'
+                    : 'Only you can see this entry and exact coordinates.'}
+                </p>
+              </div>
+            </label>
+          ))}
+          <label className="flex items-center gap-3 text-sm text-white/80">
             <input
-              type="radio"
-              name="privacy"
-              value="public"
-              checked={form.privacy === 'public'}
-              onChange={(event) => setForm((prev) => ({ ...prev, privacy: event.target.value as CatchEntry['privacy'] }))}
-              className="mt-1"
+              type="checkbox"
+              checked={form.shareWithCommunity}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, shareWithCommunity: event.target.checked }))
+              }
             />
-            <div>
-              <p className="text-sm font-semibold text-white">Public</p>
-              <p className="text-xs text-white/60">Share catch card with map pin visible to all anglers.</p>
-            </div>
+            Include this catch in community analytics
           </label>
-          <label className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
+          <label className="flex items-center gap-3 text-sm text-white/80">
             <input
-              type="radio"
-              name="privacy"
-              value="water"
-              checked={form.privacy === 'water'}
-              onChange={(event) => setForm((prev) => ({ ...prev, privacy: event.target.value as CatchEntry['privacy'] }))}
-              className="mt-1"
+              type="checkbox"
+              checked={form.shareCoordinates}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, shareCoordinates: event.target.checked }))
+              }
             />
-            <div>
-              <p className="text-sm font-semibold text-white">Water-only</p>
-              <p className="text-xs text-white/60">Waterbody name is visible but the precise pin stays hidden.</p>
-            </div>
+            Share exact coordinates when visibility allows
           </label>
-          <label className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-3">
-            <input
-              type="radio"
-              name="privacy"
-              value="private"
-              checked={form.privacy === 'private'}
-              onChange={(event) => setForm((prev) => ({ ...prev, privacy: event.target.value as CatchEntry['privacy'] }))}
-              className="mt-1"
-            />
-            <div>
-              <p className="text-sm font-semibold text-white">Private</p>
-              <p className="text-xs text-white/60">Only you can see this entry and exact coordinates.</p>
-            </div>
-          </label>
+          {formErrors.shareCoordinates ? (
+            <p className="text-xs text-red-400">{formErrors.shareCoordinates}</p>
+          ) : null}
         </fieldset>
 
-        <button type="submit" className="btn-primary px-6 py-3 text-base">
-          Save catch to logbook
-        </button>
+        {formErrors.general ? <p className="text-sm text-red-400">{formErrors.general}</p> : null}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="submit" className="btn-primary px-6 py-3 text-base" disabled={submitting}>
+            {submitting ? 'Saving…' : editingId ? 'Update catch' : 'Save catch to logbook'}
+          </button>
+          {editingId ? (
+            <button
+              type="button"
+              className="btn-secondary px-4 py-2 text-sm"
+              onClick={resetForm}
+              disabled={submitting}
+            >
+              Cancel edit
+            </button>
+          ) : null}
+        </div>
       </form>
 
       <section className="space-y-4">
-        <header className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-          <div>
+        <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-1">
             <h2 className="text-2xl font-semibold text-white">Recent entries</h2>
             <p className="text-sm text-white/60">Only you can see private catches in this view.</p>
           </div>
-          {stats && stats.topSpecies ? (
-            <p className="rounded-full border border-brand-500/40 bg-brand-500/10 px-4 py-2 text-xs text-brand-100">
-              {stats.total} logged • Top species: {stats.topSpecies[0]} ({stats.topSpecies[1]})
-            </p>
-          ) : null}
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-3">
+            <select
+              className="input w-full bg-slate-950/80 text-sm md:w-auto"
+              value={selectedVisibility}
+              onChange={(event) => setSelectedVisibility(event.target.value as 'all' | CatchVisibility)}
+            >
+              {VISIBILITY_FILTERS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            {stats && stats.topSpecies ? (
+              <p className="rounded-full border border-brand-500/40 bg-brand-500/10 px-4 py-2 text-xs text-brand-100">
+                {stats.total} logged • Top species: {stats.topSpecies.name.toUpperCase()} ({stats.topSpecies.count})
+              </p>
+            ) : null}
+          </div>
         </header>
 
-        {entries.length === 0 ? (
+        {authLoading ? (
+          <div className="rounded-3xl border border-white/10 p-8 text-center text-white/60">Checking your account…</div>
+        ) : !user ? (
+          <div className="rounded-3xl border border-white/10 p-8 text-center text-white/60">
+            Sign in to view and manage your personal logbook.
+          </div>
+        ) : entriesLoading ? (
+          <div className="flex items-center justify-center gap-2 rounded-3xl border border-white/10 p-8 text-white/70">
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+            Loading catches…
+          </div>
+        ) : entriesError ? (
+          <div className="rounded-3xl border border-red-500/30 bg-red-500/10 p-6 text-center text-red-200">
+            {entriesError}
+          </div>
+        ) : entries.length === 0 ? (
           <div className="rounded-3xl border border-white/10 p-8 text-center text-white/60">
             Log your first catch to build personal trends over time.
           </div>
         ) : (
           <ul className="grid gap-4 md:grid-cols-2">
-            {entries.map((entry) => (
-              <li key={entry.id} className="rounded-3xl border border-white/10 bg-slate-900/60 p-4 space-y-2">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-semibold text-white">{entry.species}</h3>
-                  <span className="text-xs uppercase tracking-wide text-white/50">{entry.privacy}</span>
-                </div>
-                <p className="text-sm text-white/70">
-                  {entry.date} {entry.time && `• ${entry.time}`} — {entry.waterbody}
-                </p>
-                {entry.length ? <p className="text-xs text-white/60">Length: {entry.length} in</p> : null}
-                {entry.weight ? <p className="text-xs text-white/60">Weight: {entry.weight} lb</p> : null}
-                {entry.bait || entry.technique ? (
-                  <p className="text-xs text-white/60">
-                    {entry.bait ? `Bait: ${entry.bait}` : ''}
-                    {entry.bait && entry.technique ? ' • ' : ''}
-                    {entry.technique ? `Technique: ${entry.technique}` : ''}
-                  </p>
-                ) : null}
-                {entry.weather ? <p className="text-xs text-white/50">Weather: {entry.weather}</p> : null}
-                {entry.notes ? <p className="text-sm text-white/70">{entry.notes}</p> : null}
-              </li>
-            ))}
+            {entries.map((entry) => {
+              const window = bestBiteWindow(entry.forecastSnapshot);
+              return (
+                <li key={entry.id} className="rounded-3xl border border-white/10 bg-slate-900/60 p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-lg font-semibold text-white">{entry.species}</h3>
+                      <p className="text-xs uppercase tracking-wide text-white/50">{entry.sharing.visibility}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => populateFormForEditing(entry)}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-white transition hover:bg-white/10"
+                        aria-label={`Edit ${entry.species}`}
+                      >
+                        <PencilLine className="h-4 w-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(entry.id)}
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-red-200 transition hover:bg-red-500/20"
+                        aria-label={`Delete ${entry.species}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-sm text-white/70">{formatDateTime(entry.caughtAt)} — {entry.location.waterbody}</p>
+                  {measurementSummary(entry) ? (
+                    <p className="text-xs text-white/60">Measurements: {measurementSummary(entry)}</p>
+                  ) : null}
+                  {entry.gear?.bait || entry.gear?.presentation ? (
+                    <p className="text-xs text-white/60">
+                      {entry.gear?.bait ? `Bait: ${entry.gear.bait}` : ''}
+                      {entry.gear?.bait && entry.gear?.presentation ? ' • ' : ''}
+                      {entry.gear?.presentation ? `Technique: ${entry.gear.presentation}` : ''}
+                    </p>
+                  ) : null}
+                  {entry.gear?.notes ? (
+                    <p className="text-xs text-white/50">Conditions: {entry.gear.notes}</p>
+                  ) : null}
+                  {window ? (
+                    <p className="text-xs text-brand-200">
+                      Forecast window: {window.label} ({new Date(window.start).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })})
+                    </p>
+                  ) : null}
+                  {entry.notes ? <p className="text-sm text-white/70">{entry.notes}</p> : null}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
