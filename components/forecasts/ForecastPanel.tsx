@@ -12,6 +12,7 @@ type ForecastPanelProps = {
   longitude: number;
   locationLabel?: string;
   className?: string;
+  onSnapshot?: (bundle: ForecastBundle | null) => void;
 };
 
 type FetchState = {
@@ -132,8 +133,14 @@ function formatStatusLabel(status: ForecastBundle["tides"]["source"]["status"] |
   }
 }
 
-export default function ForecastPanel({ latitude, longitude, locationLabel, className }: ForecastPanelProps) {
+export default function ForecastPanel({ latitude, longitude, locationLabel, className, onSnapshot }: ForecastPanelProps) {
   const { loading, refreshing, error, data, refresh } = useForecast(latitude, longitude);
+
+  useEffect(() => {
+    if (typeof onSnapshot === 'function') {
+      onSnapshot(data);
+    }
+  }, [data, onSnapshot]);
 
   const nextHours = useMemo(() => (data?.weather.hours ? data.weather.hours.slice(0, 6) : []), [data]);
 
