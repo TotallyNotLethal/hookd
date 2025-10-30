@@ -1511,7 +1511,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <form
         onSubmit={handleSubmit}
         className="glass p-6 rounded-xl w-full max-w-xl space-y-4 relative border border-white/10 max-h-[90vh] flex flex-col"
