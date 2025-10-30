@@ -60,10 +60,29 @@ export default function PostDetailModal({
     return post?.imageUrl ? [post.imageUrl] : [];
   }, [post?.imageUrl, post?.imageUrls]);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [transitionDirection, setTransitionDirection] = useState<1 | -1>(1);
 
   useEffect(() => {
     setActiveImageIndex(0);
   }, [post?.id, images.length]);
+
+  useEffect(() => {
+    if (!post) return;
+    const { body, documentElement } = document;
+    const previousOverflow = body.style.overflow;
+    const previousPaddingRight = body.style.paddingRight;
+    const scrollbarGap = window.innerWidth - documentElement.clientWidth;
+
+    body.style.overflow = 'hidden';
+    if (scrollbarGap > 0) {
+      body.style.paddingRight = `${scrollbarGap}px`;
+    }
+
+    return () => {
+      body.style.overflow = previousOverflow;
+      body.style.paddingRight = previousPaddingRight;
+    };
+  }, [post]);
 
   const showPrevImage = useCallback(
     (event: MouseEvent) => {
@@ -221,8 +240,10 @@ export default function PostDetailModal({
     (type: 'next' | 'previous') => {
       if (navigationCooldownRef.current !== null) return;
       if (type === 'next' && onNavigateNext) {
+        setTransitionDirection(1);
         onNavigateNext();
       } else if (type === 'previous' && onNavigatePrevious) {
+        setTransitionDirection(-1);
         onNavigatePrevious();
       } else {
         return;
@@ -371,12 +392,32 @@ export default function PostDetailModal({
     };
   }, [handleKeyDown, handleTouchEnd, handleTouchStart, handleWheel, post]);
 
+  const modalVariants = {
+    enter: (direction: 1 | -1) => ({
+      y: direction === 1 ? 80 : -80,
+      opacity: 0,
+      scale: 0.95,
+    }),
+    center: {
+      y: 0,
+      opacity: 1,
+      scale: 1,
+      transition: { duration: 0.35, ease: 'easeOut' },
+    },
+    exit: (direction: 1 | -1) => ({
+      y: direction === 1 ? -80 : 80,
+      opacity: 0,
+      scale: 0.95,
+      transition: { duration: 0.3, ease: 'easeIn' },
+    }),
+  } as const;
+
   return (
     <AnimatePresence>
       {post && (
         <motion.div
           ref={overlayRef}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -391,24 +432,30 @@ export default function PostDetailModal({
             transition={{ duration: 0.3 }}
           />
 
-          {/* Modal container */}
-          <motion.div
-            ref={modalContainerRef}
-            className={modalContainerClasses}
-            initial={{ y: 50, opacity: 0, scale: 0.95 }}
-            animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: 50, opacity: 0, scale: 0.95 }}
-            transition={{ duration: 0.3, ease: 'easeOut' }}
+          <AnimatePresence
+            mode="wait"
+            initial={false}
+            custom={transitionDirection}
           >
-            <button
-              type="button"
-              onClick={onClose}
-              className="absolute right-4 top-4 z-10 rounded-full bg-black/60 p-2 text-white transition hover:bg-black/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-              aria-label="Close catch details"
+            <motion.div
+              key={post?.id ?? 'active-post'}
+              ref={modalContainerRef}
+              className={modalContainerClasses}
+              custom={transitionDirection}
+              variants={modalVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
             >
-              ✕
-            </button>
-            <div className={layoutClasses}>
+              <button
+                type="button"
+                onClick={onClose}
+                className="absolute right-4 top-4 z-10 rounded-full bg-black/60 p-2 text-white transition hover:bg-black/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+                aria-label="Close catch details"
+              >
+                ✕
+              </button>
+              <div className={layoutClasses}>
               {/* Image with zoom animation */}
               <motion.div
                 className={imageWrapperClasses}
@@ -591,7 +638,8 @@ export default function PostDetailModal({
                 </div>
               </div>
             </div>
-          </motion.div>
+            </motion.div>
+          </AnimatePresence>
         </motion.div>
       )}
     </AnimatePresence>
