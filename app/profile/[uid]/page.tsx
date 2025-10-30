@@ -7,6 +7,7 @@ import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import NavBar from '@/components/NavBar';
 import ProfileView from '@/components/ProfileView';
 import LogbookModal from '@/components/logbook/LogbookModal';
+import LicenseReminderSettingsCard from '@/components/LicenseReminderSettingsCard';
 import { summarizeCatchMetrics } from '@/lib/catchStats';
 import { app } from '@/lib/firebaseClient';
 import {
@@ -305,33 +306,38 @@ export default function ProfilePage() {
   return (
     <main>
       <NavBar />
-      <section className="container pt-28 pb-10">
+      <section className="container space-y-6 pt-28 pb-10">
         {loading ? (
           <div className="card p-6">
             <p className="text-white/70">Loading profile…</p>
           </div>
         ) : profile ? (
-          <ProfileView
-            profile={profile}
-            catches={catches}
-            isOwner={isOwner}
-            onOpenLogbook={canManageLogbook ? () => setIsLogbookModalOpen(true) : undefined}
-            isFollowing={isFollowing}
-            onToggleFollow={!isOwner && authUser ? handleToggleFollow : undefined}
-            followPending={followPending}
-            canFollow={!shouldHideContent}
-            onCatchSelect={(catchItem) => setActiveCatch(catchItem)}
-            catchSummary={catchSummary}
-            tackleStats={tackleStats}
-            teams={teams}
-            messageHref={messageHref}
-            onBlockToggle={!isOwner && authUser ? handleBlockToggle : undefined}
-            blockPending={blockPending}
-            isBlocked={isBlocked}
-            onReport={!isOwner && authUser ? handleReportUser : undefined}
-            reportPending={reportPending}
-            blockedNotice={blockedNotice}
-          />
+          <div className="space-y-6">
+            {isOwner ? (
+              <LicenseReminderSettingsCard uid={authUser?.uid} />
+            ) : null}
+            <ProfileView
+              profile={profile}
+              catches={catches}
+              isOwner={isOwner}
+              onOpenLogbook={canManageLogbook ? () => setIsLogbookModalOpen(true) : undefined}
+              isFollowing={isFollowing}
+              onToggleFollow={!isOwner && authUser ? handleToggleFollow : undefined}
+              followPending={followPending}
+              canFollow={!shouldHideContent}
+              onCatchSelect={(catchItem) => setActiveCatch(catchItem)}
+              catchSummary={catchSummary}
+              tackleStats={tackleStats}
+              teams={teams}
+              messageHref={messageHref}
+              onBlockToggle={!isOwner && authUser ? handleBlockToggle : undefined}
+              blockPending={blockPending}
+              isBlocked={isBlocked}
+              onReport={!isOwner && authUser ? handleReportUser : undefined}
+              reportPending={reportPending}
+              blockedNotice={blockedNotice}
+            />
+          </div>
         ) : (
           <div className="card p-6">
             <p className="text-white/70">Profile not found.</p>
