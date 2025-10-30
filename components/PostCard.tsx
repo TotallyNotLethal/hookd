@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import type { MouseEvent } from 'react';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth } from '@/lib/firebaseClient';
 import {
@@ -26,6 +27,39 @@ export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any
   const locationIsPrivate = Boolean(post.locationPrivate);
   const canShowLocation =
     post.location && (!locationIsPrivate || (user && user.uid === post.uid));
+  const images = useMemo(() => {
+    if (Array.isArray(post?.imageUrls) && post.imageUrls.length > 0) {
+      return post.imageUrls.filter((url: unknown): url is string => typeof url === 'string');
+    }
+    return post?.imageUrl ? [post.imageUrl] : [];
+  }, [post?.imageUrl, post?.imageUrls]);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  useEffect(() => {
+    setCurrentImageIndex(0);
+  }, [post?.id, images.length]);
+
+  const showPrevImage = useCallback(
+    (event: MouseEvent) => {
+      event.stopPropagation();
+      setCurrentImageIndex((prev) => {
+        if (images.length === 0) return prev;
+        return prev === 0 ? images.length - 1 : prev - 1;
+      });
+    },
+    [images.length],
+  );
+
+  const showNextImage = useCallback(
+    (event: MouseEvent) => {
+      event.stopPropagation();
+      setCurrentImageIndex((prev) => {
+        if (images.length === 0) return prev;
+        return prev === images.length - 1 ? 0 : prev + 1;
+      });
+    },
+    [images.length],
+  );
 
 
   useEffect(() => {
@@ -147,13 +181,41 @@ export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any
         </div>
       </div>
 
-      {post.imageUrl && (
+      {images.length > 0 && (
         <div className="relative w-full mb-3 overflow-hidden rounded-xl bg-black/40 aspect-[4/5]">
           <img
-            src={post.imageUrl}
+            src={images[currentImageIndex]}
             alt={post.species}
-            className="absolute inset-0 w-full h-full object-cover"
+            className="absolute inset-0 h-full w-full object-cover"
           />
+          {images.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={showPrevImage}
+                className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 text-white transition hover:bg-black/80"
+              >
+                ‹
+              </button>
+              <button
+                type="button"
+                onClick={showNextImage}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 text-white transition hover:bg-black/80"
+              >
+                ›
+              </button>
+              <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-1">
+                {images.map((_, index) => (
+                  <span
+                    key={index}
+                    className={`h-2 w-2 rounded-full transition ${
+                      index === currentImageIndex ? 'bg-white' : 'bg-white/40'
+                    }`}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 	  

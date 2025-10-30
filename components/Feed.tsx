@@ -39,9 +39,24 @@ export default function Feed() {
         const locationIsPrivate = Boolean(post.locationPrivate);
         const canShowLocation =
           post.location && (!locationIsPrivate || user?.uid === post.userId);
+        const imageList = Array.isArray(post.imageUrls) && post.imageUrls.length > 0
+          ? post.imageUrls.filter((url: unknown): url is string => typeof url === 'string')
+          : post.imageUrl
+          ? [post.imageUrl]
+          : [];
+        const primaryImage = imageList[0];
         return (
           <div key={post.id} className="glass rounded-2xl p-4">
-            <img src={post.imageUrl} alt={post.species} className="w-full rounded-xl mb-3" />
+            {primaryImage ? (
+              <div className="relative mb-3 overflow-hidden rounded-xl">
+                <img src={primaryImage} alt={post.species} className="w-full" />
+                {imageList.length > 1 && (
+                  <span className="absolute top-2 right-2 rounded-full bg-black/70 px-2 py-1 text-xs font-medium text-white">
+                    +{imageList.length - 1}
+                  </span>
+                )}
+              </div>
+            ) : null}
             <div className="flex justify-between items-center mb-2">
               <h3 className="font-semibold">{post.species}</h3>
               {user?.uid === post.userId && (
