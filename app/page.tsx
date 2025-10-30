@@ -34,6 +34,7 @@ export default function Page() {
   const [challengePosts, setChallengePosts] = useState<any[]>([]);
   const [recentCatches, setRecentCatches] = useState<any[]>([]);
   const [active, setActive] = useState<any | null>(null);
+  const [activeCollection, setActiveCollection] = useState<'recent' | 'challenge' | null>(null);
   const [weightLeaders, setWeightLeaders] = useState<TournamentLeaderboardEntry[]>([]);
   const [lengthLeaders, setLengthLeaders] = useState<TournamentLeaderboardEntry[]>([]);
   const [activeTournaments, setActiveTournaments] = useState<Tournament[]>([]);
@@ -41,6 +42,53 @@ export default function Page() {
   const [profile, setProfile] = useState<HookdUser | null>(null);
   const [newestAngler, setNewestAngler] = useState<HookdUser | null>(null);
   const [user] = useAuthState(auth);
+
+  const openFromCollection = useCallback(
+    (post: any, source: 'recent' | 'challenge') => {
+      setActive(post);
+      setActiveCollection(source);
+    },
+    [],
+  );
+
+  const handleOpenRecent = useCallback(
+    (post: any) => openFromCollection(post, 'recent'),
+    [openFromCollection],
+  );
+
+  const handleOpenChallenge = useCallback(
+    (post: any) => openFromCollection(post, 'challenge'),
+    [openFromCollection],
+  );
+
+  const handleCloseModal = useCallback(() => {
+    setActive(null);
+    setActiveCollection(null);
+  }, []);
+
+  const activeCollectionItems = useMemo(() => {
+    if (activeCollection === 'recent') return recentCatches;
+    if (activeCollection === 'challenge') return challengePosts;
+    return [];
+  }, [activeCollection, challengePosts, recentCatches]);
+
+  const activeIndex = useMemo(() => {
+    if (!active) return -1;
+    return activeCollectionItems.findIndex((item) => item.id === active.id);
+  }, [active, activeCollectionItems]);
+
+  const previousPost = useMemo(
+    () => (activeIndex > 0 ? activeCollectionItems[activeIndex - 1] : null),
+    [activeCollectionItems, activeIndex],
+  );
+
+  const nextPost = useMemo(
+    () =>
+      activeIndex >= 0 && activeIndex < activeCollectionItems.length - 1
+        ? activeCollectionItems[activeIndex + 1]
+        : null,
+    [activeCollectionItems, activeIndex],
+  );
   const defer = useCallback((fn: () => void) => {
     if (typeof queueMicrotask === "function") {
       queueMicrotask(fn);
@@ -438,7 +486,7 @@ export default function Page() {
         {recentCatches.length > 0 ? (
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
             {recentCatches.map((post) => (
-              <PostCard key={post.id} post={post} onOpen={setActive} />
+              <PostCard key={post.id} post={post} onOpen={handleOpenRecent} />
             ))}
           </div>
         ) : (
@@ -469,7 +517,7 @@ export default function Page() {
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
               {challengePosts.length > 0 ? (
                 challengePosts.map((p) => (
-                  <PostCard key={p.id} post={p} onOpen={setActive} />
+                  <PostCard key={p.id} post={p} onOpen={handleOpenChallenge} />
                 ))
               ) : (
                 <p className="text-white/60">
@@ -577,7 +625,13 @@ export default function Page() {
         </div>
       </section>
       {active && (
-        <PostDetailModal post={active} onClose={() => setActive(null)} size="wide" />
+        <PostDetailModal
+          post={active}
+          onClose={handleCloseModal}
+          size="wide"
+          onNavigatePrevious={previousPost && activeCollection ? () => openFromCollection(previousPost, activeCollection) : undefined}
+          onNavigateNext={nextPost && activeCollection ? () => openFromCollection(nextPost, activeCollection) : undefined}
+        />
       )}
     </main>
   );

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import type { MouseEvent } from 'react';
 import {
   addComment,
@@ -30,9 +30,17 @@ interface PostDetailModalProps {
   post: any;
   onClose: () => void;
   size?: 'default' | 'wide';
+  onNavigateNext?: () => void;
+  onNavigatePrevious?: () => void;
 }
 
-export default function PostDetailModal({ post, onClose, size = 'default' }: PostDetailModalProps) {
+export default function PostDetailModal({
+  post,
+  onClose,
+  size = 'default',
+  onNavigateNext,
+  onNavigatePrevious,
+}: PostDetailModalProps) {
   const auth = getAuth(app);
   const user = auth.currentUser;
   const router = useRouter();
@@ -149,6 +157,12 @@ export default function PostDetailModal({ post, onClose, size = 'default' }: Pos
   );
 
   const isWide = size === 'wide';
+  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const modalContainerRef = useRef<HTMLDivElement | null>(null);
+  const touchStateRef = useRef<{ y: number; path: Node[] } | null>(null);
+  const wheelStateRef = useRef<{ delta: number; direction: 1 | -1 | 0 }>({ delta: 0, direction: 0 });
+  const navigationCooldownRef = useRef<number | null>(null);
+
   const modalContainerClasses = `relative bg-[var(--card)] border border-white/10 rounded-2xl w-full ${
     isWide ? 'max-w-5xl' : 'max-w-3xl'
   } max-h-[90vh] overflow-y-auto md:max-h-[85vh] md:overflow-hidden shadow-2xl`;
@@ -157,10 +171,211 @@ export default function PostDetailModal({ post, onClose, size = 'default' }: Pos
     isWide ? 'md:min-h-[540px]' : 'md:min-h-[480px]'
   } bg-black/60 flex items-center justify-center`;
 
+  const buildPathFromTarget = useCallback((target: EventTarget | null) => {
+    const path: Node[] = [];
+    if (!target || !(target instanceof Node)) return path;
+    let current: Node | null = target;
+    const overlayEl = overlayRef.current;
+    while (current) {
+      path.push(current);
+      if (current === overlayEl) {
+        break;
+      }
+      current = current.parentNode;
+    }
+    return path;
+  }, []);
+
+  const canScrollInPath = useCallback(
+    (path: Node[], direction: 'up' | 'down') => {
+      const overlayEl = overlayRef.current;
+      if (!overlayEl) return false;
+
+      for (const node of path) {
+        if (!(node instanceof HTMLElement)) continue;
+        if (!overlayEl.contains(node)) continue;
+
+        const style = window.getComputedStyle(node);
+        const overflowY = style.overflowY;
+        if (overflowY !== 'auto' && overflowY !== 'scroll') continue;
+
+        const scrollHeight = node.scrollHeight;
+        const clientHeight = node.clientHeight;
+        if (scrollHeight <= clientHeight + 1) continue;
+
+        const maxScrollTop = scrollHeight - clientHeight;
+        if (direction === 'up' && node.scrollTop > 0) {
+          return true;
+        }
+        if (direction === 'down' && node.scrollTop < maxScrollTop - 1) {
+          return true;
+        }
+      }
+
+      return false;
+    },
+    [],
+  );
+
+  const triggerNavigation = useCallback(
+    (type: 'next' | 'previous') => {
+      if (navigationCooldownRef.current !== null) return;
+      if (type === 'next' && onNavigateNext) {
+        onNavigateNext();
+      } else if (type === 'previous' && onNavigatePrevious) {
+        onNavigatePrevious();
+      } else {
+        return;
+      }
+
+      navigationCooldownRef.current = window.setTimeout(() => {
+        navigationCooldownRef.current = null;
+      }, 450);
+    },
+    [onNavigateNext, onNavigatePrevious],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (navigationCooldownRef.current !== null) {
+        window.clearTimeout(navigationCooldownRef.current);
+        navigationCooldownRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleWheel = useCallback(
+    (event: WheelEvent) => {
+      if (!post || (!onNavigateNext && !onNavigatePrevious)) return;
+      const overlayEl = overlayRef.current;
+      if (!overlayEl) return;
+      if (!overlayEl.contains(event.target as Node)) return;
+      if (event.ctrlKey) return;
+
+      const path = typeof event.composedPath === 'function' ? event.composedPath() : buildPathFromTarget(event.target);
+      const direction = event.deltaY > 0 ? 'down' : 'up';
+      if (canScrollInPath(path, direction)) {
+        wheelStateRef.current = { delta: 0, direction: 0 };
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const currentState = wheelStateRef.current;
+      const sign: 1 | -1 | 0 = event.deltaY > 0 ? 1 : event.deltaY < 0 ? -1 : 0;
+      if (sign === 0) return;
+
+      if (currentState.direction !== 0 && currentState.direction !== sign) {
+        wheelStateRef.current = { delta: event.deltaY, direction: sign };
+      } else {
+        wheelStateRef.current = {
+          delta: (currentState.direction === sign ? currentState.delta : 0) + event.deltaY,
+          direction: sign,
+        };
+      }
+
+      const threshold = 120;
+      if (wheelStateRef.current.direction === 1 && wheelStateRef.current.delta > threshold) {
+        triggerNavigation('next');
+        wheelStateRef.current = { delta: 0, direction: 0 };
+      } else if (wheelStateRef.current.direction === -1 && wheelStateRef.current.delta < -threshold) {
+        triggerNavigation('previous');
+        wheelStateRef.current = { delta: 0, direction: 0 };
+      }
+    },
+    [buildPathFromTarget, canScrollInPath, onNavigateNext, onNavigatePrevious, post, triggerNavigation],
+  );
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (!post || (!onNavigateNext && !onNavigatePrevious)) return;
+      const overlayEl = overlayRef.current;
+      if (!overlayEl) return;
+
+      if (event.key === 'ArrowDown' || event.key === 'PageDown') {
+        if (onNavigateNext) {
+          event.preventDefault();
+          triggerNavigation('next');
+        }
+      } else if (event.key === 'ArrowUp' || event.key === 'PageUp') {
+        if (onNavigatePrevious) {
+          event.preventDefault();
+          triggerNavigation('previous');
+        }
+      }
+    },
+    [onNavigateNext, onNavigatePrevious, post, triggerNavigation],
+  );
+
+  const handleTouchStart = useCallback(
+    (event: TouchEvent) => {
+      if (!post || (!onNavigateNext && !onNavigatePrevious)) return;
+      const overlayEl = overlayRef.current;
+      if (!overlayEl) return;
+      if (!overlayEl.contains(event.target as Node)) return;
+      const touch = event.touches[0];
+      if (!touch) return;
+      const path = buildPathFromTarget(event.target);
+      touchStateRef.current = { y: touch.clientY, path };
+    },
+    [buildPathFromTarget, onNavigateNext, onNavigatePrevious, post],
+  );
+
+  const handleTouchEnd = useCallback(
+    (event: TouchEvent) => {
+      if (!touchStateRef.current) return;
+      if (!post || (!onNavigateNext && !onNavigatePrevious)) {
+        touchStateRef.current = null;
+        return;
+      }
+      const touch = event.changedTouches[0];
+      if (!touch) {
+        touchStateRef.current = null;
+        return;
+      }
+
+      const { y, path } = touchStateRef.current;
+      touchStateRef.current = null;
+
+      const deltaY = touch.clientY - y;
+      const threshold = 60;
+      if (Math.abs(deltaY) < threshold) return;
+
+      const direction = deltaY < 0 ? 'down' : 'up';
+      if (canScrollInPath(path, direction)) {
+        return;
+      }
+
+      if (deltaY < 0 && onNavigateNext) {
+        triggerNavigation('next');
+      } else if (deltaY > 0 && onNavigatePrevious) {
+        triggerNavigation('previous');
+      }
+    },
+    [canScrollInPath, onNavigateNext, onNavigatePrevious, post, triggerNavigation],
+  );
+
+  useEffect(() => {
+    if (!post) return;
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchend', handleTouchEnd);
+
+    return () => {
+      window.removeEventListener('wheel', handleWheel);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [handleKeyDown, handleTouchEnd, handleTouchStart, handleWheel, post]);
+
   return (
     <AnimatePresence>
       {post && (
         <motion.div
+          ref={overlayRef}
           className="fixed inset-0 z-50 flex items-center justify-center p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -168,7 +383,7 @@ export default function PostDetailModal({ post, onClose, size = 'default' }: Pos
         >
           {/* Backdrop */}
           <motion.div
-            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            className="absolute inset-0 bg-black/70 backdrop-blur-lg"
             onClick={onClose}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -178,12 +393,21 @@ export default function PostDetailModal({ post, onClose, size = 'default' }: Pos
 
           {/* Modal container */}
           <motion.div
+            ref={modalContainerRef}
             className={modalContainerClasses}
             initial={{ y: 50, opacity: 0, scale: 0.95 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: 50, opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.3, ease: 'easeOut' }}
           >
+            <button
+              type="button"
+              onClick={onClose}
+              className="absolute right-4 top-4 z-10 rounded-full bg-black/60 p-2 text-white transition hover:bg-black/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+              aria-label="Close catch details"
+            >
+              ✕
+            </button>
             <div className={layoutClasses}>
               {/* Image with zoom animation */}
               <motion.div
@@ -251,9 +475,6 @@ export default function PostDetailModal({ post, onClose, size = 'default' }: Pos
                         <span className="sr-only">Delete catch</span>
                       </button>
                     )}
-                    <button onClick={onClose} className="opacity-70 hover:opacity-100 text-lg">
-                      ✕
-                    </button>
                   </div>
                 </div>
 

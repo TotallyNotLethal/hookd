@@ -16,7 +16,7 @@ import { subscribeToUserTackleStats, type UserTackleStats } from "@/lib/tackleBo
 import { USERNAME_MIN_LENGTH, validateAndNormalizeUsername } from "@/lib/username";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import clsx from "clsx";
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import PostDetailModal from "@/app/feed/PostDetailModal";
 import LogbookModal from "@/components/logbook/LogbookModal";
 import {
@@ -636,6 +636,28 @@ export default function Page() {
   const { isPro: hasProAccess } = useProAccess();
   const canManageLogbook = useMemo(() => Boolean(hasProAccess), [hasProAccess]);
 
+  const activeCatchIndex = useMemo(
+    () => (activeCatch ? catches.findIndex((item) => item.id === activeCatch.id) : -1),
+    [activeCatch, catches],
+  );
+
+  const previousCatch = useMemo(
+    () => (activeCatchIndex > 0 ? catches[activeCatchIndex - 1] : null),
+    [activeCatchIndex, catches],
+  );
+
+  const nextCatch = useMemo(
+    () =>
+      activeCatchIndex >= 0 && activeCatchIndex < catches.length - 1
+        ? catches[activeCatchIndex + 1]
+        : null,
+    [activeCatchIndex, catches],
+  );
+
+  const handleCloseActiveCatch = useCallback(() => {
+    setActiveCatch(null);
+  }, []);
+
   useEffect(() => {
     const auth = getAuth(app);
     let unsubscribeProfile: (() => void) | undefined;
@@ -734,7 +756,12 @@ export default function Page() {
         />
       )}
       {activeCatch && (
-        <PostDetailModal post={activeCatch} onClose={() => setActiveCatch(null)} />
+        <PostDetailModal
+          post={activeCatch}
+          onClose={handleCloseActiveCatch}
+          onNavigatePrevious={previousCatch ? () => setActiveCatch(previousCatch) : undefined}
+          onNavigateNext={nextCatch ? () => setActiveCatch(nextCatch) : undefined}
+        />
       )}
       {canManageLogbook && (
         <LogbookModal open={isLogbookModalOpen} onClose={() => setIsLogbookModalOpen(false)} />

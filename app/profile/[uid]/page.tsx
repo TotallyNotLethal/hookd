@@ -80,6 +80,28 @@ export default function ProfilePage() {
   const viewerUid = authUser?.uid ?? null;
   const targetUid = profile?.uid ?? null;
 
+  const activeCatchIndex = useMemo(
+    () => (activeCatch ? catches.findIndex((item) => item.id === activeCatch.id) : -1),
+    [activeCatch, catches],
+  );
+
+  const previousCatch = useMemo(
+    () => (activeCatchIndex > 0 ? catches[activeCatchIndex - 1] : null),
+    [activeCatchIndex, catches],
+  );
+
+  const nextCatch = useMemo(
+    () =>
+      activeCatchIndex >= 0 && activeCatchIndex < catches.length - 1
+        ? catches[activeCatchIndex + 1]
+        : null,
+    [activeCatchIndex, catches],
+  );
+
+  const handleCloseActiveCatch = useCallback(() => {
+    setActiveCatch(null);
+  }, []);
+
   const viewerBlockedTarget = useMemo(() => {
     if (!viewerUid || !targetUid) return false;
     const blocked = Array.isArray(viewerProfile?.blockedUserIds) ? viewerProfile.blockedUserIds : [];
@@ -317,7 +339,12 @@ export default function ProfilePage() {
         )}
       </section>
       {activeCatch && (
-        <PostDetailModal post={activeCatch} onClose={() => setActiveCatch(null)} />
+        <PostDetailModal
+          post={activeCatch}
+          onClose={handleCloseActiveCatch}
+          onNavigatePrevious={previousCatch ? () => setActiveCatch(previousCatch) : undefined}
+          onNavigateNext={nextCatch ? () => setActiveCatch(nextCatch) : undefined}
+        />
       )}
       {canManageLogbook ? (
         <LogbookModal open={isLogbookModalOpen} onClose={() => setIsLogbookModalOpen(false)} />
