@@ -295,6 +295,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [captureDate, setCaptureDate] = useState('');
   const [captureTime, setCaptureTime] = useState('');
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
+  const [coordinatesResolvedName, setCoordinatesResolvedName] = useState<string | null>(null);
   const initialCaptureRef = useRef<{ date: string; time: string } | null>(null);
   const [captureWasCorrected, setCaptureWasCorrected] = useState(false);
   const [environmentSnapshot, setEnvironmentSnapshot] = useState<EnvironmentSnapshot | null>(null);
@@ -612,6 +613,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     setGeolocationStatus(null);
     setGeolocationPending(false);
     setReadingMetadata(false);
+    setCoordinatesResolvedName(null);
   }, [updateMapZoom]);
 
   const handleZoomChange = useCallback(
@@ -656,13 +658,16 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
           const admin = [result.admin1, result.admin2, result.country_code].filter(Boolean).join(', ');
           const resolvedName = admin ? `${result.name}, ${admin}` : result.name;
           setLocation(resolvedName);
+          setCoordinatesResolvedName(resolvedName.trim());
           return resolvedName;
         }
+        setCoordinatesResolvedName(null);
         setLocationError('Unable to confirm the selected location.');
         return null;
       } catch (err) {
         console.warn('Unable to lookup location name', err);
         if (shouldApply()) {
+          setCoordinatesResolvedName(null);
           setLocationError('Unable to confirm the selected location.');
         }
         return null;
@@ -696,6 +701,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         const lng = normalizeLongitude(position.coords.longitude);
         const nextCoordinates = { lat, lng };
         setCoordinates(nextCoordinates);
+        setCoordinatesResolvedName(null);
         updateMapZoom(12);
         userAdjustedZoomRef.current = false;
         setGeolocationStatus(null);
@@ -706,6 +712,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         if (!isMountedRef.current) return;
         console.warn('Unable to access geolocation', error);
         setCoordinates(null);
+        setCoordinatesResolvedName(null);
         updateMapZoom(4);
         userAdjustedZoomRef.current = false;
         setGeolocationStatus('Unable to access GPS. Please select a location manually.');
@@ -746,6 +753,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       setCaptureDate('');
       setCaptureTime('');
       setCoordinates(null);
+      setCoordinatesResolvedName(null);
       initialCaptureRef.current = null;
       setCaptureWasCorrected(false);
       setEnvironmentSnapshot(null);
@@ -809,6 +817,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
           const lngValue = lngRef === 'W' ? -Math.abs(rawLng) : Math.abs(rawLng);
           const lng = normalizeLongitude(lngValue);
           setCoordinates({ lat, lng });
+          setCoordinatesResolvedName(null);
           updateMapZoom(12);
           userAdjustedZoomRef.current = false;
           await lookupLocationName(lat, lng);
@@ -820,6 +829,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
 
           if (fallbackPosition) {
             setCoordinates(fallbackPosition);
+            setCoordinatesResolvedName(null);
             updateMapZoom(12);
             userAdjustedZoomRef.current = false;
             await lookupLocationName(fallbackPosition.lat, fallbackPosition.lng);
@@ -1077,6 +1087,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         lng: normalizeLongitude(latLng.lng),
       };
       setCoordinates(nextCoordinates);
+      setCoordinatesResolvedName(null);
       updateMapZoom((previous) => {
         if (!Number.isFinite(previous)) {
           userAdjustedZoomRef.current = false;
@@ -1182,6 +1193,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
 
     if (!trimmed) {
       setCoordinates(null);
+      setCoordinatesResolvedName(null);
       updateMapZoom(4);
       userAdjustedZoomRef.current = false;
       setLocationError(null);
@@ -1189,7 +1201,10 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       return;
     }
 
-    if (coordinates) {
+    const normalizedInput = trimmed.toLowerCase();
+    const normalizedResolved = coordinatesResolvedName?.trim().toLowerCase() ?? null;
+
+    if (coordinates && normalizedResolved === normalizedInput) {
       setLocationError(null);
       setLocationDirty(false);
       return;
@@ -1222,6 +1237,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
             const lat = Number(topResult.latitude);
             const lng = normalizeLongitude(Number(topResult.longitude));
             setCoordinates({ lat, lng });
+            setCoordinatesResolvedName(trimmed);
             updateMapZoom(12);
             userAdjustedZoomRef.current = false;
             if (searchRequestId.current !== requestId) {
@@ -1230,6 +1246,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
             await lookupLocationName(lat, lng, { requestId });
           } else {
             setCoordinates(null);
+            setCoordinatesResolvedName(null);
             updateMapZoom(4);
             userAdjustedZoomRef.current = false;
             setLocationError('No matches found for that location.');
@@ -1246,6 +1263,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
             setLocationError('Unable to find that location. Try a different search.');
             updateMapZoom(4);
             userAdjustedZoomRef.current = false;
+            setCoordinatesResolvedName(null);
             setLocationDirty(false);
           }
         } finally {
@@ -1260,7 +1278,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       clearTimeout(timeoutId);
       controller.abort();
     };
-  }, [coordinates, location, locationDirty, lookupLocationName, searchRequestId, updateMapZoom]);
+  }, [coordinates, coordinatesResolvedName, location, locationDirty, lookupLocationName, searchRequestId, updateMapZoom]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -1980,6 +1998,9 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
                 setLocation(e.target.value);
                 setLocationDirty(true);
                 setLocationError(null);
+                setCoordinates(null);
+                setCoordinatesResolvedName(null);
+                userAdjustedZoomRef.current = false;
               }}
               required={!isLocationPrivate && !coordinates}
             />
