@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import NavBar from "@/components/NavBar";
 import TrendingExplorer from "@/components/TrendingExplorer";
+import ForecastPanel from "@/components/forecasts/ForecastPanel";
 import {
   subscribeToActiveTournaments,
   subscribeToSpeciesTrendingInsights,
@@ -15,6 +16,7 @@ import type {
   Tournament,
   TournamentLeaderboardEntry,
 } from "@/lib/firestore";
+import { fishingSpots } from "@/lib/fishingSpots";
 import { useProAccess } from "@/hooks/useProAccess";
 
 const FishingMap = dynamic(() => import("@/components/FishingMap"), { ssr: false });
@@ -24,7 +26,18 @@ export default function MapPage() {
   const [weightLeaders, setWeightLeaders] = useState<TournamentLeaderboardEntry[]>([]);
   const [lengthLeaders, setLengthLeaders] = useState<TournamentLeaderboardEntry[]>([]);
   const [speciesInsights, setSpeciesInsights] = useState<SpeciesTrendingInsight[]>([]);
+  const [selectedSpotId, setSelectedSpotId] = useState<string | null>(
+    fishingSpots.length > 0 ? fishingSpots[0]!.id : null
+  );
   const { isPro } = useProAccess();
+
+  const selectedSpot = useMemo(() => {
+    if (!selectedSpotId) return fishingSpots[0] ?? null;
+    return fishingSpots.find((spot) => spot.id === selectedSpotId) ?? fishingSpots[0] ?? null;
+  }, [selectedSpotId]);
+
+  const forecastLatitude = selectedSpot?.latitude ?? 40.7989;
+  const forecastLongitude = selectedSpot?.longitude ?? -81.3784;
 
   useEffect(() => {
     const unsubscribeWeight = subscribeToTournamentLeaderboardByWeight(10, (entries) => {
@@ -80,9 +93,40 @@ export default function MapPage() {
               legally and efficiently. Adjust the filters to surface the best spots for your target species and tap a marker to
               review catches, baits, and bag limits.
             </p>
-          </header>
+        </header>
 
-          <FishingMap isProMember={isPro} />
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-white">Environmental outlook</p>
+              <p className="text-xs text-white/60">
+                Compare bite windows before you drop a pin. Forecasts update every few minutes.
+              </p>
+            </div>
+            <label className="text-xs text-white/70">
+              <span className="mr-2 uppercase tracking-[0.2em] text-white/40">Location</span>
+              <select
+                className="input bg-slate-950/80 text-sm"
+                value={selectedSpotId ?? ""}
+                onChange={(event) => setSelectedSpotId(event.target.value || null)}
+              >
+                {fishingSpots.slice(0, 12).map((spot) => (
+                  <option key={spot.id} value={spot.id}>
+                    {spot.name}, {spot.state}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <ForecastPanel
+            latitude={forecastLatitude}
+            longitude={forecastLongitude}
+            locationLabel={selectedSpot ? `${selectedSpot.name}, ${selectedSpot.state}` : undefined}
+          />
+        </div>
+
+        <FishingMap isProMember={isPro} />
         </div>
       </section>
 
