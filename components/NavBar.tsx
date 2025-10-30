@@ -330,24 +330,55 @@ export default function NavBar() {
         className="fixed top-0 left-0 right-0 z-[1000] bg-slate-950/95 backdrop-blur border-b border-white/10"
       >
         <div className="container py-4">
-          <div className="flex items-center justify-between">
-            {/* Logo */}
-            <Link href="/" className="flex items-center gap-3">
-              <Image src="/logo.svg" alt="Hook'd" width={36} height={36} className="rounded-xl shadow-glow" />
-              <span className="text-xl font-semibold tracking-tight">Hook&apos;d</span>
-            </Link>
-
-            <div className="flex items-center gap-3">
-              <Link
-                href="/tools/fishing-assistant"
-                className="hidden sm:inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-              >
-                AI Guide
-                <span className="rounded-full border border-amber-300/60 bg-amber-500/20 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-200">
-                  Pro
-                </span>
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              {/* Logo */}
+              <Link href="/" className="flex items-center gap-3">
+                <Image src="/logo.svg" alt="Hook'd" width={36} height={36} className="rounded-xl shadow-glow" />
+                <span className="text-xl font-semibold tracking-tight">Hook&apos;d</span>
               </Link>
 
+              <div className="hidden sm:flex items-center gap-3 ml-4 pl-4 border-l border-white/10">
+                <Link href="/map" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Map</Link>
+                <Link href="/chat" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Chat</Link>
+                <Link
+                  href="/tools/fish-identifier"
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                >
+                  Fish ID
+                  <span className="rounded-full border border-amber-300/60 bg-amber-500/20 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                    Pro
+                  </span>
+                </Link>
+                <Link
+                  href="/tools/fishing-assistant"
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                >
+                  AI Guide
+                  <span className="rounded-full border border-amber-300/60 bg-amber-500/20 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                    Pro
+                  </span>
+                </Link>
+                {user ? (
+                  <>
+                    <Link href="/feed" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Feed</Link>
+                    <button
+                      onClick={() => signOut(getAuth(app))}
+                      className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                    >
+                      <LogOut className="w-4 h-4" /> Logout
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <Link href="/login" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Log in</Link>
+                    <Link href="/login" className="btn-primary">Sign up</Link>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
               {/* Notifications dropdown (shared) */}
               {user ? (
                 <div ref={notificationsContainerRef} className="relative order-2 sm:order-none">
@@ -490,36 +521,6 @@ export default function NavBar() {
                   )}
                 </Link>
               ) : null}
-
-              <div className="hidden sm:flex items-center gap-3 ml-4 pl-4 border-l border-white/10">
-                <Link href="/map" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Map</Link>
-                <Link href="/chat" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Chat</Link>
-                <Link
-                  href="/tools/fish-identifier"
-                  className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-                >
-                  Fish ID
-                  <span className="rounded-full border border-amber-300/60 bg-amber-500/20 px-2 py-[2px] text-[10px] font-semibold uppercase tracking-wide text-amber-200">
-                    Pro
-                  </span>
-                </Link>
-                {user ? (
-                  <>
-                    <Link href="/feed" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Feed</Link>
-                    <button
-                      onClick={() => signOut(getAuth(app))}
-                      className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-                    >
-                      <LogOut className="w-4 h-4" /> Logout
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <Link href="/login" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Log in</Link>
-                    <Link href="/login" className="btn-primary">Sign up</Link>
-                  </>
-                )}
-              </div>
 
             {/* Mobile actions */}
             <div className="flex items-center gap-2 order-1 sm:order-none sm:hidden">
