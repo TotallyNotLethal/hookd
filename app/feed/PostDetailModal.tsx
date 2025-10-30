@@ -543,240 +543,239 @@ export default function PostDetailModal({
               animate="center"
               exit="exit"
             >
-              <button
-                type="button"
-                onClick={onClose}
-                className="absolute right-4 top-4 z-10 rounded-full bg-black/60 p-2 text-white transition hover:bg-black/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-                aria-label="Close catch details"
-              >
-                ✕
-              </button>
               <div className={layoutClasses}>
-              {/* Image with zoom animation */}
-              <motion.div
-                className={imageWrapperClasses}
-                initial={{ scale: 1.05 }}
-                animate={{ scale: 1 }}
-                transition={{ duration: 0.4 }}
-              >
-                {images.length > 0 ? (
-                  <div
-                    className="relative flex h-full w-full items-center justify-center overflow-hidden"
-                    onPointerDown={startImageGesture}
-                    onPointerMove={moveImageGesture}
-                    onPointerUp={endImageGesture}
-                    onPointerCancel={endImageGesture}
-                    onPointerLeave={endImageGesture}
-                    onTouchStart={(event) => {
-                      if (images.length > 1) {
-                        event.stopPropagation();
-                      }
-                    }}
-                    onTouchMove={(event) => {
-                      if (images.length > 1) {
-                        event.stopPropagation();
-                      }
-                    }}
-                    onTouchEnd={(event) => {
-                      if (images.length > 1) {
-                        event.stopPropagation();
-                      }
-                    }}
-                    onTouchCancel={(event) => {
-                      if (images.length > 1) {
-                        event.stopPropagation();
-                      }
-                    }}
-                  >
-                    <AnimatePresence
-                      initial={false}
-                      custom={imageTransitionDirection}
-                      mode="wait"
-                    >
-                      <motion.div
-                        key={activeImageIndex}
-                        className="absolute inset-0 flex items-center justify-center"
-                        custom={imageTransitionDirection}
-                        variants={imageVariants}
-                        initial="enter"
-                        animate="center"
-                        exit="exit"
-                      >
-                        <img
-                          src={images[activeImageIndex]}
-                          alt={post.species}
-                          className="max-h-full max-w-full object-contain"
-                        />
-                      </motion.div>
-                    </AnimatePresence>
-                    {images.length > 1 && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={showPrevImage}
-                          className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-black/60 px-3 py-2 text-lg text-white transition hover:bg-black/80"
-                        >
-                          ‹
-                        </button>
-                        <button
-                          type="button"
-                          onClick={showNextImage}
-                          className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-black/60 px-3 py-2 text-lg text-white transition hover:bg-black/80"
-                        >
-                          ›
-                        </button>
-                        <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-1">
-                          {images.map((_, index) => (
-                            <span
-                              key={index}
-                              className={`h-2.5 w-2.5 rounded-full transition ${
-                                index === activeImageIndex ? 'bg-white' : 'bg-white/40'
-                              }`}
-                            />
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-white/60">
-                    No photo available
-                  </div>
-                )}
-              </motion.div>
-
-              {/* Right side (content) */}
-              <div className="p-4 pb-20 relative flex flex-col md:h-full">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-semibold">{post.species}</h3>
-                  <div className="flex items-center gap-2">
-                    {isOwner && (
-                      <button
-                        onClick={handleDelete}
-                        disabled={deleting}
-                        className="opacity-70 hover:opacity-100 text-lg text-red-400 disabled:opacity-40"
-                        title="Delete catch"
-                      >
-                        <Trash2 className="h-5 w-5" />
-                        <span className="sr-only">Delete catch</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      className="text-left text-sm text-blue-400 hover:underline cursor-pointer font-medium"
-                      onClick={() => router.push(`/profile/${post.uid}`)}
-                    >
-                      {post.displayName || post.user.name}
-                    </button>
-                    {isProMember && <ProBadge className="text-[10px]" />}
-                  </div>
-                  {postTime && <span className="text-xs opacity-60">{postTime}</span>}
-                </div>
-
-                {post.caption && (
-                  <p className="text-sm opacity-80 mb-2 whitespace-pre-line">{post.caption}</p>
-                )}
-
-                {(post.weight || post.location) && (
-                  <p className="text-xs opacity-60 mb-2">
-                    {post.weight && <>Weight: {post.weight}</>}{' '}
-                    {canShowLocation ? (
-                      <span>• {post.location}</span>
-                    ) : locationIsPrivate && post.location ? (
-                      <span>• Private location</span>
-                    ) : null}
-                  </p>
-                )}
-
-
-                <div className="flex items-center gap-3 mb-2">
+                {/* Image with zoom animation */}
+                <div className="relative">
                   <button
-                    onClick={() => user && toggleLike(post.id, user.uid)}
-                    className={`flex items-center gap-1 transition ${
-                      liked ? 'text-red-500' : 'opacity-60 hover:opacity-100'
-                    }`}
+                    type="button"
+                    onClick={onClose}
+                    className="absolute right-3 top-3 z-20 rounded-full bg-black/60 p-2 text-white transition hover:bg-black/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70 md:right-4 md:top-4"
+                    aria-label="Close catch details"
                   >
-                    <Heart
-                      className={`w-5 h-5 ${
-                        liked ? 'fill-red-500 stroke-red-500' : ''
-                      }`}
-                    />
+                    ✕
                   </button>
-                  <span className="opacity-60 text-sm">{comments.length} comments</span>
-                </div>
-
-                <div className="space-y-3 overflow-y-auto max-h-[320px] pr-2 pb-16 flex-1">
-                  {comments.map((c) => {
-                    const canDeleteComment = user && (c.uid === user.uid || isOwner);
-                    const isDeletingComment = commentActionBusy === c.id;
-                    return (
+                  <motion.div
+                    className={imageWrapperClasses}
+                    initial={{ scale: 1.05 }}
+                    animate={{ scale: 1 }}
+                    transition={{ duration: 0.4 }}
+                  >
+                    {images.length > 0 ? (
                       <div
-                        key={c.id}
-                        className="text-sm flex flex-col border-b border-white/5 pb-2"
+                        className="relative flex h-full w-full items-center justify-center overflow-hidden"
+                        onPointerDown={startImageGesture}
+                        onPointerMove={moveImageGesture}
+                        onPointerUp={endImageGesture}
+                        onPointerCancel={endImageGesture}
+                        onPointerLeave={endImageGesture}
+                        onTouchStart={(event) => {
+                          if (images.length > 1) {
+                            event.stopPropagation();
+                          }
+                        }}
+                        onTouchMove={(event) => {
+                          if (images.length > 1) {
+                            event.stopPropagation();
+                          }
+                        }}
+                        onTouchEnd={(event) => {
+                          if (images.length > 1) {
+                            event.stopPropagation();
+                          }
+                        }}
+                        onTouchCancel={(event) => {
+                          if (images.length > 1) {
+                            event.stopPropagation();
+                          }
+                        }}
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1">
-                            <span
-                              className="font-medium text-blue-400 hover:underline cursor-pointer"
-                              onClick={() => router.push(`/profile/${c.uid}`)}
-                            >
-                              {c.displayName}
-                            </span>{' '}
-                            {c.text}
-                          </div>
-                          {canDeleteComment && (
+                        <AnimatePresence
+                          initial={false}
+                          custom={imageTransitionDirection}
+                          mode="wait"
+                        >
+                          <motion.div
+                            key={activeImageIndex}
+                            className="absolute inset-0 flex items-center justify-center"
+                            custom={imageTransitionDirection}
+                            variants={imageVariants}
+                            initial="enter"
+                            animate="center"
+                            exit="exit"
+                          >
+                            <img
+                              src={images[activeImageIndex]}
+                              alt={post.species}
+                              className="max-h-full max-w-full object-contain"
+                            />
+                          </motion.div>
+                        </AnimatePresence>
+                        {images.length > 1 && (
+                          <>
                             <button
                               type="button"
-                              onClick={() => handleDeleteComment(c.id)}
-                              disabled={isDeletingComment}
-                              className="opacity-50 hover:opacity-100 transition disabled:opacity-30"
-                              title="Delete comment"
+                              onClick={showPrevImage}
+                              className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-black/60 px-3 py-2 text-lg text-white transition hover:bg-black/80"
                             >
-                              <Trash2 className="h-4 w-4" />
-                              <span className="sr-only">Delete comment</span>
+                              ‹
                             </button>
-                          )}
-                        </div>
-                        {c.createdAt?.seconds && (
-                          <span className="text-xs opacity-50 mt-0.5">
-                            {timeAgo(c.createdAt.seconds * 1000)}
-                          </span>
+                            <button
+                              type="button"
+                              onClick={showNextImage}
+                              className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-black/60 px-3 py-2 text-lg text-white transition hover:bg-black/80"
+                            >
+                              ›
+                            </button>
+                            <div className="absolute bottom-4 left-1/2 flex -translate-x-1/2 gap-1">
+                              {images.map((_, index) => (
+                                <span
+                                  key={index}
+                                  className={`h-2.5 w-2.5 rounded-full transition ${
+                                    index === activeImageIndex ? 'bg-white' : 'bg-white/40'
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                          </>
                         )}
                       </div>
-                    );
-                  })}
-
-                  {comments.length === 0 && (
-                    <p className="opacity-60 text-sm text-center">
-                      No comments yet.
-                    </p>
-                  )}
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-white/60">
+                        No photo available
+                      </div>
+                    )}
+                  </motion.div>
                 </div>
 
-                <div className="absolute bottom-0 left-0 right-0 p-3 bg-[var(--card)] border-t border-white/10">
-                  <div className="flex gap-2">
-                    <input
-                      className="flex-1 rounded-md bg-white/10 text-white px-3 py-2 text-sm outline-none"
-                      placeholder="Write a comment…"
-                      value={text}
-                      onChange={(e) => setText(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && sendComment()}
-                    />
+                {/* Right side (content) */}
+                <div className="relative flex flex-col p-4 pb-20 md:h-full">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h3 className="font-semibold">{post.species}</h3>
+                    <div className="flex items-center gap-2">
+                      {isOwner && (
+                        <button
+                          onClick={handleDelete}
+                          disabled={deleting}
+                          className="opacity-70 hover:opacity-100 text-lg text-red-400 disabled:opacity-40"
+                          title="Delete catch"
+                        >
+                          <Trash2 className="h-5 w-5" />
+                          <span className="sr-only">Delete catch</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="text-left text-sm font-medium text-blue-400 hover:underline"
+                        onClick={() => router.push(`/profile/${post.uid}`)}
+                      >
+                        {post.displayName || post.user.name}
+                      </button>
+                      {isProMember && <ProBadge className="text-[10px]" />}
+                    </div>
+                    {postTime && <span className="text-xs opacity-60">{postTime}</span>}
+                  </div>
+
+                  {post.caption && (
+                    <p className="mb-2 whitespace-pre-line text-sm opacity-80">{post.caption}</p>
+                  )}
+
+                  {(post.weight || post.location) && (
+                    <p className="mb-2 text-xs opacity-60">
+                      {post.weight && <>Weight: {post.weight}</>}{' '}
+                      {canShowLocation ? (
+                        <span>• {post.location}</span>
+                      ) : locationIsPrivate && post.location ? (
+                        <span>• Private location</span>
+                      ) : null}
+                    </p>
+                  )}
+
+                  <div className="mb-2 flex items-center gap-3">
                     <button
-                      className="px-3 py-2 bg-blue-500 rounded-md text-sm font-medium hover:bg-blue-600"
-                      onClick={sendComment}
+                      onClick={() => user && toggleLike(post.id, user.uid)}
+                      className={`flex items-center gap-1 transition ${
+                        liked ? 'text-red-500' : 'opacity-60 hover:opacity-100'
+                      }`}
                     >
-                      Send
+                      <Heart
+                        className={`h-5 w-5 ${
+                          liked ? 'fill-red-500 stroke-red-500' : ''
+                        }`}
+                      />
                     </button>
+                    <span className="text-sm opacity-60">{comments.length} comments</span>
+                  </div>
+
+                  <div className="flex-1 space-y-3 overflow-y-auto max-h-[320px] pr-2 pb-16">
+                    {comments.map((c) => {
+                      const canDeleteComment = user && (c.uid === user.uid || isOwner);
+                      const isDeletingComment = commentActionBusy === c.id;
+                      return (
+                        <div
+                          key={c.id}
+                          className="flex flex-col border-b border-white/5 pb-2 text-sm"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                              <span
+                                className="font-medium text-blue-400 hover:underline"
+                                onClick={() => router.push(`/profile/${c.uid}`)}
+                              >
+                                {c.displayName}
+                              </span>{' '}
+                              {c.text}
+                            </div>
+                            {canDeleteComment && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteComment(c.id)}
+                                disabled={isDeletingComment}
+                                className="opacity-50 transition hover:opacity-100 disabled:opacity-30"
+                                title="Delete comment"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                <span className="sr-only">Delete comment</span>
+                              </button>
+                            )}
+                          </div>
+                          {c.createdAt?.seconds && (
+                            <span className="mt-0.5 text-xs opacity-50">
+                              {timeAgo(c.createdAt.seconds * 1000)}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {comments.length === 0 && (
+                      <p className="text-center text-sm opacity-60">No comments yet.</p>
+                    )}
+                  </div>
+
+                  <div className="absolute bottom-0 left-0 right-0 border-t border-white/10 bg-[var(--card)] p-3">
+                    <div className="flex gap-2">
+                      <input
+                        className="flex-1 rounded-md bg-white/10 px-3 py-2 text-sm text-white outline-none"
+                        placeholder="Write a comment…"
+                        value={text}
+                        onChange={(e) => setText(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && sendComment()}
+                      />
+                      <button
+                        className="rounded-md bg-blue-500 px-3 py-2 text-sm font-medium hover:bg-blue-600"
+                        onClick={sendComment}
+                      >
+                        Send
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
             </motion.div>
           </AnimatePresence>
         </motion.div>
