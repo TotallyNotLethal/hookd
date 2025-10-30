@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AlertTriangle, Clock, Loader2, RefreshCw, Waves } from "lucide-react";
 
@@ -54,7 +54,10 @@ function useForecast(latitude: number, longitude: number) {
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
-    setState({ loading: true, error: null, data: null });
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      setState({ loading: true, error: null, data: null });
+    });
     fetch(`/api/forecasts/${latitude}/${longitude}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
@@ -98,10 +101,7 @@ function scoreLabel(score: BiteWindow["score"]) {
 export default function ForecastPanel({ latitude, longitude, locationLabel, className }: ForecastPanelProps) {
   const { loading, error, data } = useForecast(latitude, longitude);
 
-  const nextHours = useMemo(() => {
-    if (!data?.weather.hours) return [];
-    return data.weather.hours.slice(0, 6);
-  }, [data?.weather.hours]);
+  const nextHours = data?.weather.hours ? data.weather.hours.slice(0, 6) : [];
 
   const timezoneLabel = data?.location.timezone.replace("/", " • ") ?? "";
 

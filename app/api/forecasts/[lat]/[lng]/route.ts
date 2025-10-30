@@ -2,13 +2,6 @@ import { NextResponse } from "next/server";
 
 import { getForecastBundle } from "@/lib/server/forecastService";
 
-type Params = {
-  params: {
-    lat: string;
-    lng: string;
-  };
-};
-
 function parseCoordinate(value: string | undefined) {
   if (typeof value !== "string") return null;
   const parsed = Number(value);
@@ -17,7 +10,11 @@ function parseCoordinate(value: string | undefined) {
   return parsed;
 }
 
-export async function GET(_request: Request, { params }: Params) {
+export async function GET(_request: Request, context: unknown) {
+  const params =
+    typeof context === "object" && context != null && "params" in context
+      ? (context as { params: Record<string, string | undefined> }).params
+      : {};
   const latitude = parseCoordinate(params.lat);
   const longitude = parseCoordinate(params.lng);
   if (latitude == null || longitude == null || Math.abs(latitude) > 90) {
