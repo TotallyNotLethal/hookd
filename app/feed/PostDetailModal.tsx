@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import type { MouseEvent } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import {
   addComment,
   deleteCatch,
@@ -60,10 +60,12 @@ export default function PostDetailModal({
     return post?.imageUrl ? [post.imageUrl] : [];
   }, [post?.imageUrl, post?.imageUrls]);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [imageTransitionDirection, setImageTransitionDirection] = useState<1 | -1>(1);
   const [transitionDirection, setTransitionDirection] = useState<1 | -1>(1);
 
   useEffect(() => {
     setActiveImageIndex(0);
+    setImageTransitionDirection(1);
   }, [post?.id, images.length]);
 
   useEffect(() => {
@@ -85,8 +87,9 @@ export default function PostDetailModal({
   }, [post]);
 
   const showPrevImage = useCallback(
-    (event: MouseEvent) => {
-      event.stopPropagation();
+    (event?: { stopPropagation?: () => void }) => {
+      event?.stopPropagation?.();
+      setImageTransitionDirection(-1);
       setActiveImageIndex((prev) => {
         if (images.length === 0) return prev;
         return prev === 0 ? images.length - 1 : prev - 1;
@@ -96,8 +99,9 @@ export default function PostDetailModal({
   );
 
   const showNextImage = useCallback(
-    (event: MouseEvent) => {
-      event.stopPropagation();
+    (event?: { stopPropagation?: () => void }) => {
+      event?.stopPropagation?.();
+      setImageTransitionDirection(1);
       setActiveImageIndex((prev) => {
         if (images.length === 0) return prev;
         return prev === images.length - 1 ? 0 : prev + 1;
@@ -178,6 +182,12 @@ export default function PostDetailModal({
   const isWide = size === 'wide';
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const modalContainerRef = useRef<HTMLDivElement | null>(null);
+  const imageGestureStateRef = useRef<{
+    pointerId: number | null;
+    startX: number;
+    startY: number;
+    isActive: boolean;
+  } | null>(null);
   const touchStateRef = useRef<{ y: number; path: EventTarget[] } | null>(null);
   const wheelStateRef = useRef<{ delta: number; direction: 1 | -1 | 0 }>({ delta: 0, direction: 0 });
   const navigationCooldownRef = useRef<number | null>(null);
@@ -412,6 +422,92 @@ export default function PostDetailModal({
     }),
   } as const;
 
+  const imageVariants = {
+    enter: (direction: 1 | -1) => ({
+      x: direction === 1 ? 120 : -120,
+      opacity: 0,
+    }),
+    center: {
+      x: 0,
+      opacity: 1,
+      transition: { duration: 0.35, ease: 'easeOut' },
+    },
+    exit: (direction: 1 | -1) => ({
+      x: direction === 1 ? -120 : 120,
+      opacity: 0,
+      transition: { duration: 0.3, ease: 'easeIn' },
+    }),
+  } as const;
+
+  const startImageGesture = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (images.length <= 1) return;
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      const targetNode = event.target as HTMLElement | null;
+      if (targetNode?.closest('button, a, input, textarea, select')) {
+        return;
+      }
+      event.stopPropagation();
+      const target = event.currentTarget;
+      try {
+        target.setPointerCapture(event.pointerId);
+      } catch (error) {
+        // Ignore errors from unsupported pointer capture.
+      }
+      imageGestureStateRef.current = {
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        isActive: true,
+      };
+    },
+    [images.length],
+  );
+
+  const moveImageGesture = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const state = imageGestureStateRef.current;
+      if (!state) return;
+      if (state.pointerId !== null && state.pointerId !== event.pointerId) return;
+      event.stopPropagation();
+      if (!state.isActive) return;
+
+      const deltaX = event.clientX - state.startX;
+      const deltaY = event.clientY - state.startY;
+      const threshold = 40;
+      if (Math.abs(deltaX) < threshold || Math.abs(deltaX) < Math.abs(deltaY)) {
+        return;
+      }
+
+      if (deltaX < 0) {
+        showNextImage();
+      } else {
+        showPrevImage();
+      }
+
+      imageGestureStateRef.current = {
+        pointerId: state.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        isActive: false,
+      };
+    },
+    [showNextImage, showPrevImage],
+  );
+
+  const endImageGesture = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const state = imageGestureStateRef.current;
+    if (!state) return;
+    if (state.pointerId !== null && state.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch (error) {
+      // Ignore errors from unsupported pointer capture.
+    }
+    imageGestureStateRef.current = null;
+  }, []);
+
   return (
     <AnimatePresence>
       {post && (
@@ -464,12 +560,55 @@ export default function PostDetailModal({
                 transition={{ duration: 0.4 }}
               >
                 {images.length > 0 ? (
-                  <div className="relative flex h-full w-full items-center justify-center">
-                    <img
-                      src={images[activeImageIndex]}
-                      alt={post.species}
-                      className="max-h-full max-w-full object-contain"
-                    />
+                  <div
+                    className="relative flex h-full w-full items-center justify-center overflow-hidden"
+                    onPointerDown={startImageGesture}
+                    onPointerMove={moveImageGesture}
+                    onPointerUp={endImageGesture}
+                    onPointerCancel={endImageGesture}
+                    onPointerLeave={endImageGesture}
+                    onTouchStart={(event) => {
+                      if (images.length > 1) {
+                        event.stopPropagation();
+                      }
+                    }}
+                    onTouchMove={(event) => {
+                      if (images.length > 1) {
+                        event.stopPropagation();
+                      }
+                    }}
+                    onTouchEnd={(event) => {
+                      if (images.length > 1) {
+                        event.stopPropagation();
+                      }
+                    }}
+                    onTouchCancel={(event) => {
+                      if (images.length > 1) {
+                        event.stopPropagation();
+                      }
+                    }}
+                  >
+                    <AnimatePresence
+                      initial={false}
+                      custom={imageTransitionDirection}
+                      mode="wait"
+                    >
+                      <motion.div
+                        key={activeImageIndex}
+                        className="absolute inset-0 flex items-center justify-center"
+                        custom={imageTransitionDirection}
+                        variants={imageVariants}
+                        initial="enter"
+                        animate="center"
+                        exit="exit"
+                      >
+                        <img
+                          src={images[activeImageIndex]}
+                          alt={post.species}
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      </motion.div>
+                    </AnimatePresence>
                     {images.length > 1 && (
                       <>
                         <button
