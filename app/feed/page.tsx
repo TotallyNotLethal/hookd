@@ -14,7 +14,7 @@ import {
   type Team,
   type TeamMembership,
 } from "@/lib/firestore";
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import PostDetailModal from "./PostDetailModal";
@@ -322,6 +322,12 @@ function FeedContent() {
     [activeIndex, items],
   );
 
+  const activeIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    activeIdRef.current = active?.id ?? null;
+  }, [active?.id]);
+
   useEffect(() => {
     if (!catchIdParam) {
       defer(() => {
@@ -331,7 +337,9 @@ function FeedContent() {
       return;
     }
 
-    if (active?.id === catchIdParam) {
+    const activeId = activeIdRef.current;
+
+    if (activeId === catchIdParam) {
       return;
     }
 
@@ -383,7 +391,7 @@ function FeedContent() {
     return () => {
       isCancelled = true;
     };
-  }, [active?.id, catchIdParam, defer, items, router, searchParamsString]);
+  }, [catchIdParam, defer, items, router, searchParamsString]);
 
   useEffect(() => {
     if (!catchIdParam) {
@@ -392,10 +400,11 @@ function FeedContent() {
     }
 
     const matching = items.find((item) => item.id === catchIdParam);
-    if (matching && active?.id !== matching.id) {
+    const activeId = activeIdRef.current;
+    if (matching && activeId !== matching.id) {
       defer(() => setActive(matching));
     }
-  }, [active?.id, catchIdParam, defer, items]);
+  }, [catchIdParam, defer, items]);
 
   return (
     <main>
