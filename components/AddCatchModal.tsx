@@ -29,6 +29,14 @@ import {
   isNativePlatform as isCapacitorNative,
   requestNativePhotoFile,
 } from '@/lib/nativePhoto';
+import {
+  describeLicense,
+  getRegulationSummary,
+  inferRegionFromLocation,
+  queryRegulations,
+  type LicenseRule,
+  type RegulationRecord,
+} from '@/lib/regulationsStore';
 import FishSelector from './FishSelector';
 import WeightPicker, { type WeightValue } from './WeightPicker';
 
@@ -277,6 +285,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [selectedUploadIds, setSelectedUploadIds] = useState<Set<string>>(new Set());
   const [completedCatchCount, setCompletedCatchCount] = useState(0);
   const [species, setSpecies] = useState('');
+  const [regulationSummary, setRegulationSummary] = useState<RegulationRecord | null>(null);
+  const [licenseRule, setLicenseRule] = useState<LicenseRule | null>(null);
   const [weight, setWeight] = useState<WeightValue>({ pounds: 0, ounces: 0 });
   const [verifiedWeight, setVerifiedWeight] = useState<WeightValue | null>(null);
   const [verifiedLength, setVerifiedLength] = useState('');
@@ -353,6 +363,37 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [geolocationStatus, setGeolocationStatus] = useState<string | null>(null);
   const [geolocationSupported, setGeolocationSupported] = useState(false);
   const [geolocationPending, setGeolocationPending] = useState(false);
+  const regionKey = useMemo(() => {
+    const fromResolved = inferRegionFromLocation(coordinatesResolvedName);
+    if (fromResolved) {
+      return fromResolved;
+    }
+    if (location) {
+      return inferRegionFromLocation(location);
+    }
+    return null;
+  }, [coordinatesResolvedName, location]);
+
+  useEffect(() => {
+    if (!regionKey) {
+      setRegulationSummary(null);
+      setLicenseRule(null);
+      return;
+    }
+    setLicenseRule(describeLicense(regionKey));
+    const trimmedSpecies = species.trim();
+    if (!trimmedSpecies) {
+      setRegulationSummary(null);
+      return;
+    }
+    const match = getRegulationSummary({ region: regionKey, species: trimmedSpecies });
+    if (match) {
+      setRegulationSummary(match);
+      return;
+    }
+    const [fallback] = queryRegulations({ region: regionKey });
+    setRegulationSummary(fallback ?? null);
+  }, [regionKey, species]);
   const isMountedRef = useRef(true);
   const searchRequestId = useRef(0);
   const [user] = useAuthState(auth);
@@ -1703,6 +1744,63 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
               <p className="text-xs text-white/60">Selected weight: {formattedWeight}</p>
             </div>
           </div>
+
+          {(regulationSummary || licenseRule) && (
+            <div className="space-y-2 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs uppercase tracking-[0.3em] text-brand-200/70">Regulation preview</span>
+                {regulationSummary?.referenceUrl ? (
+                  <a
+                    href={regulationSummary.referenceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-semibold text-brand-200 underline hover:text-brand-100"
+                  >
+                    Reference
+                  </a>
+                ) : null}
+              </div>
+              {regulationSummary ? (
+                <div className="space-y-1 text-sm text-white/70">
+                  <p>
+                    <span className="font-semibold text-white">{regulationSummary.species.commonName}</span> •{' '}
+                    {regulationSummary.summary}
+                  </p>
+                  {regulationSummary.bagLimit ? (
+                    <p className="text-xs text-white/50">Bag limit: {regulationSummary.bagLimit}</p>
+                  ) : null}
+                  {regulationSummary.sizeLimit ? (
+                    <p className="text-xs text-white/50">Size limit: {regulationSummary.sizeLimit}</p>
+                  ) : null}
+                  <p className="text-xs text-white/40">Region: {regulationSummary.region.label}</p>
+                </div>
+              ) : regionKey ? (
+                <p className="text-sm text-white/60">
+                  Select a species to see harvest guidance for {licenseRule ? licenseRule.summary : 'this region'}.
+                </p>
+              ) : (
+                <p className="text-sm text-white/60">Confirm a location to preview regulations for your catch.</p>
+              )}
+              {licenseRule ? (
+                <p className="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs text-white/70">
+                  License: {licenseRule.summary}
+                  {licenseRule.url ? (
+                    <>
+                      {' '}
+                      <a
+                        href={licenseRule.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-brand-200 underline hover:text-brand-100"
+                      >
+                        Buy / renew
+                      </a>
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
+            </div>
+          )}
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">

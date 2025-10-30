@@ -19,6 +19,8 @@ import type {
   EnvironmentSnapshot,
 } from "./environmentTypes";
 import { deriveLocationKey } from "./location";
+import { calculateNextReminderDate, normalizeLeadDays } from "./licenseReminders";
+import { getRegionKey as getRegulationRegionKey, getSpeciesKey as getRegulationSpeciesKey, listRegions, listSpecies } from "./regulationsStore";
 
 // ✅ Define storage first
 const storage = getStorage(app, "gs://hookd-b7ae6.firebasestorage.app");
@@ -93,6 +95,7 @@ export type HookdUser = {
   notificationPreferences?: NotificationPreferences;
   blockedUserIds?: string[];
   blockedByUserIds?: string[];
+  licenseReminderSettings?: LicenseReminderSettings;
 };
 
 export type ProfileAccentKey = "tide" | "ember" | "kelp" | "midnight";
@@ -174,6 +177,229 @@ export function sanitizeUidList(input: unknown): string[] {
     if (result.includes(trimmed)) continue;
     result.push(trimmed);
   }
+
+  return result;
+}
+
+function normalizeMonth(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const month = Math.round(value);
+    return month >= 1 && month <= 12 ? month : null;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed)) {
+      const month = Math.round(parsed);
+      return month >= 1 && month <= 12 ? month : null;
+    }
+  }
+  return null;
+}
+
+function normalizeDay(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const day = Math.round(value);
+    return day >= 1 && day <= 31 ? day : null;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isFinite(parsed)) {
+      const day = Math.round(parsed);
+      return day >= 1 && day <= 31 ? day : null;
+    }
+  }
+  return null;
+}
+
+function resolveRegionLabel(regionKey: string | null): string | null {
+  if (!regionKey) return null;
+  const match = listRegions().find((region) => region.key === regionKey);
+  return match?.label ?? null;
+}
+
+function resolveSpeciesLabel(speciesKey: string | null, regionKey: string | null): string | null {
+  if (!speciesKey) return null;
+  const pool = regionKey ? listSpecies(regionKey) : listSpecies();
+  const match = pool.find((species) => species.key === speciesKey);
+  return match?.commonName ?? null;
+}
+
+export function sanitizeLicenseReminderSettings(input: unknown): LicenseReminderSettings {
+  if (!input || typeof input !== 'object') {
+    return { ...DEFAULT_LICENSE_REMINDER_SETTINGS };
+  }
+
+  const raw = input as Record<string, unknown>;
+  const enabled = Boolean(raw.enabled);
+
+  const regionKeyRaw = typeof raw.regionKey === 'string' ? raw.regionKey : null;
+  const regionKey = regionKeyRaw ? getRegulationRegionKey(regionKeyRaw) ?? null : null;
+  const regionLabelCandidate = typeof raw.regionLabel === 'string' ? raw.regionLabel : null;
+  const regionLabel = resolveRegionLabel(regionKey) ?? regionLabelCandidate;
+
+  const speciesKeyRaw = typeof raw.speciesKey === 'string' ? raw.speciesKey : null;
+  const speciesKey = speciesKeyRaw ? getRegulationSpeciesKey(speciesKeyRaw) ?? null : null;
+  const speciesLabelCandidate = typeof raw.speciesLabel === 'string' ? raw.speciesLabel : null;
+  const speciesLabel = resolveSpeciesLabel(speciesKey, regionKey) ?? speciesLabelCandidate;
+
+  const expirationMonth = normalizeMonth(raw.expirationMonth);
+  const expirationDay = normalizeDay(raw.expirationDay);
+  const leadDays = normalizeLeadDays(raw.leadDays ?? DEFAULT_LICENSE_REMINDER_SETTINGS.leadDays);
+
+  let nextReminderAt: Date | null = null;
+  const rawNextReminder = raw.nextReminderAt;
+  if (rawNextReminder instanceof Timestamp) {
+    nextReminderAt = rawNextReminder.toDate();
+  } else if (rawNextReminder instanceof Date) {
+    nextReminderAt = rawNextReminder;
+  } else if (typeof rawNextReminder === 'string') {
+    const parsed = new Date(rawNextReminder);
+    if (!Number.isNaN(parsed.getTime())) {
+      nextReminderAt = parsed;
+    }
+  }
+
+  let updatedAt: Date | null = null;
+  const rawUpdated = raw.updatedAt;
+  if (rawUpdated instanceof Timestamp) {
+    updatedAt = rawUpdated.toDate();
+  } else if (rawUpdated instanceof Date) {
+    updatedAt = rawUpdated;
+  } else if (typeof rawUpdated === 'string') {
+    const parsed = new Date(rawUpdated);
+    if (!Number.isNaN(parsed.getTime())) {
+      updatedAt = parsed;
+    }
+  }
+
+  return {
+    enabled,
+    regionKey,
+    regionLabel,
+    speciesKey,
+    speciesLabel,
+    expirationMonth,
+    expirationDay,
+    leadDays,
+    nextReminderAt: nextReminderAt && !Number.isNaN(nextReminderAt.getTime()) ? nextReminderAt : null,
+    updatedAt: updatedAt && !Number.isNaN(updatedAt.getTime()) ? updatedAt : null,
+  };
+}
+
+function applyLicenseReminderUpdates(
+  existing: LicenseReminderSettings,
+  updates: LicenseReminderSettingsUpdate,
+): LicenseReminderSettings {
+  const next: LicenseReminderSettings = { ...existing };
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'enabled') && typeof updates.enabled === 'boolean') {
+    next.enabled = updates.enabled;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'regionKey')) {
+    const rawRegion = updates.regionKey;
+    const regionKey = typeof rawRegion === 'string' && rawRegion
+      ? getRegulationRegionKey(rawRegion) ?? null
+      : null;
+    next.regionKey = regionKey;
+    next.regionLabel = resolveRegionLabel(regionKey);
+    if (!regionKey) {
+      next.speciesKey = null;
+      next.speciesLabel = null;
+    } else if (next.speciesKey) {
+      next.speciesLabel = resolveSpeciesLabel(next.speciesKey, regionKey);
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'speciesKey')) {
+    const rawSpecies = updates.speciesKey;
+    const speciesKey = typeof rawSpecies === 'string' && rawSpecies
+      ? getRegulationSpeciesKey(rawSpecies) ?? null
+      : null;
+    next.speciesKey = speciesKey;
+    next.speciesLabel = resolveSpeciesLabel(speciesKey, next.regionKey);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'expirationMonth')) {
+    next.expirationMonth = normalizeMonth(updates.expirationMonth) ?? null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'expirationDay')) {
+    next.expirationDay = normalizeDay(updates.expirationDay) ?? null;
+  }
+
+  if (!next.expirationMonth) {
+    next.expirationDay = null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updates, 'leadDays')) {
+    next.leadDays = normalizeLeadDays(updates.leadDays ?? DEFAULT_LICENSE_REMINDER_SETTINGS.leadDays);
+  }
+
+  return next;
+}
+
+export async function getLicenseReminderSettings(uid: string): Promise<LicenseReminderSettings> {
+  if (!uid) {
+    return { ...DEFAULT_LICENSE_REMINDER_SETTINGS };
+  }
+
+  const refUser = doc(db, 'users', uid);
+  const snap = await getDoc(refUser);
+  if (!snap.exists()) {
+    return { ...DEFAULT_LICENSE_REMINDER_SETTINGS };
+  }
+
+  const data = snap.data() as HookdUser;
+  return sanitizeLicenseReminderSettings(data.licenseReminderSettings);
+}
+
+export async function updateLicenseReminderSettings(
+  uid: string,
+  updates: LicenseReminderSettingsUpdate,
+): Promise<LicenseReminderSettings> {
+  if (!uid) {
+    throw new Error('A user ID is required to update license reminders.');
+  }
+
+  const refUser = doc(db, 'users', uid);
+  let result: LicenseReminderSettings = { ...DEFAULT_LICENSE_REMINDER_SETTINGS };
+
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(refUser);
+    const existing = snap.exists()
+      ? sanitizeLicenseReminderSettings((snap.data() as HookdUser).licenseReminderSettings)
+      : { ...DEFAULT_LICENSE_REMINDER_SETTINGS };
+
+    const next = applyLicenseReminderUpdates(existing, updates);
+    const now = new Date();
+    const nextReminderAt = calculateNextReminderDate({
+      enabled: next.enabled,
+      expirationMonth: next.expirationMonth,
+      expirationDay: next.expirationDay ?? undefined,
+      leadDays: next.leadDays,
+      now,
+    });
+
+    next.nextReminderAt = nextReminderAt;
+    next.updatedAt = now;
+
+    const payload: Record<string, unknown> = {
+      enabled: next.enabled,
+      regionKey: next.regionKey,
+      regionLabel: next.regionLabel,
+      speciesKey: next.speciesKey,
+      speciesLabel: next.speciesLabel,
+      expirationMonth: next.expirationMonth,
+      expirationDay: next.expirationDay,
+      leadDays: next.leadDays,
+      nextReminderAt: nextReminderAt ? Timestamp.fromDate(nextReminderAt) : null,
+      updatedAt: serverTimestamp(),
+    };
+
+    tx.set(refUser, { licenseReminderSettings: payload }, { merge: true });
+    result = next;
+  });
 
   return result;
 }
@@ -293,6 +519,41 @@ export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   team_invite_canceled: true,
   chat_mention: true,
   followed_catch: true,
+};
+
+export type LicenseReminderSettings = {
+  enabled: boolean;
+  regionKey: string | null;
+  regionLabel: string | null;
+  speciesKey: string | null;
+  speciesLabel: string | null;
+  expirationMonth: number | null;
+  expirationDay: number | null;
+  leadDays: number;
+  nextReminderAt: Date | null;
+  updatedAt: Date | null;
+};
+
+export type LicenseReminderSettingsUpdate = {
+  enabled?: boolean;
+  regionKey?: string | null;
+  speciesKey?: string | null;
+  expirationMonth?: number | null;
+  expirationDay?: number | null;
+  leadDays?: number | null;
+};
+
+export const DEFAULT_LICENSE_REMINDER_SETTINGS: LicenseReminderSettings = {
+  enabled: false,
+  regionKey: null,
+  regionLabel: null,
+  speciesKey: null,
+  speciesLabel: null,
+  expirationMonth: null,
+  expirationDay: null,
+  leadDays: 14,
+  nextReminderAt: null,
+  updatedAt: null,
 };
 
 export type NotificationResource =
@@ -1208,6 +1469,7 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
       notificationPreferences: { ...DEFAULT_NOTIFICATION_PREFERENCES },
       blockedUserIds: [],
       blockedByUserIds: [],
+      licenseReminderSettings: { ...DEFAULT_LICENSE_REMINDER_SETTINGS },
     };
     await setDoc(refUser, payload);
   } else {
@@ -1430,6 +1692,7 @@ export function subscribeToNewestUser(cb: (user: HookdUser | null) => void) {
       notificationPreferences: sanitizeNotificationPreferences(data.notificationPreferences),
       blockedUserIds: sanitizeUidList(data.blockedUserIds),
       blockedByUserIds: sanitizeUidList(data.blockedByUserIds),
+      licenseReminderSettings: sanitizeLicenseReminderSettings(data.licenseReminderSettings),
     });
   });
 }
@@ -1451,6 +1714,7 @@ export function subscribeToUser(uid: string, cb: (u: HookdUser | null) => void) 
       notificationPreferences: sanitizeNotificationPreferences(data.notificationPreferences),
       blockedUserIds: sanitizeUidList(data.blockedUserIds),
       blockedByUserIds: sanitizeUidList(data.blockedByUserIds),
+      licenseReminderSettings: sanitizeLicenseReminderSettings(data.licenseReminderSettings),
     });
   });
 }

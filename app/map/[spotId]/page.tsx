@@ -17,6 +17,12 @@ import {
 } from "@/lib/mapSpots";
 import { fishingSpots } from "@/lib/fishingSpots";
 import { subscribeToCatchesWithCoordinates, type CatchWithCoordinates } from "@/lib/firestore";
+import {
+  describeLicense,
+  getRegulationSummary,
+  inferRegionFromLocation,
+  queryRegulations,
+} from "@/lib/regulationsStore";
 import { CalendarClock, Fish, MapPin, Trophy, Users } from "lucide-react";
 
 function formatDateTime(date: Date | null) {
@@ -44,6 +50,45 @@ function SpotHeader({
   locating: boolean;
   locationStatus: string | null;
 }) {
+  const regionKey = useMemo(() => {
+    if (spot.state) {
+      const direct = inferRegionFromLocation(spot.state);
+      if (direct) {
+        return direct;
+      }
+    }
+    return inferRegionFromLocation(spot.name);
+  }, [spot.name, spot.state]);
+
+  const regulationHighlights = useMemo(() => {
+    if (!regionKey) return [];
+    const highlights: ReturnType<typeof getRegulationSummary>[] = [];
+    const seen = new Set<string>();
+    spot.species.forEach((speciesName) => {
+      if (!speciesName) return;
+      const record = getRegulationSummary({ region: regionKey, species: speciesName });
+      if (record && !seen.has(record.id)) {
+        highlights.push(record);
+        seen.add(record.id);
+      }
+    });
+    if (highlights.length === 0) {
+      const regional = queryRegulations({ region: regionKey });
+      regional.forEach((record) => {
+        if (!seen.has(record.id)) {
+          highlights.push(record);
+          seen.add(record.id);
+        }
+      });
+    }
+    return highlights.slice(0, 2).filter((record): record is NonNullable<typeof record> => Boolean(record));
+  }, [regionKey, spot.species]);
+
+  const licenseRule = useMemo(() => {
+    if (!regionKey) return null;
+    return describeLicense(regionKey);
+  }, [regionKey]);
+
   return (
     <div className="glass rounded-3xl border border-white/10 bg-slate-950/60 p-6">
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
@@ -88,6 +133,43 @@ function SpotHeader({
               Bag limit guidance: {spot.regulations.bagLimit}
             </p>
           )}
+          {regulationHighlights.length > 0 ? (
+            <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <p className="text-xs uppercase tracking-[0.3em] text-brand-200/70">Regulation highlights</p>
+              <ul className="space-y-2 text-sm text-white/70">
+                {regulationHighlights.map((record) => (
+                  <li key={record.id} className="space-y-1">
+                    <span className="font-semibold text-white">{record.species.commonName}</span>
+                    <p>{record.summary}</p>
+                    {record.bagLimit ? (
+                      <p className="text-xs text-white/50">Bag limit: {record.bagLimit}</p>
+                    ) : null}
+                    {record.sizeLimit ? (
+                      <p className="text-xs text-white/50">Size limit: {record.sizeLimit}</p>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+              {licenseRule ? (
+                <p className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70">
+                  License: {licenseRule.summary}
+                  {licenseRule.url ? (
+                    <>
+                      {' '}
+                      <a
+                        href={licenseRule.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-brand-200 underline hover:text-brand-100"
+                      >
+                        View details
+                      </a>
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           {!spot.fromStatic && (
             <p className="text-xs text-amber-300/80">
               This hotspot was created from shared catches within ~0.5 miles. Double-check regulations before visiting.

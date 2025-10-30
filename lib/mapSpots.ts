@@ -32,6 +32,7 @@ export type MapSpot = {
   name: string;
   latitude: number;
   longitude: number;
+  state: string | null;
   species: string[];
   regulations: FishingSpot["regulations"] | null;
   catchCount: number;
@@ -268,6 +269,7 @@ export function aggregateSpots(
       name: bucket.spot.name,
       latitude: bucket.spot.latitude,
       longitude: bucket.spot.longitude,
+      state: bucket.spot.state || null,
       species: Array.from(bucket.speciesSet),
       regulations: bucket.spot.regulations,
       catchCount: bucket.catchCount,
@@ -287,6 +289,7 @@ export function aggregateSpots(
       name: bucket.name,
       latitude: bucket.latitude,
       longitude: bucket.longitude,
+      state: null,
       species: Array.from(bucket.speciesSet),
       regulations: USER_REPORTED_REGULATIONS,
       catchCount: bucket.catchCount,
