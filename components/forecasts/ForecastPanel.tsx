@@ -55,18 +55,18 @@ function useForecast(latitude: number, longitude: number) {
   const [refreshIndex, setRefreshIndex] = useState(0);
 
   const refresh = useCallback(() => {
-    setRefreshIndex((index) => index + 1);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const controller = new AbortController();
     setState((previous) => ({
       loading: previous.data == null,
       refreshing: previous.data != null,
       error: null,
       data: previous.data,
     }));
+    setRefreshIndex((index) => index + 1);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
     fetch(`/api/forecasts/${latitude}/${longitude}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
