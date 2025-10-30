@@ -20,6 +20,10 @@ export type TidePrediction = {
   trend: TideTrend;
 };
 
+export type ForecastConfidence = "low" | "medium" | "high";
+
+export type ForecastProviderStatus = "ok" | "partial" | "error";
+
 export type BiteWindow = {
   start: string;
   end: string;
@@ -33,9 +37,20 @@ export type ForecastSourceSummary = {
   label: string;
   url: string | null;
   disclaimer?: string;
+  updatedAt?: string | null;
+  confidence?: ForecastConfidence;
+  status?: ForecastProviderStatus;
+  error?: string | null;
+};
+
+export type ForecastTelemetryEvent = {
+  providerId: string;
+  message: string;
+  at: string;
 };
 
 export type ForecastBundle = {
+  version: string;
   updatedAt: string;
   location: {
     latitude: number;
@@ -53,9 +68,17 @@ export type ForecastBundle = {
   tides: {
     predictions: TidePrediction[];
     source: ForecastSourceSummary;
+    fallbackUsed: boolean;
   };
   biteWindows: {
     windows: BiteWindow[];
     basis: string;
+    provider?: ForecastSourceSummary;
+  };
+  telemetry: {
+    errors: ForecastTelemetryEvent[];
+    warnings: ForecastTelemetryEvent[];
+    providerLatencyMs: Record<string, number>;
+    usedPrefetch: boolean;
   };
 };

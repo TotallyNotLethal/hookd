@@ -23,7 +23,12 @@ export async function GET(_request: Request, context: unknown) {
 
   try {
     const payload = await getForecastBundle({ latitude, longitude });
-    return NextResponse.json(payload, { status: 200 });
+    return NextResponse.json(payload, {
+      status: 200,
+      headers: {
+        "x-forecast-version": payload.version,
+      },
+    });
   } catch (error) {
     console.error("Failed to generate forecast", error);
     return NextResponse.json(

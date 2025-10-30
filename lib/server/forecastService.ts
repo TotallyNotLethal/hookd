@@ -6,6 +6,7 @@ import type {
   BiteWindow,
   ForecastBundle,
   ForecastSourceSummary,
+  ForecastTelemetryEvent,
   ForecastWeatherHour,
   TidePrediction,
   TideTrend,
@@ -18,6 +19,41 @@ const SYNTHETIC_TIDE_POINTS = 10;
 const TIDE_INTERVAL_HOURS = 3;
 const SYNTHETIC_TIDE_BASE_AMPLITUDE = 0.8;
 const SYNTHETIC_TIDE_VARIATION = 1.1;
+const FORECAST_BUNDLE_VERSION = "2024-10-05";
+const PREFETCH_INTERVAL_MS = 10 * 60 * 1000;
+const NOAA_STATION_RADIUS_KM = 120;
+const USGS_SEARCH_DELTA_DEGREES = 1.2;
+
+type PrefetchCoordinate = {
+  latitude: number;
+  longitude: number;
+  label: string;
+};
+
+type TideProviderResult = {
+  predictions: TidePrediction[];
+  source: ForecastSourceSummary;
+  latencyMs: number;
+  fallbackUsed: boolean;
+};
+
+type SolunarEnhancement = {
+  sunrise: string | null;
+  sunset: string | null;
+  moonPhase: number | null;
+  windows: BiteWindow[];
+  basis: string;
+  provider: ForecastSourceSummary;
+};
+
+const POPULAR_COORDINATES: PrefetchCoordinate[] = [
+  { latitude: 29.9511, longitude: -90.0715, label: "New Orleans, LA" },
+  { latitude: 47.6062, longitude: -122.3321, label: "Seattle, WA" },
+  { latitude: 25.7617, longitude: -80.1918, label: "Miami, FL" },
+  { latitude: 34.0195, longitude: -118.4912, label: "Santa Monica, CA" },
+  { latitude: 41.805, longitude: -71.401, label: "Narragansett Bay, RI" },
+  { latitude: 44.645, longitude: -63.57, label: "Halifax Harbour, NS" },
+];
 
 type OpenMeteoHourlyResponse = {
   time?: string[];
@@ -44,6 +80,60 @@ type OpenMeteoForecastResponse = {
   timezone_abbreviation?: string;
   hourly?: OpenMeteoHourlyResponse;
   daily?: OpenMeteoDailyResponse;
+};
+
+type NoaaStationResponse = {
+  stations?: Array<{
+    id: string;
+    name: string;
+    lat: string;
+    lng?: string;
+    lon?: string;
+    status?: string;
+  }>;
+};
+
+type NoaaPredictionsResponse = {
+  predictions?: Array<{
+    t: string;
+    v: string;
+    type?: string;
+  }>;
+};
+
+type UsgsInstantaneousResponse = {
+  value?: {
+    timeSeries?: Array<{
+      values?: Array<{
+        value?: Array<{
+          value?: string;
+          dateTime?: string;
+        }>;
+      }>;
+    }>;
+  };
+};
+
+type SolunarPeriod = {
+  start?: string;
+  end?: string;
+  rating?: number;
+};
+
+type SolunarResponse = {
+  moonPhase?: number | string;
+  moonIllumination?: number;
+  sunRise?: string;
+  sunSet?: string;
+  major1Start?: string;
+  major1Stop?: string;
+  major2Start?: string;
+  major2Stop?: string;
+  minor1Start?: string;
+  minor1Stop?: string;
+  minor2Start?: string;
+  minor2Stop?: string;
+  rating?: number;
 };
 
 const WEATHER_CODE_DESCRIPTIONS: Record<number, string> = {
@@ -82,6 +172,8 @@ const forecastCache = new TtlCache<ForecastBundle>({
   maxEntries: WEATHER_CACHE_MAX_ENTRIES,
 });
 
+const fallbackForecastCache = new Map<string, ForecastBundle>();
+
 const OPEN_METEO_SOURCE: ForecastSourceSummary = {
   id: "open-meteo",
   label: "Open-Meteo Forecast",
@@ -90,9 +182,11 @@ const OPEN_METEO_SOURCE: ForecastSourceSummary = {
 
 const SYNTHETIC_TIDES_SOURCE: ForecastSourceSummary = {
   id: "synthetic-harmonic",
-  label: "Harmonic model",
+  label: "Harmonic fallback",
   url: null,
-  disclaimer: "Synthetic tide curve for preview purposes – replace with NOAA/USGS data in production.",
+  disclaimer: "Calculated locally when live tide providers are unavailable.",
+  confidence: "low",
+  status: "partial",
 };
 
 const SYNTHETIC_WEATHER_SOURCE: ForecastSourceSummary = {
@@ -101,6 +195,32 @@ const SYNTHETIC_WEATHER_SOURCE: ForecastSourceSummary = {
   url: null,
   disclaimer:
     "Generated locally when upstream weather services are unavailable. Data is approximate and for preview only.",
+  confidence: "low",
+  status: "partial",
+};
+
+const NOAA_TIDES_SOURCE: ForecastSourceSummary = {
+  id: "noaa-coops",
+  label: "NOAA CO-OPS",
+  url: "https://api.tidesandcurrents.noaa.gov/",
+  confidence: "high",
+  status: "ok",
+};
+
+const USGS_TIDES_SOURCE: ForecastSourceSummary = {
+  id: "usgs-water-services",
+  label: "USGS Water Services",
+  url: "https://waterservices.usgs.gov/",
+  confidence: "medium",
+  status: "ok",
+};
+
+const SOLUNAR_SOURCE: ForecastSourceSummary = {
+  id: "solunar",
+  label: "Solunar Forecast",
+  url: "https://solunar.org/",
+  confidence: "high",
+  status: "ok",
 };
 
 function toCacheKey(latitude: number, longitude: number) {
@@ -152,6 +272,135 @@ function moonPhaseLabel(fraction: number | null) {
   if (normalized < 0.6875) return "Waning gibbous";
   if (normalized < 0.8125) return "Last quarter";
   return "Waning crescent";
+}
+
+function toTelemetry(providerId: string, message: string): ForecastTelemetryEvent {
+  return {
+    providerId,
+    message,
+    at: new Date().toISOString(),
+  } satisfies ForecastTelemetryEvent;
+}
+
+function haversineDistanceKm(
+  latitudeA: number,
+  longitudeA: number,
+  latitudeB: number,
+  longitudeB: number
+) {
+  const toRadians = (value: number) => (value * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRadians(latitudeB - latitudeA);
+  const dLon = toRadians(longitudeB - longitudeA);
+  const lat1 = toRadians(latitudeA);
+  const lat2 = toRadians(latitudeB);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadiusKm * c;
+}
+
+function clampNumber(value: number | string | null | undefined) {
+  if (value == null) return null;
+  const parsed = typeof value === "string" ? Number.parseFloat(value) : value;
+  if (!Number.isFinite(parsed)) return null;
+  return parsed;
+}
+
+function formatCompactDate(date: Date) {
+  const year = date.getUTCFullYear().toString().padStart(4, "0");
+  const month = (date.getUTCMonth() + 1).toString().padStart(2, "0");
+  const day = date.getUTCDate().toString().padStart(2, "0");
+  return `${year}${month}${day}`;
+}
+
+function parseTimestamp(value: string | null | undefined) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
+function resolveTimezoneOffsetMinutes(timezone: string | null | undefined, reference: Date) {
+  if (!timezone) {
+    return -reference.getTimezoneOffset();
+  }
+  try {
+    const formatter = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(reference);
+    const lookup = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    const constructed = Date.UTC(
+      Number.parseInt(lookup.year ?? "0", 10),
+      Number.parseInt((lookup.month ?? "01"), 10) - 1,
+      Number.parseInt(lookup.day ?? "01", 10),
+      Number.parseInt(lookup.hour ?? "00", 10),
+      Number.parseInt(lookup.minute ?? "00", 10),
+      Number.parseInt(lookup.second ?? "00", 10)
+    );
+    const diffMinutes = Math.round((constructed - reference.getTime()) / (60 * 1000));
+    return diffMinutes;
+  } catch (error) {
+    console.warn("Failed to resolve timezone offset", error);
+    return -reference.getTimezoneOffset();
+  }
+}
+
+function tideTrendFromNeighbors(
+  current: number,
+  previous: number | null,
+  next: number | null
+): TideTrend {
+  const derivative =
+    next != null
+      ? next - current
+      : previous != null
+        ? current - previous
+        : 0;
+  if (Math.abs(derivative) < 0.02) return "slack";
+  return derivative > 0 ? "rising" : "falling";
+}
+
+function metersFromFeet(value: number) {
+  return Math.round(value * 0.3048 * 100) / 100;
+}
+
+function parseSolunarLocalTime(
+  raw: string | undefined,
+  referenceDate: Date,
+  offsetMinutes: number
+) {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  const direct = parseTimestamp(trimmed);
+  if (direct) return direct;
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+  if (!match) return null;
+  let hours = Number.parseInt(match[1] ?? "0", 10);
+  const minutes = Number.parseInt(match[2] ?? "0", 10);
+  const seconds = match[3] ? Number.parseInt(match[3]!, 10) : 0;
+  const meridiem = match[4]?.toUpperCase();
+  if (meridiem === "PM" && hours < 12) hours += 12;
+  if (meridiem === "AM" && hours === 12) hours = 0;
+  const referenceUtc = Date.UTC(
+    referenceDate.getUTCFullYear(),
+    referenceDate.getUTCMonth(),
+    referenceDate.getUTCDate(),
+    hours,
+    minutes,
+    seconds
+  );
+  const adjusted = referenceUtc - offsetMinutes * 60 * 1000;
+  return new Date(adjusted).toISOString();
 }
 
 export function computeBiteWindows({
@@ -233,6 +482,334 @@ export function computeBiteWindows({
   }
 
   return windows.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+}
+
+async function findNearestNoaaStation({
+  latitude,
+  longitude,
+}: {
+  latitude: number;
+  longitude: number;
+}) {
+  const url = new URL("https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json");
+  url.searchParams.set("type", "waterlevels");
+  url.searchParams.set("units", "metric");
+  url.searchParams.set("radius", NOAA_STATION_RADIUS_KM.toString());
+  url.searchParams.set("lat", latitude.toFixed(4));
+  url.searchParams.set("lon", longitude.toFixed(4));
+  const headers: Record<string, string> = {
+    "User-Agent": "hookd-forecasts/1.0",
+  };
+  const token = process.env.NOAA_API_TOKEN;
+  if (token) {
+    headers.token = token;
+  }
+  const response = await fetch(url.toString(), {
+    headers,
+    next: { revalidate: 12 * 60 * 60 },
+  });
+  if (!response.ok) {
+    throw new Error(`NOAA station lookup failed with status ${response.status}`);
+  }
+  const payload = (await response.json()) as NoaaStationResponse;
+  const stations = payload.stations ?? [];
+  const scored = stations
+    .map((station) => {
+      const stationLat = clampNumber(station.lat);
+      const stationLon = clampNumber(station.lng ?? station.lon);
+      if (stationLat == null || stationLon == null) return null;
+      if (station.status && station.status.toLowerCase() !== "active") return null;
+      const distance = haversineDistanceKm(latitude, longitude, stationLat, stationLon);
+      return { id: station.id, name: station.name, distance };
+    })
+    .filter((candidate): candidate is { id: string; name: string; distance: number } => candidate != null)
+    .sort((a, b) => a.distance - b.distance);
+  return scored[0] ?? null;
+}
+
+async function fetchNoaaTidePredictions({
+  latitude,
+  longitude,
+  now,
+}: {
+  latitude: number;
+  longitude: number;
+  now: Date;
+}): Promise<TideProviderResult> {
+  const started = Date.now();
+  const station = await findNearestNoaaStation({ latitude, longitude });
+  if (!station) {
+    throw new Error("No NOAA tide stations available within search radius");
+  }
+  const url = new URL("https://api.tidesandcurrents.noaa.gov/api/prod/datagetter");
+  url.searchParams.set("product", "predictions");
+  url.searchParams.set("application", "hookd");
+  url.searchParams.set("datum", "MSL");
+  url.searchParams.set("station", station.id);
+  url.searchParams.set("units", "metric");
+  url.searchParams.set("time_zone", "gmt");
+  url.searchParams.set("interval", "h");
+  url.searchParams.set("begin_date", formatCompactDate(now));
+  url.searchParams.set("range", String(Math.max(24, FORECAST_HORIZON_HOURS + 12)));
+  url.searchParams.set("format", "json");
+  const headers: Record<string, string> = {
+    "User-Agent": "hookd-forecasts/1.0",
+  };
+  const token = process.env.NOAA_API_TOKEN;
+  if (token) {
+    headers.token = token;
+  }
+  const response = await fetch(url.toString(), {
+    headers,
+    next: { revalidate: WEATHER_CACHE_TTL_MS / 1000 },
+  });
+  if (!response.ok) {
+    throw new Error(`NOAA tide predictions failed with status ${response.status}`);
+  }
+  const payload = (await response.json()) as NoaaPredictionsResponse;
+  const raw = payload.predictions ?? [];
+  const nowMs = now.getTime();
+  const horizonMs = nowMs + FORECAST_HORIZON_HOURS * 60 * 60 * 1000;
+  const startWindowMs = nowMs - 60 * 60 * 1000;
+  const entries = raw
+    .map((entry) => {
+      const timestamp = parseTimestamp(entry.t);
+      const height = clampNumber(entry.v);
+      if (!timestamp || height == null) return null;
+      const timeMs = new Date(timestamp).getTime();
+      if (timeMs < startWindowMs || timeMs > horizonMs) return null;
+      return { timestamp, height: Math.round(height * 100) / 100 };
+    })
+    .filter((value): value is { timestamp: string; height: number } => value != null)
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  if (entries.length === 0) {
+    throw new Error(`NOAA returned no tide entries for station ${station.id}`);
+  }
+  const predictions: TidePrediction[] = entries.map((entry, index) => {
+    const previous = index > 0 ? entries[index - 1]!.height : null;
+    const next = index < entries.length - 1 ? entries[index + 1]!.height : null;
+    return {
+      timestamp: entry.timestamp,
+      heightMeters: entry.height,
+      trend: tideTrendFromNeighbors(entry.height, previous, next),
+    } satisfies TidePrediction;
+  });
+  const finished = Date.now();
+  return {
+    predictions,
+    source: {
+      ...NOAA_TIDES_SOURCE,
+      updatedAt: new Date().toISOString(),
+    },
+    latencyMs: finished - started,
+    fallbackUsed: false,
+  } satisfies TideProviderResult;
+}
+
+async function findNearestUsgsSite({
+  latitude,
+  longitude,
+}: {
+  latitude: number;
+  longitude: number;
+}) {
+  const url = new URL("https://waterservices.usgs.gov/nwis/site/");
+  url.searchParams.set("format", "rdb");
+  url.searchParams.set("parameterCd", "00065");
+  url.searchParams.set(
+    "bBox",
+    `${(longitude - USGS_SEARCH_DELTA_DEGREES).toFixed(4)},${(latitude - USGS_SEARCH_DELTA_DEGREES).toFixed(4)},${(longitude + USGS_SEARCH_DELTA_DEGREES).toFixed(4)},${(latitude + USGS_SEARCH_DELTA_DEGREES).toFixed(4)}`
+  );
+  url.searchParams.set("siteStatus", "active");
+  const headers: Record<string, string> = {
+    "User-Agent": "hookd-forecasts/1.0",
+  };
+  const apiKey = process.env.USGS_WATER_SERVICES_API_KEY;
+  if (apiKey) {
+    headers["X-USGS-API-KEY"] = apiKey;
+  }
+  const response = await fetch(url.toString(), {
+    headers,
+    next: { revalidate: 12 * 60 * 60 },
+  });
+  if (!response.ok) {
+    throw new Error(`USGS site lookup failed with status ${response.status}`);
+  }
+  const body = await response.text();
+  const lines = body
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"));
+  const headerIndex = lines.findIndex((line) => line.startsWith("agency_cd"));
+  if (headerIndex === -1) return null;
+  const headersRow = lines[headerIndex]!.split("\t");
+  const siteIndex = headersRow.indexOf("site_no");
+  const latIndex = headersRow.indexOf("dec_lat_va");
+  const lonIndex = headersRow.indexOf("dec_long_va");
+  const dataRows = lines.slice(headerIndex + 1).filter((line) => !/^\d+s/.test(line) && line !== "END");
+  const candidates = dataRows
+    .map((row) => {
+      const parts = row.split("\t");
+      const site = parts[siteIndex];
+      const lat = clampNumber(parts[latIndex]);
+      const lon = clampNumber(parts[lonIndex]);
+      if (!site || lat == null || lon == null) return null;
+      const distance = haversineDistanceKm(latitude, longitude, lat, lon);
+      return { site, distance };
+    })
+    .filter((value): value is { site: string; distance: number } => value != null)
+    .sort((a, b) => a.distance - b.distance);
+  return candidates[0] ?? null;
+}
+
+async function fetchUsgsTidePredictions({
+  latitude,
+  longitude,
+  now,
+}: {
+  latitude: number;
+  longitude: number;
+  now: Date;
+}): Promise<TideProviderResult> {
+  const started = Date.now();
+  const site = await findNearestUsgsSite({ latitude, longitude });
+  if (!site) {
+    throw new Error("USGS water level site not found near coordinates");
+  }
+  const url = new URL("https://waterservices.usgs.gov/nwis/iv/");
+  url.searchParams.set("format", "json");
+  url.searchParams.set("parameterCd", "00065");
+  url.searchParams.set("sites", site.site);
+  const startWindow = new Date(now.getTime() - 60 * 60 * 1000);
+  const endWindow = new Date(now.getTime() + FORECAST_HORIZON_HOURS * 60 * 60 * 1000);
+  url.searchParams.set("startDT", startWindow.toISOString());
+  url.searchParams.set("endDT", endWindow.toISOString());
+  const headers: Record<string, string> = {
+    "User-Agent": "hookd-forecasts/1.0",
+  };
+  const apiKey = process.env.USGS_WATER_SERVICES_API_KEY;
+  if (apiKey) {
+    headers["X-USGS-API-KEY"] = apiKey;
+  }
+  const response = await fetch(url.toString(), {
+    headers,
+    next: { revalidate: WEATHER_CACHE_TTL_MS / 1000 },
+  });
+  if (!response.ok) {
+    throw new Error(`USGS instantaneous values failed with status ${response.status}`);
+  }
+  const payload = (await response.json()) as UsgsInstantaneousResponse;
+  const series = payload.value?.timeSeries?.[0]?.values?.[0]?.value ?? [];
+  const entries = series
+    .map((point) => {
+      const heightFeet = clampNumber(point.value ?? null);
+      const timestamp = parseTimestamp(point.dateTime ?? null);
+      if (heightFeet == null || !timestamp) return null;
+      return { timestamp, height: metersFromFeet(heightFeet) };
+    })
+    .filter((value): value is { timestamp: string; height: number } => value != null)
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  if (entries.length === 0) {
+    throw new Error(`USGS returned no gauge height values for site ${site.site}`);
+  }
+  const predictions: TidePrediction[] = entries.map((entry, index) => {
+    const previous = index > 0 ? entries[index - 1]!.height : null;
+    const next = index < entries.length - 1 ? entries[index + 1]!.height : null;
+    return {
+      timestamp: entry.timestamp,
+      heightMeters: Math.round(entry.height * 100) / 100,
+      trend: tideTrendFromNeighbors(entry.height, previous, next),
+    } satisfies TidePrediction;
+  });
+  const finished = Date.now();
+  return {
+    predictions,
+    source: {
+      ...USGS_TIDES_SOURCE,
+      updatedAt: new Date().toISOString(),
+    },
+    latencyMs: finished - started,
+    fallbackUsed: true,
+  } satisfies TideProviderResult;
+}
+
+async function fetchSolunarEnhancement({
+  latitude,
+  longitude,
+  timezone,
+  now,
+}: {
+  latitude: number;
+  longitude: number;
+  timezone: string;
+  now: Date;
+}): Promise<SolunarEnhancement | null> {
+  const apiKey = process.env.SOLUNAR_API_KEY;
+  if (!apiKey) return null;
+  const offsetMinutes = resolveTimezoneOffsetMinutes(timezone, now);
+  const dateStamp = formatCompactDate(now);
+  const url = new URL(
+    `https://api.solunar.org/solunar/${latitude.toFixed(4)},${longitude.toFixed(4)},${dateStamp},${offsetMinutes}`
+  );
+  url.searchParams.set("key", apiKey);
+  const response = await fetch(url.toString(), {
+    headers: {
+      "User-Agent": "hookd-forecasts/1.0",
+    },
+    next: { revalidate: WEATHER_CACHE_TTL_MS / 1000 },
+  });
+  if (!response.ok) {
+    throw new Error(`Solunar request failed with status ${response.status}`);
+  }
+  const payload = (await response.json()) as SolunarResponse;
+  const sunrise = parseSolunarLocalTime(payload.sunRise, now, offsetMinutes);
+  const sunset = parseSolunarLocalTime(payload.sunSet, now, offsetMinutes);
+  let moonPhaseFraction: number | null = null;
+  const moonPhaseRaw = payload.moonPhase;
+  if (typeof moonPhaseRaw === "number") {
+    moonPhaseFraction = moonPhaseRaw > 1 ? moonPhaseRaw / 100 : moonPhaseRaw;
+  } else if (typeof moonPhaseRaw === "string") {
+    const numeric = Number.parseFloat(moonPhaseRaw);
+    if (Number.isFinite(numeric)) {
+      moonPhaseFraction = numeric > 1 ? numeric / 100 : numeric;
+    }
+  }
+  const windows: BiteWindow[] = [];
+  const registerWindow = (
+    startRaw: string | undefined,
+    endRaw: string | undefined,
+    label: string,
+    baseScore: number,
+    rationale: string
+  ) => {
+    const start = parseSolunarLocalTime(startRaw, now, offsetMinutes);
+    const end = parseSolunarLocalTime(endRaw, now, offsetMinutes);
+    if (!start || !end) return;
+    windows.push({
+      start,
+      end,
+      label,
+      score: Math.max(1, Math.min(5, Math.round(baseScore))) as BiteWindow["score"],
+      rationale,
+    });
+  };
+  registerWindow(payload.major1Start, payload.major1Stop, "Major feeding", 5, "Solunar major period");
+  registerWindow(payload.major2Start, payload.major2Stop, "Major feeding", 5, "Solunar major period");
+  registerWindow(payload.minor1Start, payload.minor1Stop, "Minor feeding", 4, "Solunar minor period");
+  registerWindow(payload.minor2Start, payload.minor2Stop, "Minor feeding", 4, "Solunar minor period");
+  const basisRating = payload.rating != null ? `Rating ${payload.rating}` : "Major/minor cycles";
+  return {
+    sunrise: sunrise ?? null,
+    sunset: sunset ?? null,
+    moonPhase: moonPhaseFraction,
+    windows,
+    basis: `Solunar tables (${basisRating}) blended with local daylight.`,
+    provider: {
+      ...SOLUNAR_SOURCE,
+      updatedAt: new Date().toISOString(),
+      confidence: windows.length > 0 ? "high" : SOLUNAR_SOURCE.confidence,
+    },
+  } satisfies SolunarEnhancement;
 }
 
 export function generateSyntheticTides({
@@ -439,6 +1016,203 @@ function generateSyntheticForecast({
   } satisfies OpenMeteoForecastResponse;
 }
 
+async function buildForecastBundle({
+  latitude,
+  longitude,
+  cacheKey,
+  origin,
+}: {
+  latitude: number;
+  longitude: number;
+  cacheKey: string;
+  origin: "request" | "prefetch";
+}): Promise<ForecastBundle> {
+  const now = new Date();
+  const telemetry: ForecastBundle["telemetry"] = {
+    errors: [],
+    warnings: [],
+    providerLatencyMs: {},
+    usedPrefetch: origin === "prefetch",
+  };
+
+  let forecast: OpenMeteoForecastResponse | null = null;
+  let weatherSource: ForecastSourceSummary = {
+    ...OPEN_METEO_SOURCE,
+    updatedAt: new Date().toISOString(),
+    confidence: "high",
+    status: "ok",
+  };
+
+  try {
+    const started = Date.now();
+    forecast = await fetchOpenMeteo({ latitude, longitude });
+    telemetry.providerLatencyMs[OPEN_METEO_SOURCE.id] = Date.now() - started;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    telemetry.errors.push(toTelemetry(OPEN_METEO_SOURCE.id, message));
+    forecast = null;
+  }
+
+  if (!forecast || !forecast.hourly?.time?.length) {
+    forecast = generateSyntheticForecast({ latitude, longitude, baseTime: now });
+    weatherSource = {
+      ...SYNTHETIC_WEATHER_SOURCE,
+      updatedAt: new Date().toISOString(),
+      status: "error",
+      error: "Open-Meteo unavailable – using synthetic weather",
+    };
+    telemetry.warnings.push(toTelemetry(SYNTHETIC_WEATHER_SOURCE.id, "Synthetic weather fallback engaged"));
+    telemetry.providerLatencyMs[SYNTHETIC_WEATHER_SOURCE.id] = 0;
+  }
+
+  let weatherHours = mapWeatherHours(forecast);
+  let { sunrise, sunset, moonPhase } = resolveSunCycle(forecast.daily);
+
+  if (weatherHours.length === 0) {
+    forecast = generateSyntheticForecast({ latitude, longitude, baseTime: now });
+    weatherSource = {
+      ...SYNTHETIC_WEATHER_SOURCE,
+      updatedAt: new Date().toISOString(),
+      status: "error",
+      error: "Primary weather returned no hourly data",
+    };
+    weatherHours = mapWeatherHours(forecast);
+    ({ sunrise, sunset, moonPhase } = resolveSunCycle(forecast.daily));
+    telemetry.errors.push(toTelemetry(OPEN_METEO_SOURCE.id, "No hourly weather data available – synthetic generated"));
+    telemetry.providerLatencyMs[SYNTHETIC_WEATHER_SOURCE.id] = 0;
+  }
+
+  const timezone = forecast.timezone ?? "UTC";
+
+  let solunarEnhancement: SolunarEnhancement | null = null;
+  if (process.env.SOLUNAR_API_KEY) {
+    try {
+      const started = Date.now();
+      solunarEnhancement = await fetchSolunarEnhancement({ latitude, longitude, timezone, now });
+      if (solunarEnhancement) {
+        telemetry.providerLatencyMs[SOLUNAR_SOURCE.id] = Date.now() - started;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      telemetry.warnings.push(toTelemetry(SOLUNAR_SOURCE.id, message));
+    }
+  } else {
+    telemetry.warnings.push(
+      toTelemetry(SOLUNAR_SOURCE.id, "SOLUNAR_API_KEY missing – skipping solunar overlay")
+    );
+  }
+
+  if (solunarEnhancement) {
+    if (solunarEnhancement.sunrise) sunrise = solunarEnhancement.sunrise;
+    if (solunarEnhancement.sunset) sunset = solunarEnhancement.sunset;
+    if (solunarEnhancement.moonPhase != null) moonPhase = solunarEnhancement.moonPhase;
+  }
+
+  const baseBiteWindows = computeBiteWindows({
+    sunrise,
+    sunset,
+    moonPhase,
+    timezone,
+    now,
+  });
+
+  const combinedWindows = [...baseBiteWindows];
+  if (solunarEnhancement?.windows.length) {
+    const seen = new Set(combinedWindows.map((window) => `${window.label}:${window.start}`));
+    for (const window of solunarEnhancement.windows) {
+      const key = `${window.label}:${window.start}`;
+      if (!seen.has(key)) {
+        combinedWindows.push(window);
+        seen.add(key);
+      }
+    }
+    combinedWindows.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+  }
+
+  let tideResult: TideProviderResult | null = null;
+  try {
+    tideResult = await fetchNoaaTidePredictions({ latitude, longitude, now });
+    telemetry.providerLatencyMs[tideResult.source.id] = tideResult.latencyMs;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    telemetry.errors.push(toTelemetry(NOAA_TIDES_SOURCE.id, message));
+    try {
+      const usgsResult = await fetchUsgsTidePredictions({ latitude, longitude, now });
+      usgsResult.source = {
+        ...usgsResult.source,
+        status: "partial",
+        disclaimer: "USGS gauge substituted for NOAA tide predictions.",
+      };
+      tideResult = usgsResult;
+      telemetry.providerLatencyMs[usgsResult.source.id] = usgsResult.latencyMs;
+      telemetry.warnings.push(toTelemetry(usgsResult.source.id, "Using USGS fallback for tides"));
+    } catch (fallbackError) {
+      const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      telemetry.errors.push(toTelemetry(USGS_TIDES_SOURCE.id, fallbackMessage));
+    }
+  }
+
+  if (!tideResult) {
+    const syntheticPredictions = generateSyntheticTides({
+      latitude,
+      longitude,
+      baseTime: now,
+    });
+    tideResult = {
+      predictions: syntheticPredictions,
+      source: {
+        ...SYNTHETIC_TIDES_SOURCE,
+        updatedAt: new Date().toISOString(),
+        status: "error",
+        error: "Live tide providers unavailable",
+      },
+      latencyMs: 0,
+      fallbackUsed: true,
+    } satisfies TideProviderResult;
+    telemetry.warnings.push(toTelemetry(SYNTHETIC_TIDES_SOURCE.id, "Synthetic tide fallback engaged"));
+  }
+
+  const tideSource: ForecastSourceSummary = {
+    ...tideResult.source,
+    updatedAt: tideResult.source.updatedAt ?? new Date().toISOString(),
+    status: tideResult.source.status ?? (tideResult.fallbackUsed ? "partial" : "ok"),
+  };
+
+  const bundle: ForecastBundle = {
+    version: FORECAST_BUNDLE_VERSION,
+    updatedAt: new Date().toISOString(),
+    location: {
+      latitude,
+      longitude,
+      timezone,
+      sunrise,
+      sunset,
+      moonPhaseFraction: moonPhase,
+      moonPhaseLabel: moonPhaseLabel(moonPhase),
+    },
+    weather: {
+      hours: weatherHours,
+      source: weatherSource,
+    },
+    tides: {
+      predictions: tideResult.predictions,
+      source: tideSource,
+      fallbackUsed: tideResult.fallbackUsed,
+    },
+    biteWindows: {
+      windows: combinedWindows,
+      basis:
+        solunarEnhancement?.basis ??
+        "Derived from sunrise, sunset, and moon phase with near-term boost.",
+      provider: solunarEnhancement?.provider,
+    },
+    telemetry,
+  } satisfies ForecastBundle;
+
+  fallbackForecastCache.set(cacheKey, structuredClone(bundle));
+  return bundle;
+}
+
 export async function getForecastBundle({
   latitude,
   longitude,
@@ -447,68 +1221,63 @@ export async function getForecastBundle({
   longitude: number;
 }): Promise<ForecastBundle> {
   const cacheKey = toCacheKey(latitude, longitude);
-  return forecastCache.getOrSet(cacheKey, async () => {
-    const now = new Date();
-    let forecast: OpenMeteoForecastResponse | null = null;
-    let weatherSource: ForecastSourceSummary = OPEN_METEO_SOURCE;
-
-    try {
-      forecast = await fetchOpenMeteo({ latitude, longitude });
-    } catch (error) {
-      console.warn("Open-Meteo fetch failed, generating synthetic forecast", error);
+  try {
+    return await forecastCache.getOrSet(cacheKey, () =>
+      buildForecastBundle({ latitude, longitude, cacheKey, origin: "request" })
+    );
+  } catch (error) {
+    const fallback = fallbackForecastCache.get(cacheKey);
+    if (fallback) {
+      const message = error instanceof Error ? error.message : String(error);
+      const clone = structuredClone(fallback);
+      clone.updatedAt = new Date().toISOString();
+      clone.telemetry.warnings = [
+        ...clone.telemetry.warnings,
+        toTelemetry("composite", `Persisted fallback served: ${message}`),
+      ];
+      forecastCache.set(cacheKey, clone, WEATHER_CACHE_TTL_MS / 2);
+      return clone;
     }
+    throw error;
+  }
+}
 
-    if (!forecast || !forecast.hourly?.time?.length) {
-      forecast = generateSyntheticForecast({ latitude, longitude, baseTime: now });
-      weatherSource = SYNTHETIC_WEATHER_SOURCE;
-    }
+async function prefetchPopularForecasts() {
+  await Promise.allSettled(
+    POPULAR_COORDINATES.map(async ({ latitude, longitude, label }) => {
+      const cacheKey = toCacheKey(latitude, longitude);
+      try {
+        const bundle = await buildForecastBundle({
+          latitude,
+          longitude,
+          cacheKey,
+          origin: "prefetch",
+        });
+        forecastCache.set(cacheKey, bundle);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`Forecast prefetch failed for ${label}:`, message);
+      }
+    })
+  );
+}
 
-    let weatherHours = mapWeatherHours(forecast);
-    let { sunrise, sunset, moonPhase } = resolveSunCycle(forecast.daily);
-
-    if (weatherHours.length === 0) {
-      forecast = generateSyntheticForecast({ latitude, longitude, baseTime: now });
-      weatherSource = SYNTHETIC_WEATHER_SOURCE;
-      weatherHours = mapWeatherHours(forecast);
-      ({ sunrise, sunset, moonPhase } = resolveSunCycle(forecast.daily));
-    }
-
-    const timezone = forecast.timezone ?? "UTC";
-    const biteWindows = computeBiteWindows({
-      sunrise,
-      sunset,
-      moonPhase,
-      timezone,
-      now,
+function schedulePrefetchLoop() {
+  prefetchPopularForecasts()
+    .catch((error) => {
+      console.warn("Initial forecast prefetch failed", error);
+    })
+    .finally(() => {
+      const timer: ReturnType<typeof setTimeout> = setTimeout(schedulePrefetchLoop, PREFETCH_INTERVAL_MS);
+      const nodeTimer = timer as unknown as { unref?: () => void };
+      if (typeof nodeTimer.unref === "function") {
+        nodeTimer.unref();
+      }
     });
-    const tides = generateSyntheticTides({
-      latitude,
-      longitude,
-      baseTime: now,
-    });
-    return {
-      updatedAt: new Date().toISOString(),
-      location: {
-        latitude,
-        longitude,
-        timezone,
-        sunrise,
-        sunset,
-        moonPhaseFraction: moonPhase,
-        moonPhaseLabel: moonPhaseLabel(moonPhase),
-      },
-      weather: {
-        hours: weatherHours,
-        source: weatherSource,
-      },
-      tides: {
-        predictions: tides,
-        source: SYNTHETIC_TIDES_SOURCE,
-      },
-      biteWindows: {
-        windows: biteWindows,
-        basis: "Derived from sunrise, sunset, and moon phase with near-term boost.",
-      },
-    } satisfies ForecastBundle;
-  });
+}
+
+const globalPrefetchState = globalThis as { __hookdForecastPrefetchScheduled?: boolean };
+if (!globalPrefetchState.__hookdForecastPrefetchScheduled) {
+  globalPrefetchState.__hookdForecastPrefetchScheduled = true;
+  schedulePrefetchLoop();
 }
