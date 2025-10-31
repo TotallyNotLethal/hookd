@@ -3,7 +3,15 @@
 import clsx from 'clsx';
 import Image from 'next/image';
 import Link from 'next/link';
-import { type JSX, type KeyboardEvent, useCallback, useMemo, useState } from 'react';
+import {
+  type JSX,
+  type KeyboardEvent as ReactKeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import ReactMarkdown from 'react-markdown';
 import {
   BookOpen,
@@ -13,10 +21,12 @@ import {
   MessageCircle,
   Percent,
   Star,
+  Settings,
   Scale,
   Sparkles,
   Target,
   Users,
+  LogOut,
   Weight,
 } from 'lucide-react';
 import rehypeSanitize from 'rehype-sanitize';
@@ -39,6 +49,8 @@ import {
 import { LIL_ANGLER_BADGE, sanitizeUserBadges, type ProfileTheme, type Team } from '@/lib/firestore';
 import type { EnvironmentSnapshot } from '@/lib/environmentTypes';
 import { SEASON_LABELS, type SeasonKey, type UserTackleStats } from '@/lib/tackleBox';
+import { getAuth, signOut } from 'firebase/auth';
+import { app } from '@/lib/firebaseClient';
 
 const ABOUT_ALLOWED_TAGS = ['p', 'strong', 'em', 'a', 'ul', 'ol', 'li', 'code', 'blockquote', 'br'] as const;
 
@@ -490,7 +502,74 @@ export default function ProfileView({
   );
   const canOpenTeams = useMemo(() => Boolean(isOwner), [isOwner]);
 
-  const handleCatchKeyDown = (event: KeyboardEvent<HTMLDivElement>, catchItem: Catch) => {
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const settingsMenuRef = useRef<HTMLDivElement | null>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  const closeSettings = useCallback(() => {
+    setIsSettingsOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!isSettingsOpen) {
+      return;
+    }
+
+    const handleClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (
+        settingsMenuRef.current?.contains(target)
+        || settingsButtonRef.current?.contains(target)
+      ) {
+        return;
+      }
+      closeSettings();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeSettings();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [closeSettings, isSettingsOpen]);
+
+  useEffect(() => {
+    if (!isOwner) {
+      setIsSettingsOpen(false);
+    }
+  }, [isOwner]);
+
+  const handleEditProfile = useCallback(() => {
+    if (onEditProfile) {
+      onEditProfile();
+    }
+    closeSettings();
+  }, [closeSettings, onEditProfile]);
+
+  const handleOpenLogbook = useCallback(() => {
+    if (onOpenLogbook && canOpenLogbook) {
+      onOpenLogbook();
+    }
+    closeSettings();
+  }, [canOpenLogbook, closeSettings, onOpenLogbook]);
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await signOut(getAuth(app));
+    } finally {
+      closeSettings();
+    }
+  }, [closeSettings]);
+
+  const handleCatchKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>, catchItem: Catch) => {
     if (!onCatchSelect) return;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
@@ -620,35 +699,77 @@ export default function ProfileView({
                     Report
                   </button>
                 )}
-                {isOwner && onEditProfile && (
-                  <button
-                    className="rounded-xl border border-white/15 px-4 py-2 transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)]"
-                    onClick={onEditProfile}
-                  >
-                    Edit Profile
-                  </button>
-                )}
-                {isOwner && onOpenLogbook && (
-                  <button
-                    type="button"
-                    onClick={onOpenLogbook}
-                    className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)] disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={!canOpenLogbook}
-                  >
-                    <BookOpen className="h-4 w-4" />
-                    Manage Logbook
-                  </button>
-                )}
-                {canOpenTeams && (
-                  <Link
-                    href="/teams"
-                    prefetch={false}
-                    className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)]"
-                  >
-                    <Users className="h-4 w-4" />
-                    Manage Team
-                  </Link>
-                )}
+                {isOwner ? (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      ref={settingsButtonRef}
+                      onClick={() => setIsSettingsOpen((prev) => !prev)}
+                      aria-haspopup="menu"
+                      aria-expanded={isSettingsOpen}
+                      className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)]"
+                    >
+                      <Settings className="h-4 w-4" />
+                      <span className="hidden sm:inline">Settings</span>
+                    </button>
+                    {isSettingsOpen ? (
+                      <div
+                        ref={settingsMenuRef}
+                        role="menu"
+                        aria-label="Profile settings"
+                        className="absolute right-0 z-50 mt-2 w-56 rounded-2xl border border-white/10 bg-slate-950/95 p-1 shadow-xl backdrop-blur"
+                      >
+                        {onEditProfile ? (
+                          <button
+                            type="button"
+                            onClick={handleEditProfile}
+                            className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)]"
+                            role="menuitem"
+                          >
+                            <Sparkles className="h-4 w-4" />
+                            Edit profile
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={handleOpenLogbook}
+                          className={clsx(
+                            'flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)]',
+                            canOpenLogbook
+                              ? 'text-white hover:bg-white/10'
+                              : 'cursor-not-allowed text-white/40',
+                          )}
+                          role="menuitem"
+                          disabled={!canOpenLogbook}
+                        >
+                          <BookOpen className="h-4 w-4" />
+                          Manage logbook
+                        </button>
+                        {canOpenTeams ? (
+                          <Link
+                            href="/teams"
+                            prefetch={false}
+                            onClick={closeSettings}
+                            className="flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)]"
+                            role="menuitem"
+                          >
+                            <Users className="h-4 w-4" />
+                            Manage team
+                          </Link>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={handleLogout}
+                          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm text-red-100 transition hover:bg-red-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                          role="menuitem"
+                        >
+                          <LogOut className="h-4 w-4" />
+                          Log out
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 {isOwner && !isProMember && (
                   <span className="text-xs font-medium uppercase tracking-wide text-amber-300">
                     Go Pro to unlock teams and the logbook
