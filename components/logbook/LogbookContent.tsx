@@ -11,6 +11,7 @@ import type { ForecastBundle } from '@/lib/forecastTypes';
 import type { CatchVisibility } from '@/lib/catches';
 import { app } from '@/lib/firebaseClient';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
+import { useProAccess } from '@/hooks/useProAccess';
 import { queueCatch, syncQueuedCatches } from '@/lib/offlineStorage';
 
 const auth = getAuth(app);
@@ -135,6 +136,7 @@ export default function LogbookContent({ showIntroduction = true }: { showIntrod
   const [plannerForecast, setPlannerForecast] = useState<ForecastBundle | null>(null);
   const [selectedVisibility, setSelectedVisibility] = useState<'all' | CatchVisibility>('all');
   const offline = useOfflineStatus();
+  const { profile: viewerProfile } = useProAccess();
 
   const plannerSpot = useMemo(
     () => fishingSpots.find((spot) => spot.id === plannerSpotId) ?? fishingSpots[0] ?? null,
@@ -472,6 +474,7 @@ export default function LogbookContent({ showIntroduction = true }: { showIntrod
             longitude={plannerSpot.longitude}
             locationLabel={`${plannerSpot.name}, ${plannerSpot.state}`}
             onSnapshot={setPlannerForecast}
+            viewer={viewerProfile}
           />
         ) : null}
       </section>
