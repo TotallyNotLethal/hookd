@@ -152,7 +152,7 @@ describe('summarizeCatchMetrics', () => {
     assert.ok(summary.personalBest);
     assert.equal(summary.personalBest?.catchId, 'numeric-only');
     assert.equal(summary.personalBest?.weight, 6.25);
-    assert.equal(summary.personalBest?.weightText, '6.25 lb');
+    assert.equal(summary.personalBest?.weightText, '6 lb 4 oz');
   });
 
   it('normalizes weight text when only numeric values are available', () => {
@@ -170,7 +170,7 @@ describe('summarizeCatchMetrics', () => {
     assert.ok(summary.personalBest);
     assert.equal(summary.personalBest?.catchId, 'invalid-text');
     assert.equal(summary.personalBest?.weight, 9.337);
-    assert.equal(summary.personalBest?.weightText, '9.34 lb');
+    assert.equal(summary.personalBest?.weightText, '9 lb 5 oz');
   });
 
   it('aggregates environment insights when snapshots are provided', () => {
@@ -267,7 +267,7 @@ describe('summarizeCatchMetrics', () => {
         : false,
     );
     assert.equal(summary.averageCatchWeight?.sampleSize, 4);
-    assert.equal(summary.averageCatchWeight?.weightText, '4.63 lb');
+    assert.equal(summary.averageCatchWeight?.weightText, '4 lb 10 oz');
   });
 
   it('identifies the most frequently caught species', () => {
