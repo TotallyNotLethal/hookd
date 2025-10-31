@@ -3,7 +3,7 @@
 import clsx from 'clsx';
 import Image from 'next/image';
 import Link from 'next/link';
-import { type JSX, type KeyboardEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { type JSX, type KeyboardEvent, useCallback, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import {
   BookOpen,
@@ -12,6 +12,7 @@ import {
   Medal,
   MessageCircle,
   Percent,
+  Star,
   Scale,
   Sparkles,
   Target,
@@ -27,6 +28,7 @@ import {
   type CatchSummary,
   type CatchEnvironmentSummary,
 } from '@/lib/catchStats';
+import LicenseReminderSettingsCard from '@/components/LicenseReminderSettingsCard';
 import {
   DEFAULT_PROFILE_THEME,
   PROFILE_ACCENT_OPTIONS,
@@ -71,6 +73,15 @@ type BadgeItem = {
   label: string;
   className: string;
   icon: JSX.Element;
+};
+
+type TabKey = 'about' | 'stats' | 'baits' | 'licenses';
+
+const TAB_LABELS: Record<TabKey, string> = {
+  about: 'About',
+  stats: 'Angler Stats',
+  baits: 'Baits',
+  licenses: 'Licenses',
 };
 
 const BADGE_BASE_CLASS =
@@ -148,6 +159,7 @@ type ProfileViewProps = {
   onReport?: () => void;
   reportPending?: boolean;
   blockedNotice?: string | null;
+  licenseReminderUid?: string | null;
 };
 
 export default function ProfileView({
@@ -171,6 +183,7 @@ export default function ProfileView({
   onReport,
   reportPending = false,
   blockedNotice,
+  licenseReminderUid,
 }: ProfileViewProps) {
   const trophyCatches = useMemo(() => catches.filter((catchItem) => catchItem.trophy), [catches]);
   const standardCatches = useMemo(() => catches.filter((catchItem) => !catchItem.trophy), [catches]);
@@ -384,6 +397,93 @@ export default function ProfileView({
   const hasEnvironmentData = Boolean(environmentSummary && environmentSummary.sampleSize > 0);
 
   const aboutContent = profile?.about?.trim();
+  const showLicenseTab = Boolean(isOwner && licenseReminderUid);
+  const tabKeys = useMemo<TabKey[]>(() => {
+    const keys: TabKey[] = ['about', 'stats', 'baits'];
+    if (showLicenseTab) {
+      keys.push('licenses');
+    }
+    return keys;
+  }, [showLicenseTab]);
+  const [activeTab, setActiveTab] = useState<TabKey>(() => tabKeys[0] ?? 'about');
+
+  const currentTab = useMemo<TabKey>(() => {
+    if (tabKeys.includes(activeTab)) {
+      return activeTab;
+    }
+    return tabKeys[0] ?? 'about';
+  }, [activeTab, tabKeys]);
+
+  const tabIdMap = useMemo(() => {
+    const map: Partial<Record<TabKey, string>> = {};
+    tabKeys.forEach((key) => {
+      map[key] = `profile-tab-${key}`;
+    });
+    return map;
+  }, [tabKeys]);
+
+  const panelIdMap = useMemo(() => {
+    const map: Partial<Record<TabKey, string>> = {};
+    tabKeys.forEach((key) => {
+      map[key] = `profile-panel-${key}`;
+    });
+    return map;
+  }, [tabKeys]);
+
+  const renderTabContent = () => {
+    switch (currentTab) {
+      case 'about':
+        if (aboutContent) {
+          return (
+            <ReactMarkdown
+              className="markdown"
+              rehypePlugins={[[rehypeSanitize, ABOUT_SANITIZE_SCHEMA]]}
+              components={ABOUT_MARKDOWN_COMPONENTS}
+            >
+              {aboutContent}
+            </ReactMarkdown>
+          );
+        }
+        return (
+          <p className="text-sm text-white/60">
+            {isOwner
+              ? 'Share a bit about yourself to let other anglers know who you are.'
+              : 'This angler has not shared details yet.'}
+          </p>
+        );
+      case 'stats':
+        return (
+          <ProfileStatsPanel
+            stats={stats}
+            trophyRateDisplay={trophyRateDisplay}
+            trophyRateSubtitle={trophyRateSubtitle}
+            topSpeciesLabel={topSpeciesLabel}
+            topSpeciesSubtitle={topSpeciesSubtitle}
+            averageWeightText={averageWeightText}
+            averageWeightSubtitle={averageWeightSubtitle}
+            personalBestWeight={personalBestWeight}
+            personalBestSpecies={personalBestSpecies}
+            recentActivityMetrics={recentActivityMetrics}
+            hasEnvironmentData={hasEnvironmentData}
+            environmentMetrics={environmentMetrics}
+            environmentSummary={environmentSummary}
+            isProMember={isProMember}
+          />
+        );
+      case 'baits':
+        return <ConfidenceBaitsWidget stats={tackleStats ?? null} isProMember={isProMember} />;
+      case 'licenses':
+        if (licenseReminderUid) {
+          return <LicenseReminderSettingsCard uid={licenseReminderUid} />;
+        }
+        return <p className="text-sm text-white/60">Sign in to manage your license reminders.</p>;
+      default:
+        return null;
+    }
+  };
+
+  const activeTabId = tabIdMap[currentTab] ?? `profile-tab-${currentTab}`;
+  const activePanelId = panelIdMap[currentTab] ?? `profile-panel-${currentTab}`;
   const canOpenLogbook = useMemo(
     () => Boolean(isOwner && isProMember && onOpenLogbook),
     [isOwner, isProMember, onOpenLogbook],
@@ -592,172 +692,47 @@ export default function ProfileView({
         )}
       </div>
 
-      {aboutContent && (
-        <section className="card p-4 md:p-6">
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-white/90">
-            <Sparkles aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />
-            About
-          </h2>
-          <ReactMarkdown
-            className="markdown mt-3"
-            rehypePlugins={[[rehypeSanitize, ABOUT_SANITIZE_SCHEMA]]}
-            components={ABOUT_MARKDOWN_COMPONENTS}
-          >
-            {aboutContent}
-          </ReactMarkdown>
-        </section>
-      )}
-
-      <div className="card p-4 md:p-6">
-        <h2 className="flex items-center gap-2 text-lg font-semibold text-white/90">
-          <Sparkles aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />
-          Angler Stats
-        </h2>
-        <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {[
-            {
-              key: 'total',
-              label: 'Total Catches',
-              value: stats.totalCatches.toLocaleString(),
-              subtitle: null,
-              icon: <Fish aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
-              title: 'Total number of catches shared by this angler',
-            },
-            {
-              key: 'trophies',
-              label: 'Trophies',
-              value: stats.trophyCount.toLocaleString(),
-              subtitle: null,
-              icon: <Medal aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
-              title: 'How many catches were marked as trophies',
-            },
-            {
-              key: 'trophy-rate',
-              label: 'Trophy Rate',
-              value: trophyRateDisplay,
-              subtitle: trophyRateSubtitle,
-              icon: <Percent aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
-              title: 'Share of catches flagged as trophies',
-            },
-            {
-              key: 'unique-species',
-              label: 'Unique Species',
-              value: stats.uniqueSpeciesCount.toLocaleString(),
-              subtitle: null,
-              icon: <Sparkles aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
-              title: 'Distinct species featured in posted catches',
-            },
-            {
-              key: 'top-species',
-              label: 'Top Species',
-              value: topSpeciesLabel,
-              subtitle: topSpeciesSubtitle,
-              icon: <Target aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
-              title: 'Most frequently caught species in shared catches',
-            },
-            {
-              key: 'average-weight',
-              label: 'Avg Catch Weight',
-              value: averageWeightText,
-              subtitle: averageWeightSubtitle,
-              icon: <Weight aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
-              title: 'Average recorded weight across catches with measurements',
-            },
-            {
-              key: 'personal-best',
-              label: 'Personal Best',
-              value: personalBestWeight,
-              subtitle: personalBestSpecies,
-              icon: <Scale aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
-              title: 'Heaviest recorded catch based on provided weight',
-            },
-          ].map((card) => (
-            <div
-              key={card.key}
-              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4"
-              title={card.title}
-            >
-              <div className="accent-chip">{card.icon}</div>
-              <div>
-                <dt className="text-sm text-white/60">{card.label}</dt>
-                <dd className="text-xl font-semibold text-white">{card.value}</dd>
-                {card.subtitle ? (
-                  <p className="text-xs text-white/60">{card.subtitle}</p>
-                ) : null}
-              </div>
-            </div>
-          ))}
-        </dl>
-
-        <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-          <div className="flex items-center gap-2">
-            <CalendarDays aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />
-            <p className="text-sm font-semibold text-white/80">Recent Activity</p>
-          </div>
-          {recentActivityMetrics ? (
-            <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {recentActivityMetrics.map((metric) => (
-                <div
-                  key={metric.key}
-                  className="rounded-xl border border-white/10 bg-black/30 p-3 text-center sm:text-left"
-                >
-                  <dt className="text-xs uppercase tracking-wide text-white/50">{metric.label}</dt>
-                  <dd className="mt-1 text-lg font-semibold text-white">{metric.value.toLocaleString()}</dd>
-                </div>
-              ))}
-            </dl>
-          ) : (
-            <p className="mt-3 text-sm text-white/60">
-              Recent catches with timestamps will appear here once they are available.
-            </p>
-          )}
+      <div className="card overflow-hidden">
+        <div
+          role="tablist"
+          aria-label="Profile sections"
+          className="flex flex-wrap border-b border-white/10 bg-white/[0.04]"
+        >
+          {tabKeys.map((tabKey) => {
+            const isActive = currentTab === tabKey;
+            const buttonId = tabIdMap[tabKey] ?? `profile-tab-${tabKey}`;
+            const panelId = panelIdMap[tabKey] ?? `profile-panel-${tabKey}`;
+            return (
+              <button
+                key={tabKey}
+                type="button"
+                role="tab"
+                id={buttonId}
+                aria-controls={panelId}
+                aria-selected={isActive}
+                onClick={() => setActiveTab(tabKey)}
+                className={clsx(
+                  'flex items-center gap-2 px-4 py-3 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)]',
+                  isActive ? 'bg-white/10 text-white' : 'text-white/60 hover:bg-white/5 hover:text-white',
+                )}
+              >
+                <span className="flex h-4 w-4 items-center justify-center" aria-hidden>
+                  {isActive ? <Star className="h-4 w-4 text-sky-400" /> : null}
+                </span>
+                {TAB_LABELS[tabKey]}
+              </button>
+            );
+          })}
         </div>
-
-        <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
-          <div className="flex items-center justify-between gap-2">
-            <div>
-              <p className="text-sm font-semibold text-white/80">Catch Insights</p>
-              <p className="text-xs text-white/50">Auto-logged conditions from your catches</p>
-            </div>
-            <span className="rounded-full border border-amber-300/60 bg-amber-500/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
-              Pro
-            </span>
-          </div>
-          {isProMember ? (
-            hasEnvironmentData ? (
-              <>
-                <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {environmentMetrics.map((metric) => (
-                    <div
-                      key={metric.key}
-                      className="rounded-xl border border-white/10 bg-black/30 p-3"
-                    >
-                      <dt className="text-xs uppercase tracking-wide text-white/50">{metric.label}</dt>
-                      <dd className="mt-1 text-sm font-medium text-white/90">{metric.value}</dd>
-                    </div>
-                  ))}
-                </dl>
-                <p className="mt-4 text-[11px] text-white/40">
-                  Based on {environmentSummary?.sampleSize ?? 0} logged catches with location data.
-                </p>
-              </>
-            ) : (
-              <p className="mt-4 rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white/60">
-                Catch insights will appear after you post catches with location and timestamp info.
-              </p>
-            )
-          ) : (
-            <div className="mt-4 space-y-2 rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-amber-100">
-              <p className="text-sm font-medium">Unlock detailed weather insights with Hook&apos;d Pro.</p>
-              <p className="text-xs text-amber-50/80">
-                Weather, temps, pressure, moon phase, and wind are captured automatically every time you log a catch.
-              </p>
-            </div>
-          )}
+        <div
+          role="tabpanel"
+          id={activePanelId}
+          aria-labelledby={activeTabId}
+          className="space-y-6 p-4 md:p-6"
+        >
+          {renderTabContent()}
         </div>
       </div>
-
-      <ConfidenceBaitsWidget stats={tackleStats ?? null} isProMember={isProMember} />
 
       <section aria-label="Trophy catches" className="mt-8">
         <h2 className="mb-3 text-lg text-white/80">Trophy Catches</h2>
@@ -949,7 +924,7 @@ function ConfidenceBaitsWidget({ stats, isProMember }: ConfidenceBaitsWidgetProp
   }, []);
 
   return (
-    <div className="card mt-8 p-4 md:p-6">
+    <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-semibold text-white/90">
@@ -965,7 +940,7 @@ function ConfidenceBaitsWidget({ stats, isProMember }: ConfidenceBaitsWidgetProp
       {isProMember ? (
         hasStats ? (
           <>
-            <div className="mt-4 flex flex-wrap items-end gap-3 text-xs text-white/60">
+            <div className="flex flex-wrap items-end gap-3 text-xs text-white/60">
               {speciesOptions.length > 0 && (
                 <label className="flex flex-col gap-1">
                   <span className="text-[10px] uppercase tracking-wide text-white/40">Species filter</span>
@@ -1014,7 +989,7 @@ function ConfidenceBaitsWidget({ stats, isProMember }: ConfidenceBaitsWidgetProp
               )}
             </div>
             {filteredEntries.length ? (
-              <div className="mt-4 space-y-3">
+              <div className="space-y-3">
                 {filteredEntries.slice(0, 5).map((entry) => {
                   const activeSpecies = resolvedSpeciesFilter !== 'all'
                     ? resolvedSpeciesFilter
@@ -1075,27 +1050,211 @@ function ConfidenceBaitsWidget({ stats, isProMember }: ConfidenceBaitsWidgetProp
                 })}
               </div>
             ) : (
-              <p className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-white/60">
+              <p className="rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-white/60">
                 No tackle matches the current filters. Try resetting them to see all of your go-to baits.
               </p>
             )}
-            <p className="mt-4 text-[11px] text-white/40">
+            <p className="text-[11px] text-white/40">
               Based on {totalSamples} logged catches with tackle details.
             </p>
           </>
         ) : (
-          <p className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-white/60">
+          <p className="rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-white/60">
             Confidence baits will appear after you log catches with tackle information.
           </p>
         )
       ) : (
-        <div className="mt-4 space-y-2 rounded-2xl border border-amber-400/40 bg-amber-500/10 p-4 text-amber-100">
+        <div className="space-y-2 rounded-2xl border border-amber-400/40 bg-amber-500/10 p-4 text-amber-100">
           <p className="text-sm font-medium">Unlock tackle analytics with Hook&apos;d Pro.</p>
           <p className="text-xs text-amber-50/80">
             Track catch rates by lure, color, and presentation to build unstoppable confidence baits.
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+type ProfileStatsPanelProps = {
+  stats: CatchSummary;
+  trophyRateDisplay: string;
+  trophyRateSubtitle: string | null;
+  topSpeciesLabel: string;
+  topSpeciesSubtitle: string | null;
+  averageWeightText: string;
+  averageWeightSubtitle: string | null;
+  personalBestWeight: string;
+  personalBestSpecies: string | null;
+  recentActivityMetrics: { key: string; label: string; value: number }[] | null;
+  hasEnvironmentData: boolean;
+  environmentMetrics: { key: string; label: string; value: string }[];
+  environmentSummary: CatchEnvironmentSummary | undefined;
+  isProMember: boolean;
+};
+
+function ProfileStatsPanel({
+  stats,
+  trophyRateDisplay,
+  trophyRateSubtitle,
+  topSpeciesLabel,
+  topSpeciesSubtitle,
+  averageWeightText,
+  averageWeightSubtitle,
+  personalBestWeight,
+  personalBestSpecies,
+  recentActivityMetrics,
+  hasEnvironmentData,
+  environmentMetrics,
+  environmentSummary,
+  isProMember,
+}: ProfileStatsPanelProps) {
+  const summaryCards = [
+    {
+      key: 'total',
+      label: 'Total Catches',
+      value: stats.totalCatches.toLocaleString(),
+      subtitle: null,
+      icon: <Fish aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
+      title: 'Total number of catches shared by this angler',
+    },
+    {
+      key: 'trophies',
+      label: 'Trophies',
+      value: stats.trophyCount.toLocaleString(),
+      subtitle: null,
+      icon: <Medal aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
+      title: 'How many catches were marked as trophies',
+    },
+    {
+      key: 'trophy-rate',
+      label: 'Trophy Rate',
+      value: trophyRateDisplay,
+      subtitle: trophyRateSubtitle,
+      icon: <Percent aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
+      title: 'Share of catches flagged as trophies',
+    },
+    {
+      key: 'unique-species',
+      label: 'Unique Species',
+      value: stats.uniqueSpeciesCount.toLocaleString(),
+      subtitle: null,
+      icon: <Sparkles aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
+      title: 'Distinct species featured in posted catches',
+    },
+    {
+      key: 'top-species',
+      label: 'Top Species',
+      value: topSpeciesLabel,
+      subtitle: topSpeciesSubtitle,
+      icon: <Target aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
+      title: 'Most frequently caught species in shared catches',
+    },
+    {
+      key: 'average-weight',
+      label: 'Avg Catch Weight',
+      value: averageWeightText,
+      subtitle: averageWeightSubtitle,
+      icon: <Weight aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
+      title: 'Average recorded weight across catches with measurements',
+    },
+    {
+      key: 'personal-best',
+      label: 'Personal Best',
+      value: personalBestWeight,
+      subtitle: personalBestSpecies,
+      icon: <Scale aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
+      title: 'Heaviest recorded catch based on provided weight',
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-white/90">
+          <Sparkles aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />
+          Angler Stats
+        </h2>
+        <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {summaryCards.map((card) => (
+            <div
+              key={card.key}
+              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4"
+              title={card.title}
+            >
+              <div className="accent-chip">{card.icon}</div>
+              <div>
+                <dt className="text-sm text-white/60">{card.label}</dt>
+                <dd className="text-xl font-semibold text-white">{card.value}</dd>
+                {card.subtitle ? <p className="text-xs text-white/60">{card.subtitle}</p> : null}
+              </div>
+            </div>
+          ))}
+        </dl>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+        <div className="flex items-center gap-2">
+          <CalendarDays aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />
+          <p className="text-sm font-semibold text-white/80">Recent Activity</p>
+        </div>
+        {recentActivityMetrics ? (
+          <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {recentActivityMetrics.map((metric) => (
+              <div
+                key={metric.key}
+                className="rounded-xl border border-white/10 bg-black/30 p-3 text-center sm:text-left"
+              >
+                <dt className="text-xs uppercase tracking-wide text-white/50">{metric.label}</dt>
+                <dd className="mt-1 text-lg font-semibold text-white">{metric.value.toLocaleString()}</dd>
+              </div>
+            ))}
+          </dl>
+        ) : (
+          <p className="mt-3 text-sm text-white/60">
+            Recent catches with timestamps will appear here once they are available.
+          </p>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold text-white/80">Catch Insights</p>
+            <p className="text-xs text-white/50">Auto-logged conditions from your catches</p>
+          </div>
+          <span className="rounded-full border border-amber-300/60 bg-amber-500/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+            Pro
+          </span>
+        </div>
+        {isProMember ? (
+          hasEnvironmentData ? (
+            <>
+              <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {environmentMetrics.map((metric) => (
+                  <div key={metric.key} className="rounded-xl border border-white/10 bg-black/30 p-3">
+                    <dt className="text-xs uppercase tracking-wide text-white/50">{metric.label}</dt>
+                    <dd className="mt-1 text-sm font-medium text-white/90">{metric.value}</dd>
+                  </div>
+                ))}
+              </dl>
+              <p className="mt-4 text-[11px] text-white/40">
+                Based on {environmentSummary?.sampleSize ?? 0} logged catches with location data.
+              </p>
+            </>
+          ) : (
+            <p className="mt-4 rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white/60">
+              Catch insights will appear after you post catches with location and timestamp info.
+            </p>
+          )
+        ) : (
+          <div className="mt-4 space-y-2 rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-amber-100">
+            <p className="text-sm font-medium">Unlock detailed weather insights with Hook&apos;d Pro.</p>
+            <p className="text-xs text-amber-50/80">
+              Weather, temps, pressure, moon phase, and wind are captured automatically every time you log a catch.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

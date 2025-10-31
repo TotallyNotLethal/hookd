@@ -7,7 +7,6 @@ import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 import NavBar from '@/components/NavBar';
 import ProfileView from '@/components/ProfileView';
 import LogbookModal from '@/components/logbook/LogbookModal';
-import LicenseReminderSettingsCard from '@/components/LicenseReminderSettingsCard';
 import { formatWeightImperial, summarizeCatchMetrics, type CatchLike } from '@/lib/catchStats';
 import { app } from '@/lib/firebaseClient';
 import {
@@ -354,9 +353,6 @@ export default function ProfilePage() {
           </div>
         ) : profile ? (
           <div className="space-y-6">
-            {isOwner ? (
-              <LicenseReminderSettingsCard uid={authUser?.uid} />
-            ) : null}
             <ProfileView
               profile={profile}
               catches={catches}
@@ -377,6 +373,7 @@ export default function ProfilePage() {
               onReport={!isOwner && authUser ? handleReportUser : undefined}
               reportPending={reportPending}
               blockedNotice={blockedNotice}
+              licenseReminderUid={isOwner ? authUser?.uid ?? null : null}
             />
           </div>
         ) : (

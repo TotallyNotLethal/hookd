@@ -745,6 +745,7 @@ export default function Page() {
           catchSummary={catchSummary}
           tackleStats={tackleStats}
           teams={teams}
+          licenseReminderUid={authUser.uid}
         />
       </section>
 
