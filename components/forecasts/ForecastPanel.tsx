@@ -8,6 +8,7 @@ import type { ForecastBundle, BiteWindow } from "@/lib/forecastTypes";
 import { trackForecastEvent } from "@/lib/analytics";
 import { useOfflineStatus } from "@/hooks/useOfflineStatus";
 import { useQueueForecast } from "@/components/OfflineBanner";
+import type { HookdUser } from "@/lib/firestore";
 
 type ForecastPanelProps = {
   latitude: number;
@@ -15,6 +16,7 @@ type ForecastPanelProps = {
   locationLabel?: string;
   className?: string;
   onSnapshot?: (bundle: ForecastBundle | null) => void;
+  viewer?: HookdUser | null;
 };
 
 type FetchState = {
@@ -181,7 +183,14 @@ function formatStatusLabel(status: ForecastBundle["tides"]["source"]["status"] |
   }
 }
 
-export default function ForecastPanel({ latitude, longitude, locationLabel, className, onSnapshot }: ForecastPanelProps) {
+export default function ForecastPanel({
+  latitude,
+  longitude,
+  locationLabel,
+  className,
+  onSnapshot,
+  viewer,
+}: ForecastPanelProps) {
   const offline = useOfflineStatus();
   useQueueForecast(latitude, longitude, locationLabel);
   const { loading, refreshing, error, data, refresh } = useForecast(latitude, longitude, offline.online);
@@ -213,6 +222,7 @@ export default function ForecastPanel({ latitude, longitude, locationLabel, clas
 
   const telemetryWarnings = data?.telemetry.warnings ?? [];
   const telemetryErrors = data?.telemetry.errors ?? [];
+  const viewerIsModerator = viewer?.isModerator ?? false;
 
   const providerLabels = useMemo(() => {
     const entries = new Map<string, string>();
@@ -304,7 +314,7 @@ export default function ForecastPanel({ latitude, longitude, locationLabel, clas
 
       {!loading && !error && data ? (
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,2fr),minmax(0,1fr)]">
-          {telemetryErrors.length > 0 || telemetryWarnings.length > 0 || data.tides.fallbackUsed ? (
+          {viewerIsModerator && (telemetryErrors.length > 0 || telemetryWarnings.length > 0 || data.tides.fallbackUsed) ? (
             <aside className="lg:col-span-2">
               <div className="flex flex-col gap-2 rounded-2xl border border-amber-400/40 bg-amber-500/10 p-4 text-xs text-amber-100">
                 <div className="flex items-center gap-2 text-amber-200">

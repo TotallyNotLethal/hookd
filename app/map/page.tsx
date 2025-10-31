@@ -29,7 +29,7 @@ export default function MapPage() {
   const [selectedSpotId, setSelectedSpotId] = useState<string | null>(
     fishingSpots.length > 0 ? fishingSpots[0]!.id : null
   );
-  const { isPro } = useProAccess();
+  const { isPro, profile } = useProAccess();
 
   const selectedSpot = useMemo(() => {
     if (!selectedSpotId) return fishingSpots[0] ?? null;
@@ -123,6 +123,7 @@ export default function MapPage() {
             latitude={forecastLatitude}
             longitude={forecastLongitude}
             locationLabel={selectedSpot ? `${selectedSpot.name}, ${selectedSpot.state}` : undefined}
+            viewer={profile}
           />
         </div>
 
