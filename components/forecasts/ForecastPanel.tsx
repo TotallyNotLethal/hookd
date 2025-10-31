@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 
 import { AlertTriangle, Clock, Loader2, RefreshCw, Sparkles, Waves } from "lucide-react";
 
 import type { ForecastBundle, BiteWindow } from "@/lib/forecastTypes";
 import { trackForecastEvent } from "@/lib/analytics";
+import { useOfflineStatus } from "@/hooks/useOfflineStatus";
+import { useQueueForecast } from "@/components/OfflineBanner";
 
 type ForecastPanelProps = {
   latitude: number;
@@ -51,23 +53,62 @@ function formatTemperature(value: number | null | undefined) {
   return `${Math.round(value)}°`;
 }
 
-function useForecast(latitude: number, longitude: number) {
-  const [state, setState] = useState<FetchState>({ loading: true, refreshing: false, error: null, data: null });
+type ForecastAction =
+  | { type: "start" }
+  | { type: "success"; payload: ForecastBundle }
+  | { type: "failure"; error: string }
+  | { type: "offline-refresh" };
+
+function forecastReducer(state: FetchState, action: ForecastAction): FetchState {
+  switch (action.type) {
+    case "start":
+      return {
+        loading: state.data == null,
+        refreshing: state.data != null,
+        error: null,
+        data: state.data,
+      };
+    case "success":
+      return { loading: false, refreshing: false, error: null, data: action.payload };
+    case "failure":
+      return { loading: false, refreshing: false, error: action.error, data: state.data };
+    case "offline-refresh":
+      return {
+        loading: state.loading,
+        refreshing: false,
+        error: "Offline mode – unable to refresh forecasts.",
+        data: state.data,
+      };
+    default:
+      return state;
+  }
+}
+
+function useForecast(latitude: number, longitude: number, online: boolean) {
+  const [state, dispatch] = useReducer(forecastReducer, {
+    loading: true,
+    refreshing: false,
+    error: null,
+    data: null,
+  });
   const [refreshIndex, setRefreshIndex] = useState(0);
 
   const refresh = useCallback(() => {
-    setState((previous) => ({
-      loading: previous.data == null,
-      refreshing: previous.data != null,
-      error: null,
-      data: previous.data,
-    }));
+    if (!online) {
+      dispatch({ type: "offline-refresh" });
+      return;
+    }
+    dispatch({ type: "start" });
     setRefreshIndex((index) => index + 1);
-  }, []);
+  }, [online]);
 
   useEffect(() => {
+    if (!online) {
+      return;
+    }
     let cancelled = false;
     const controller = new AbortController();
+    dispatch({ type: "start" });
     fetch(`/api/forecasts/${latitude}/${longitude}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
@@ -77,25 +118,32 @@ function useForecast(latitude: number, longitude: number) {
       })
       .then((payload) => {
         if (cancelled) return;
-        setState({ loading: false, refreshing: false, error: null, data: payload });
+        dispatch({ type: "success", payload });
       })
       .catch((error) => {
         if (cancelled) return;
-        setState((previous) => ({
-          loading: false,
-          refreshing: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-          data: previous.data,
-        }));
+        dispatch({ type: "failure", error: error instanceof Error ? error.message : "Unknown error" });
       });
 
     return () => {
       cancelled = true;
       controller.abort();
     };
-  }, [latitude, longitude, refreshIndex]);
+  }, [latitude, longitude, online, refreshIndex]);
 
-  return { ...state, refresh };
+  const derivedState = useMemo(() => {
+    if (!online) {
+      return {
+        loading: state.data == null,
+        refreshing: false,
+        error: state.data ? state.error : "Offline mode – showing cached forecast data.",
+        data: state.data,
+      } satisfies FetchState;
+    }
+    return state;
+  }, [online, state]);
+
+  return { ...derivedState, refresh };
 }
 
 function scoreLabel(score: BiteWindow["score"]) {
@@ -134,7 +182,9 @@ function formatStatusLabel(status: ForecastBundle["tides"]["source"]["status"] |
 }
 
 export default function ForecastPanel({ latitude, longitude, locationLabel, className, onSnapshot }: ForecastPanelProps) {
-  const { loading, refreshing, error, data, refresh } = useForecast(latitude, longitude);
+  const offline = useOfflineStatus();
+  useQueueForecast(latitude, longitude, locationLabel);
+  const { loading, refreshing, error, data, refresh } = useForecast(latitude, longitude, offline.online);
 
   useEffect(() => {
     if (typeof onSnapshot === 'function') {
@@ -182,6 +232,7 @@ export default function ForecastPanel({ latitude, longitude, locationLabel, clas
   );
 
   const handleRefresh = useCallback(() => {
+    if (!offline.online) return;
     trackForecastEvent("forecast_manual_refresh", {
       latitude,
       longitude,
@@ -192,7 +243,7 @@ export default function ForecastPanel({ latitude, longitude, locationLabel, clas
       usedPrefetch: data?.telemetry.usedPrefetch ?? false,
     });
     refresh();
-  }, [data, latitude, longitude, refresh]);
+  }, [data, latitude, longitude, offline.online, refresh]);
 
   return (
     <section className={`glass rounded-3xl border border-white/10 p-6 text-white ${className ?? ""}`} aria-live="polite">
@@ -209,13 +260,23 @@ export default function ForecastPanel({ latitude, longitude, locationLabel, clas
         </div>
         <div className="flex flex-col items-start gap-2 text-xs text-white/50 sm:flex-row sm:items-center sm:gap-4">
           <div className="flex items-center gap-2">
-            {refreshing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RefreshCw className="h-4 w-4" aria-hidden />}
-            <span>{data ? `Updated ${formatRelative(data.updatedAt)}` : "Syncing"}</span>
+            {refreshing ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <RefreshCw className="h-4 w-4" aria-hidden />
+            )}
+            <span>
+              {offline.online
+                ? data
+                  ? `Updated ${formatRelative(data.updatedAt)}`
+                  : "Syncing"
+                : 'Offline · using cached data'}
+            </span>
           </div>
           <button
             type="button"
             onClick={handleRefresh}
-            disabled={loading || refreshing}
+            disabled={loading || refreshing || !offline.online}
             className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/5 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden />}

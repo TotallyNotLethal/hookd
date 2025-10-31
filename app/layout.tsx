@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 import MobileTabBar from "@/components/MobileTabBar";
+import OfflineBanner from "@/components/OfflineBanner";
 
 export const metadata: Metadata = {
   title: "Hook'd – Fishing Social",
@@ -13,6 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
+        <OfflineBanner />
         <div className="min-h-screen pb-[calc(env(safe-area-inset-bottom)+4.5rem)] sm:pb-0">
           {children}
         </div>

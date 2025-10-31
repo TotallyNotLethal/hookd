@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { describe, it, before, after } from 'node:test';
 import { JSDOM } from 'jsdom';
 import React, { createElement } from 'react';
-import { render, cleanup } from '@testing-library/react';
+import { render, cleanup, fireEvent } from '@testing-library/react';
 
 import { summarizeCatchMetrics } from '@/lib/catchStats';
 
@@ -75,6 +75,8 @@ describe('ProfileView angler stats', () => {
         teams: [],
       }),
     );
+
+    fireEvent.click(getByText('Angler Stats'));
 
     assert.ok(getByText('Trophy Rate'));
     assert.ok(getByText('Avg Catch Weight'));
