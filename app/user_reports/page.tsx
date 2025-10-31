@@ -51,6 +51,11 @@ export default function UserReportsPage() {
     };
   }, [authUser?.uid, defer]);
 
+  const isModerator = Boolean(profile?.isModerator);
+  const isTester = Boolean(profile?.isTester);
+  const hasReviewAccess = isModerator || isTester;
+  const roleLabel = isModerator ? 'moderator' : isTester ? 'tester' : 'reviewer';
+
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
     let isMounted = true;
@@ -68,7 +73,7 @@ export default function UserReportsPage() {
       return () => {};
     }
 
-    if (!profile.isModerator) {
+    if (!hasReviewAccess) {
       defer(() => {
         setReports([]);
         setLoading(false);
@@ -107,7 +112,7 @@ export default function UserReportsPage() {
         console.error('Failed to subscribe to user reports', err);
         if (!isMounted) return;
         defer(() => {
-          setError('Moderator access is required to review reports.');
+          setError('Moderator or tester access is required to review reports.');
           setLoading(false);
         });
       }
@@ -117,16 +122,15 @@ export default function UserReportsPage() {
       isMounted = false;
       if (unsubscribe) unsubscribe();
     };
-  }, [authUser?.uid, defer, profile]);
+  }, [authUser?.uid, defer, hasReviewAccess, profile]);
 
-  const isModerator = Boolean(profile?.isModerator);
   const hasReports = reports.length > 0;
 
   const content = useMemo(() => {
     if (!authUser) {
       return (
         <div className="card p-6">
-          <p className="text-white/70">Sign in with a moderator account to review user reports.</p>
+          <p className="text-white/70">Sign in with a moderator or tester account to review user reports.</p>
         </div>
       );
     }
@@ -135,16 +139,16 @@ export default function UserReportsPage() {
       return (
         <div className="card flex items-center gap-3 p-6 text-white/70">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Loading your moderator permissions…
+          {`Loading your ${roleLabel} permissions…`}
         </div>
       );
     }
 
-    if (!isModerator) {
+    if (!hasReviewAccess) {
       return (
         <div className="card flex items-center gap-3 border-red-500/30 bg-red-500/10 p-6 text-sm text-red-100">
           <ShieldAlert className="h-5 w-5" />
-          <span>You need moderator access to view pending user reports.</span>
+          <span>You need moderator or tester access to view pending user reports.</span>
         </div>
       );
     }
@@ -216,7 +220,7 @@ export default function UserReportsPage() {
         })}
       </div>
     );
-  }, [authUser, error, hasReports, isModerator, loading, profile, reports]);
+  }, [authUser, error, hasReports, hasReviewAccess, loading, profile, reports, roleLabel]);
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-white">

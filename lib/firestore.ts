@@ -1584,6 +1584,10 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
       updates.isModerator = false;
     }
 
+    if (typeof existing.isTester !== 'boolean') {
+      updates.isTester = false;
+    }
+
     const normalizedBirthdate = normalizeBirthdate(existing.birthdate ?? null);
     if (existing.birthdate !== normalizedBirthdate) {
       updates.birthdate = normalizedBirthdate;
@@ -1795,6 +1799,7 @@ export function subscribeToNewestUser(cb: (user: HookdUser | null) => void) {
       ...data,
       uid: docSnap.id,
       isModerator: Boolean(data.isModerator),
+      isTester: Boolean(data.isTester),
       birthdate: normalizeBirthdate(data.birthdate ?? null),
       age: normalizeUserAge(data.age ?? null),
       badges: sanitizeUserBadges(data.badges),
@@ -1819,6 +1824,7 @@ export function subscribeToUser(uid: string, cb: (u: HookdUser | null) => void) 
       ...data,
       uid,
       isModerator: Boolean(data.isModerator),
+      isTester: Boolean(data.isTester),
       birthdate: normalizeBirthdate(data.birthdate ?? null),
       age: normalizeUserAge(data.age ?? null),
       badges: sanitizeUserBadges(data.badges),
@@ -4069,24 +4075,27 @@ export async function submitUserReport(data: {
 }
 
 export async function subscribeToPendingUserReports(
-  moderatorUid: string,
+  reviewerUid: string,
   cb: (reports: UserReport[]) => void,
   options: { onError?: (error: Error) => void } = {},
 ): Promise<() => void> {
   const { onError } = options;
-  const trimmedUid = typeof moderatorUid === 'string' ? moderatorUid.trim() : '';
+  const trimmedUid = typeof reviewerUid === 'string' ? reviewerUid.trim() : '';
 
   if (!trimmedUid) {
-    throw new Error('Moderator credentials are required to review reports.');
+    throw new Error('Moderator or tester credentials are required to review reports.');
   }
 
-  const moderatorSnap = await getDoc(doc(db, 'users', trimmedUid));
-  if (!moderatorSnap.exists()) {
-    throw new Error('We could not verify your moderator access.');
+  const reviewerSnap = await getDoc(doc(db, 'users', trimmedUid));
+  if (!reviewerSnap.exists()) {
+    throw new Error('We could not verify your review access.');
   }
 
-  const moderatorData = moderatorSnap.data() as HookdUser;
-  if (!moderatorData.isModerator) {
+  const reviewerData = reviewerSnap.data() as HookdUser;
+  const hasModeratorAccess = Boolean(reviewerData.isModerator);
+  const hasTesterAccess = Boolean(reviewerData.isTester);
+
+  if (!hasModeratorAccess && !hasTesterAccess) {
     throw new Error('You are not authorized to review reports.');
   }
 
