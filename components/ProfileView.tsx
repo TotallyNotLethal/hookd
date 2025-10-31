@@ -130,6 +130,7 @@ type Profile = {
   email?: string;
   followers?: any[];
   following?: any[];
+  isTester?: boolean;
   isModerator?: boolean;
   isPro?: boolean;
   about?: string;
