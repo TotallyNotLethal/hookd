@@ -27,11 +27,21 @@ function handleError(error: unknown) {
   return NextResponse.json({ error: 'Unexpected error' }, { status: 500 });
 }
 
-export async function GET(request: NextRequest, { params }: { params: { groupId: string } }) {
+type GroupFeedRouteContext = {
+  params: Promise<{ groupId: string }>;
+};
+
+async function resolveGroupId(context: GroupFeedRouteContext) {
+  const params = await context.params;
+  return params.groupId;
+}
+
+export async function GET(request: NextRequest, context: GroupFeedRouteContext) {
   try {
     const user = await requireAuth(request);
     const repo = getGroupsRepository();
-    const group = await repo.getGroup(user.uid, params.groupId);
+    const groupId = await resolveGroupId(context);
+    const group = await repo.getGroup(user.uid, groupId);
     if (!group) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
@@ -41,26 +51,28 @@ export async function GET(request: NextRequest, { params }: { params: { groupId:
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: { groupId: string } }) {
+export async function POST(request: NextRequest, context: GroupFeedRouteContext) {
   try {
     const user = await requireAuth(request);
     const payload = await request.json();
     const input = feedMutationSchema.parse(payload);
     const repo = getGroupsRepository();
-    const group = await repo.addCatchToFeed(user.uid, params.groupId, input.catchId);
+    const groupId = await resolveGroupId(context);
+    const group = await repo.addCatchToFeed(user.uid, groupId, input.catchId);
     return NextResponse.json({ featuredCatchIds: group.featuredCatchIds });
   } catch (error) {
     return handleError(error);
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { groupId: string } }) {
+export async function DELETE(request: NextRequest, context: GroupFeedRouteContext) {
   try {
     const user = await requireAuth(request);
     const payload = await request.json();
     const input = feedMutationSchema.parse(payload);
     const repo = getGroupsRepository();
-    const group = await repo.removeCatchFromFeed(user.uid, params.groupId, input.catchId);
+    const groupId = await resolveGroupId(context);
+    const group = await repo.removeCatchFromFeed(user.uid, groupId, input.catchId);
     return NextResponse.json({ featuredCatchIds: group.featuredCatchIds });
   } catch (error) {
     return handleError(error);

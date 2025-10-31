@@ -34,22 +34,33 @@ function handleError(error: unknown) {
   return NextResponse.json({ error: 'Unexpected error' }, { status: 500 });
 }
 
-export async function GET(request: NextRequest, { params }: { params: { groupId: string } }) {
+type GroupMembersRouteContext = {
+  params: Promise<{ groupId: string }>;
+};
+
+async function resolveGroupId(context: GroupMembersRouteContext) {
+  const params = await context.params;
+  return params.groupId;
+}
+
+export async function GET(request: NextRequest, context: GroupMembersRouteContext) {
   try {
     const user = await requireAuth(request);
     const repo = getGroupsRepository();
-    const members = await repo.listMembers(user.uid, params.groupId);
+    const groupId = await resolveGroupId(context);
+    const members = await repo.listMembers(user.uid, groupId);
     return NextResponse.json({ members: members.map(serializeMember) });
   } catch (error) {
     return handleError(error);
   }
 }
 
-export async function POST(request: NextRequest, { params }: { params: { groupId: string } }) {
+export async function POST(request: NextRequest, context: GroupMembersRouteContext) {
   try {
     const user = await requireAuth(request);
     const repo = getGroupsRepository();
-    const member = await repo.joinGroup(user.uid, params.groupId);
+    const groupId = await resolveGroupId(context);
+    const member = await repo.joinGroup(user.uid, groupId);
     return NextResponse.json(serializeMember(member), { status: 201 });
   } catch (error) {
     return handleError(error);

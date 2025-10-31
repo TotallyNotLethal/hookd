@@ -39,12 +39,21 @@ const roleUpdateSchema = z.object({
   role: z.enum(GROUP_ROLES),
 });
 
-export async function PATCH(request: NextRequest, { params }: { params: { groupId: string; userId: string } }) {
+type GroupMemberRouteContext = {
+  params: Promise<{ groupId: string; userId: string }>;
+};
+
+async function resolveParams(context: GroupMemberRouteContext) {
+  return await context.params;
+}
+
+export async function PATCH(request: NextRequest, context: GroupMemberRouteContext) {
   try {
     const user = await requireAuth(request);
     const payload = await request.json();
     const input = roleUpdateSchema.parse(payload);
     const repo = getGroupsRepository();
+    const params = await resolveParams(context);
     const updated = await repo.updateMemberRole(user.uid, params.groupId, params.userId, input.role);
     return NextResponse.json(serializeMember(updated));
   } catch (error) {
@@ -52,10 +61,11 @@ export async function PATCH(request: NextRequest, { params }: { params: { groupI
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { groupId: string; userId: string } }) {
+export async function DELETE(request: NextRequest, context: GroupMemberRouteContext) {
   try {
     const user = await requireAuth(request);
     const repo = getGroupsRepository();
+    const params = await resolveParams(context);
     if (params.userId === user.uid) {
       await repo.leaveGroup(user.uid, params.groupId);
     } else {

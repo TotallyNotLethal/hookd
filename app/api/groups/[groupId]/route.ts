@@ -42,11 +42,21 @@ function handleError(error: unknown) {
   return NextResponse.json({ error: 'Unexpected error' }, { status: 500 });
 }
 
-export async function GET(request: NextRequest, { params }: { params: { groupId: string } }) {
+type GroupRouteContext = {
+  params: Promise<{ groupId: string }>;
+};
+
+async function resolveGroupId(context: GroupRouteContext) {
+  const params = await context.params;
+  return params.groupId;
+}
+
+export async function GET(request: NextRequest, context: GroupRouteContext) {
   try {
     const user = await requireAuth(request);
     const repo = getGroupsRepository();
-    const group = await repo.getGroup(user.uid, params.groupId);
+    const groupId = await resolveGroupId(context);
+    const group = await repo.getGroup(user.uid, groupId);
     if (!group) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
@@ -57,13 +67,14 @@ export async function GET(request: NextRequest, { params }: { params: { groupId:
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { groupId: string } }) {
+export async function PATCH(request: NextRequest, context: GroupRouteContext) {
   try {
     const user = await requireAuth(request);
     const payload = await request.json();
     const input = groupUpdateSchema.parse(payload);
     const repo = getGroupsRepository();
-    const updated = await repo.updateGroup(user.uid, params.groupId, input);
+    const groupId = await resolveGroupId(context);
+    const updated = await repo.updateGroup(user.uid, groupId, input);
     const membership = await repo.getMembership(updated.id, user.uid);
     return NextResponse.json(serializeGroup(updated, membership));
   } catch (error) {
@@ -71,11 +82,12 @@ export async function PATCH(request: NextRequest, { params }: { params: { groupI
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { groupId: string } }) {
+export async function DELETE(request: NextRequest, context: GroupRouteContext) {
   try {
     const user = await requireAuth(request);
     const repo = getGroupsRepository();
-    await repo.deleteGroup(user.uid, params.groupId);
+    const groupId = await resolveGroupId(context);
+    await repo.deleteGroup(user.uid, groupId);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return handleError(error);

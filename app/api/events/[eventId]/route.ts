@@ -43,11 +43,21 @@ function handleError(error: unknown) {
   return NextResponse.json({ error: 'Unexpected error' }, { status: 500 });
 }
 
-export async function GET(request: NextRequest, { params }: { params: { eventId: string } }) {
+type EventRouteContext = {
+  params: Promise<{ eventId: string }>;
+};
+
+async function resolveEventId(context: EventRouteContext) {
+  const params = await context.params;
+  return params.eventId;
+}
+
+export async function GET(request: NextRequest, context: EventRouteContext) {
   try {
     const user = await requireAuth(request);
     const repo = getGroupsRepository();
-    const event = await repo.getEvent(user.uid, params.eventId);
+    const eventId = await resolveEventId(context);
+    const event = await repo.getEvent(user.uid, eventId);
     if (!event) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
@@ -57,11 +67,12 @@ export async function GET(request: NextRequest, { params }: { params: { eventId:
   }
 }
 
-export async function PATCH(request: NextRequest, { params }: { params: { eventId: string } }) {
+export async function PATCH(request: NextRequest, context: EventRouteContext) {
   try {
     const user = await requireAuth(request);
     const payload = await request.json();
-    const input = groupEventUpdateSchema.parse({ ...payload, eventId: params.eventId });
+    const eventId = await resolveEventId(context);
+    const input = groupEventUpdateSchema.parse({ ...payload, eventId });
     const repo = getGroupsRepository();
     const updated = await repo.updateEvent(user.uid, input);
     return NextResponse.json(serializeEvent(updated));
@@ -70,11 +81,12 @@ export async function PATCH(request: NextRequest, { params }: { params: { eventI
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { eventId: string } }) {
+export async function DELETE(request: NextRequest, context: EventRouteContext) {
   try {
     const user = await requireAuth(request);
     const repo = getGroupsRepository();
-    await repo.deleteEvent(user.uid, params.eventId);
+    const eventId = await resolveEventId(context);
+    await repo.deleteEvent(user.uid, eventId);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return handleError(error);
