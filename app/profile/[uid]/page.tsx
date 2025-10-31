@@ -34,6 +34,7 @@ type ProfileData = {
   followers?: any[];
   following?: any[];
   isTester?: boolean;
+  isModerator?: boolean;
   isPro?: boolean;
   blockedUserIds?: string[];
   blockedByUserIds?: string[];
