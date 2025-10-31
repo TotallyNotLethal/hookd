@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 
 import { AlertTriangle, Clock, Loader2, RefreshCw, Sparkles, Waves } from "lucide-react";
 
@@ -53,39 +53,62 @@ function formatTemperature(value: number | null | undefined) {
   return `${Math.round(value)}°`;
 }
 
+type ForecastAction =
+  | { type: "start" }
+  | { type: "success"; payload: ForecastBundle }
+  | { type: "failure"; error: string }
+  | { type: "offline-refresh" };
+
+function forecastReducer(state: FetchState, action: ForecastAction): FetchState {
+  switch (action.type) {
+    case "start":
+      return {
+        loading: state.data == null,
+        refreshing: state.data != null,
+        error: null,
+        data: state.data,
+      };
+    case "success":
+      return { loading: false, refreshing: false, error: null, data: action.payload };
+    case "failure":
+      return { loading: false, refreshing: false, error: action.error, data: state.data };
+    case "offline-refresh":
+      return {
+        loading: state.loading,
+        refreshing: false,
+        error: "Offline mode – unable to refresh forecasts.",
+        data: state.data,
+      };
+    default:
+      return state;
+  }
+}
+
 function useForecast(latitude: number, longitude: number, online: boolean) {
-  const [state, setState] = useState<FetchState>({ loading: true, refreshing: false, error: null, data: null });
+  const [state, dispatch] = useReducer(forecastReducer, {
+    loading: true,
+    refreshing: false,
+    error: null,
+    data: null,
+  });
   const [refreshIndex, setRefreshIndex] = useState(0);
 
   const refresh = useCallback(() => {
     if (!online) {
-      setState((previous) => ({
-        ...previous,
-        error: 'Offline mode – unable to refresh forecasts.',
-      }));
+      dispatch({ type: "offline-refresh" });
       return;
     }
-    setState((previous) => ({
-      loading: previous.data == null,
-      refreshing: previous.data != null,
-      error: null,
-      data: previous.data,
-    }));
+    dispatch({ type: "start" });
     setRefreshIndex((index) => index + 1);
   }, [online]);
 
   useEffect(() => {
     if (!online) {
-      setState((previous) => ({
-        loading: previous.data == null,
-        refreshing: false,
-        error: previous.data ? previous.error : 'Offline mode – showing cached forecast data.',
-        data: previous.data,
-      }));
       return;
     }
     let cancelled = false;
     const controller = new AbortController();
+    dispatch({ type: "start" });
     fetch(`/api/forecasts/${latitude}/${longitude}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
@@ -95,16 +118,11 @@ function useForecast(latitude: number, longitude: number, online: boolean) {
       })
       .then((payload) => {
         if (cancelled) return;
-        setState({ loading: false, refreshing: false, error: null, data: payload });
+        dispatch({ type: "success", payload });
       })
       .catch((error) => {
         if (cancelled) return;
-        setState((previous) => ({
-          loading: false,
-          refreshing: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-          data: previous.data,
-        }));
+        dispatch({ type: "failure", error: error instanceof Error ? error.message : "Unknown error" });
       });
 
     return () => {
@@ -113,7 +131,19 @@ function useForecast(latitude: number, longitude: number, online: boolean) {
     };
   }, [latitude, longitude, online, refreshIndex]);
 
-  return { ...state, refresh };
+  const derivedState = useMemo(() => {
+    if (!online) {
+      return {
+        loading: state.data == null,
+        refreshing: false,
+        error: state.data ? state.error : "Offline mode – showing cached forecast data.",
+        data: state.data,
+      } satisfies FetchState;
+    }
+    return state;
+  }, [online, state]);
+
+  return { ...derivedState, refresh };
 }
 
 function scoreLabel(score: BiteWindow["score"]) {

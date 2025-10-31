@@ -1,13 +1,14 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+type SerializableRecord = Record<string, unknown>;
+
 export type CatchQueueItem = {
   id: string;
   userId: string;
   method: 'POST' | 'PATCH';
   catchId?: string;
-  payload: Record<string, any>;
+  payload: SerializableRecord;
   queuedAt: number;
   baseUpdatedAt?: string | null;
-  previousSnapshot?: Record<string, any> | null;
+  previousSnapshot?: SerializableRecord | null;
   attempts: number;
   lastError?: string | null;
 };
@@ -42,6 +43,21 @@ const listeners = new Set<QueueListener>();
 
 const hasIndexedDb = typeof window !== 'undefined' && typeof window.indexedDB !== 'undefined';
 
+function isCatchQueueEntry(value: CatchQueueItem | ForecastQueueItem): value is CatchQueueItem {
+  return typeof (value as CatchQueueItem).userId === 'string';
+}
+
+function isForecastQueueEntry(value: CatchQueueItem | ForecastQueueItem): value is ForecastQueueItem {
+  return typeof (value as ForecastQueueItem).latitude === 'number' && typeof (value as ForecastQueueItem).longitude === 'number';
+}
+
+function ensureRecord(value: unknown): SerializableRecord {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as SerializableRecord;
+  }
+  return {};
+}
+
 async function emitState() {
   const state = await getOfflineQueueState();
   listeners.forEach((listener) => {
@@ -53,11 +69,21 @@ async function emitState() {
   });
 }
 
-function migrateToMemory(storeName: string, data: any[]) {
+function migrateToMemory(storeName: typeof CATCH_STORE, data: CatchQueueItem[]): void;
+function migrateToMemory(storeName: typeof FORECAST_STORE, data: ForecastQueueItem[]): void;
+function migrateToMemory(storeName: string, data: Array<CatchQueueItem | ForecastQueueItem>) {
   if (storeName === CATCH_STORE) {
-    data.forEach((entry) => inMemoryCatch.set(entry.id, entry));
+    data.forEach((entry) => {
+      if (isCatchQueueEntry(entry)) {
+        inMemoryCatch.set(entry.id, entry);
+      }
+    });
   } else if (storeName === FORECAST_STORE) {
-    data.forEach((entry) => inMemoryForecast.set(entry.id, entry));
+    data.forEach((entry) => {
+      if (isForecastQueueEntry(entry)) {
+        inMemoryForecast.set(entry.id, entry);
+      }
+    });
   }
   void emitState();
 }
@@ -110,16 +136,27 @@ async function getStoreEntries<T>(storeName: string): Promise<T[]> {
   });
 }
 
-async function putStoreEntry<T extends { id: string }>(storeName: string, value: T): Promise<void> {
+async function putStoreEntry(storeName: typeof CATCH_STORE, value: CatchQueueItem): Promise<void>;
+async function putStoreEntry(storeName: typeof FORECAST_STORE, value: ForecastQueueItem): Promise<void>;
+async function putStoreEntry(
+  storeName: string,
+  value: CatchQueueItem | ForecastQueueItem
+): Promise<void> {
   const db = await openDatabase();
   if (!db) {
     if (storeName === CATCH_STORE) {
-      inMemoryCatch.set(value.id, value as CatchQueueItem);
+      if (!isCatchQueueEntry(value)) {
+        throw new Error('Invalid catch queue entry');
+      }
+      inMemoryCatch.set(value.id, value);
       void emitState();
       return;
     }
     if (storeName === FORECAST_STORE) {
-      inMemoryForecast.set(value.id, value as ForecastQueueItem);
+      if (!isForecastQueueEntry(value)) {
+        throw new Error('Invalid forecast queue entry');
+      }
+      inMemoryForecast.set(value.id, value);
       void emitState();
       return;
     }
@@ -187,9 +224,9 @@ export type QueueCatchOptions = {
   userId: string;
   method: 'POST' | 'PATCH';
   catchId?: string;
-  payload: Record<string, any>;
+  payload: SerializableRecord;
   baseUpdatedAt?: string | null;
-  previousSnapshot?: Record<string, any> | null;
+  previousSnapshot?: SerializableRecord | null;
 };
 
 export async function queueCatch(options: QueueCatchOptions): Promise<CatchQueueItem> {
@@ -232,11 +269,11 @@ function deepClone<T>(value: T): T {
 }
 
 function mergeConflict(
-  previous: Record<string, any> | null | undefined,
-  localPatch: Record<string, any>,
-  server: Record<string, any>
-): Record<string, any> {
-  const merged: Record<string, any> = {};
+  previous: SerializableRecord | null | undefined,
+  localPatch: SerializableRecord,
+  server: SerializableRecord
+): SerializableRecord {
+  const merged: SerializableRecord = {};
   const keys = new Set([
     ...Object.keys(localPatch ?? {}),
     ...Object.keys(previous ?? {}),
@@ -249,9 +286,9 @@ function mergeConflict(
 
     if (localValue && typeof localValue === 'object' && !Array.isArray(localValue)) {
       merged[key] = mergeConflict(
-        typeof previousValue === 'object' && previousValue ? previousValue : {},
-        localValue,
-        typeof serverValue === 'object' && serverValue ? serverValue : {}
+        ensureRecord(previousValue),
+        ensureRecord(localValue),
+        ensureRecord(serverValue)
       );
       return;
     }
@@ -278,7 +315,7 @@ function mergeConflict(
 
 const API_BASE = typeof window !== 'undefined' ? '' : 'http://localhost';
 
-async function fetchCatchRecord(catchId: string, token: string): Promise<Record<string, any> | null> {
+async function fetchCatchRecord(catchId: string, token: string): Promise<SerializableRecord | null> {
   const response = await fetch(`${API_BASE}/api/catches/${catchId}`, {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -287,7 +324,7 @@ async function fetchCatchRecord(catchId: string, token: string): Promise<Record<
   if (!response.ok) {
     return null;
   }
-  return (await response.json()) as Record<string, any>;
+  return (await response.json()) as SerializableRecord;
 }
 
 export type CatchSyncResult = {
@@ -318,8 +355,10 @@ export async function syncQueuedCatches(options: {
       if (entry.method === 'PATCH' && entry.catchId && entry.baseUpdatedAt) {
         try {
           const serverRecord = await fetchCatchRecord(entry.catchId, token);
-          if (serverRecord?.updatedAt) {
-            const serverUpdatedAt = new Date(serverRecord.updatedAt).getTime();
+          if (serverRecord) {
+            const serverUpdatedAtValue = serverRecord.updatedAt;
+            const serverUpdatedAt =
+              typeof serverUpdatedAtValue === 'string' ? new Date(serverUpdatedAtValue).getTime() : Number.NaN;
             const baseUpdatedAt = new Date(entry.baseUpdatedAt).getTime();
             if (Number.isFinite(serverUpdatedAt) && Number.isFinite(baseUpdatedAt) && serverUpdatedAt > baseUpdatedAt) {
               payload = mergeConflict(entry.previousSnapshot ?? {}, payload, serverRecord);
