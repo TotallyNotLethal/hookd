@@ -16,7 +16,14 @@ import { subscribeToUserTackleStats, type UserTackleStats } from "@/lib/tackleBo
 import { USERNAME_MIN_LENGTH, validateAndNormalizeUsername } from "@/lib/username";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import clsx from "clsx";
-import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ChangeEvent,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import PostDetailModal from "@/app/feed/PostDetailModal";
 import LogbookModal from "@/components/logbook/LogbookModal";
@@ -646,7 +653,7 @@ function EditProfileModal({ user, catches, onClose, disableDismiss }: EditProfil
   );
 }
 
-export default function Page() {
+function ProfilePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const forcingSetup = searchParams.has("setup");
@@ -827,5 +834,13 @@ export default function Page() {
         <LogbookModal open={isLogbookModalOpen} onClose={() => setIsLogbookModalOpen(false)} />
       )}
     </main>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-white/70">Loading…</div>}>
+      <ProfilePageContent />
+    </Suspense>
   );
 }
