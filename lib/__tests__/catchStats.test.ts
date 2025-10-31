@@ -21,6 +21,18 @@ describe('parseCatchWeight', () => {
     assert.ok(Math.abs(parsed - 4.5) < 1e-6);
   });
 
+  it('parses slider-formatted weights with punctuation', () => {
+    const compact = parseCatchWeight('4lb 3oz');
+    assert.ok(compact);
+    assert.ok(Math.abs(compact - (4 + 3 / 16)) < 1e-6);
+
+    const commaSeparated = parseCatchWeight('4 lb, 3 oz');
+    assert.ok(commaSeparated);
+    assert.ok(Math.abs(commaSeparated - (4 + 3 / 16)) < 1e-6);
+
+    assert.equal(parseCatchWeight('1,200 lb'), 1200);
+  });
+
   it('converts metric units to pounds', () => {
     const kilograms = parseCatchWeight('2 kg');
     assert.ok(kilograms);
@@ -137,5 +149,67 @@ describe('summarizeCatchMetrics', () => {
     assert.ok(summary.environment?.prevailingWind);
     assert.equal(summary.environment?.prevailingWind?.direction, 'NNE');
     assert.equal(summary.environment?.prevailingWind?.speedMph, 10);
+  });
+
+  it('tracks environment samples even when weights are missing', () => {
+    const summary = summarizeCatchMetrics([
+      {
+        id: 'no-weight-1',
+        species: 'Bass',
+        weight: 'mystery value',
+        environmentSnapshot: {
+          weatherDescription: 'Cloudy',
+          weatherCode: 2,
+          airTemperatureF: 60,
+          waterTemperatureF: 55,
+          timeOfDayBand: 'dawn',
+          moonPhaseBand: 'waxing',
+          pressureBand: 'mid',
+          windDirectionCardinal: 'NE',
+          windDirectionDegrees: 45,
+          windSpeedMph: 5,
+        },
+      },
+      {
+        id: 'no-weight-2',
+        species: 'Bass',
+        weight: null,
+        environmentSnapshot: {
+          weatherDescription: 'Cloudy',
+          weatherCode: 2,
+          airTemperatureF: 70,
+          waterTemperatureF: 57,
+          timeOfDayBand: 'dawn',
+          moonPhaseBand: 'waxing',
+          pressureBand: 'mid',
+          windDirectionCardinal: 'NE',
+          windDirectionDegrees: 50,
+          windSpeedMph: 7,
+        },
+      },
+    ]);
+
+    assert.equal(summary.totalCatches, 2);
+    assert.equal(summary.trophyCount, 0);
+    assert.equal(summary.uniqueSpeciesCount, 1);
+    assert.equal(summary.personalBest, null);
+
+    assert.ok(summary.environment);
+    assert.equal(summary.environment?.sampleSize, 2);
+    assert.ok(summary.environment?.typicalWeather);
+    assert.equal(summary.environment?.typicalWeather?.description, 'Cloudy');
+    assert.equal(summary.environment?.typicalWeather?.code, 2);
+    assert.equal(summary.environment?.typicalMoonPhase, 'waxing');
+    assert.equal(summary.environment?.typicalTimeOfDay, 'dawn');
+    assert.equal(summary.environment?.typicalPressure, 'mid');
+    assert.equal(summary.environment?.averageAirTempF, 65);
+    assert.equal(summary.environment?.averageWaterTempF, 56);
+    assert.ok(summary.environment?.prevailingWind);
+    assert.equal(summary.environment?.prevailingWind?.direction, 'NE');
+    assert.equal(summary.environment?.prevailingWind?.speedMph, 6);
+    assert.ok(summary.environment?.prevailingWind?.degrees);
+    assert.ok(
+      Math.abs((summary.environment?.prevailingWind?.degrees ?? 0) - 47.5) < 1e-6,
+    );
   });
 });

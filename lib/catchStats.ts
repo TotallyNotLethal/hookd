@@ -95,11 +95,24 @@ export function parseCatchWeight(rawWeight?: string | null): number | null {
     return null;
   }
 
+  const normalizedWeight = rawWeight
+    .replace(/(?<=\d),(?=\s*\d)/g, '')
+    .replace(/[-–—/\\]/g, ' ')
+    .replace(/[()\[\]]/g, ' ')
+    .replace(/\band\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalizedWeight) {
+    return null;
+  }
+
   let total = 0;
   let matched = false;
 
-  for (const match of rawWeight.matchAll(WEIGHT_PATTERN)) {
-    const value = Number.parseFloat(match[1]);
+  for (const match of normalizedWeight.matchAll(WEIGHT_PATTERN)) {
+    const valueText = match[1]?.replace(/_/g, '') ?? '';
+    const value = Number.parseFloat(valueText);
     if (Number.isNaN(value)) {
       continue;
     }
@@ -202,20 +215,6 @@ export function summarizeCatchMetrics<T extends CatchLike>(catches: T[]): CatchS
       speciesSet.add(species.toLowerCase());
     }
 
-    const weightValue = parseCatchWeight(catchItem.weight);
-    if (weightValue == null) {
-      continue;
-    }
-
-    if (!personalBest || weightValue > personalBest.weight) {
-      personalBest = {
-        catchId: catchItem.id,
-        weight: weightValue,
-        weightText: catchItem.weight ?? `${weightValue.toFixed(2)} lb`,
-        species: catchItem.species ?? undefined,
-      };
-    }
-
     const environment = catchItem.environmentSnapshot;
     if (environment) {
       environmentSamples += 1;
@@ -280,6 +279,18 @@ export function summarizeCatchMetrics<T extends CatchLike>(catches: T[]): CatchS
         ?? celsiusToFahrenheit(asNumber(environment.waterTemperatureC));
       if (waterTempF != null) {
         waterTempSamples.push(waterTempF);
+      }
+    }
+
+    const weightValue = parseCatchWeight(catchItem.weight);
+    if (weightValue != null) {
+      if (!personalBest || weightValue > personalBest.weight) {
+        personalBest = {
+          catchId: catchItem.id,
+          weight: weightValue,
+          weightText: catchItem.weight?.trim() ?? `${weightValue.toFixed(2)} lb`,
+          species: catchItem.species ?? undefined,
+        };
       }
     }
   }
