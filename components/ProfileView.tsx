@@ -302,7 +302,7 @@ export default function ProfileView({
     featuredCatch && layout.introWithHeroClass,
   );
   const headerCardClasses = clsx(
-    'card overflow-hidden profile-header-card relative',
+    'card profile-header-card relative overflow-visible',
     layout.headerCardClass,
   );
   const heroCardClasses = clsx('card overflow-hidden profile-featured-card', layout.heroCardClass);
@@ -717,7 +717,7 @@ export default function ProfileView({
                         ref={settingsMenuRef}
                         role="menu"
                         aria-label="Profile settings"
-                        className="absolute right-0 z-50 mt-2 w-56 rounded-2xl border border-white/10 bg-slate-950/95 p-1 shadow-xl backdrop-blur"
+                        className="absolute left-0 top-full z-50 mt-2 w-56 max-w-[calc(100vw-2rem)] rounded-2xl border border-white/10 bg-slate-950/95 p-1 shadow-xl backdrop-blur sm:left-auto sm:right-0 sm:max-w-none"
                       >
                         {onEditProfile ? (
                           <button
