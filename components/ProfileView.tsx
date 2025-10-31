@@ -5,7 +5,19 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { type JSX, type KeyboardEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { BookOpen, Fish, Medal, MessageCircle, Scale, Sparkles, Users } from 'lucide-react';
+import {
+  BookOpen,
+  CalendarDays,
+  Fish,
+  Medal,
+  MessageCircle,
+  Percent,
+  Scale,
+  Sparkles,
+  Target,
+  Users,
+  Weight,
+} from 'lucide-react';
 import rehypeSanitize from 'rehype-sanitize';
 import type { Components as MarkdownComponents } from 'react-markdown';
 import type { Options as RehypeSanitizeOptions } from 'rehype-sanitize';
@@ -273,7 +285,31 @@ export default function ProfileView({
   const followerCount = profile?.followers?.length ?? 0;
   const followingCount = profile?.following?.length ?? 0;
   const personalBestWeight = stats.personalBest?.weightText ?? '—';
-  const personalBestSpecies = stats.personalBest?.species;
+  const personalBestSpecies = stats.personalBest?.species?.trim() || null;
+  const trophyRateDisplay = stats.trophyRate != null
+    ? `${Math.round(stats.trophyRate * 1000) / 10}%`
+    : '—';
+  const trophyRateSubtitle = stats.trophyRate != null
+    ? `${stats.trophyCount.toLocaleString()} of ${stats.totalCatches.toLocaleString()} catches`
+    : null;
+  const averageWeightText = stats.averageCatchWeight?.weightText ?? '—';
+  const averageWeightSubtitle = stats.averageCatchWeight
+    ? `Based on ${stats.averageCatchWeight.sampleSize.toLocaleString()} weight ${stats.averageCatchWeight.sampleSize === 1 ? 'entry' : 'entries'}`
+    : null;
+  const topSpecies = stats.mostCaughtSpecies ?? null;
+  const topSpeciesLabel = topSpecies?.species ?? '—';
+  const topSpeciesSubtitle = topSpecies
+    ? topSpecies.share != null
+      ? `${Math.round(topSpecies.share * 1000) / 10}% of catches`
+      : `${topSpecies.count.toLocaleString()} ${topSpecies.count === 1 ? 'catch' : 'catches'}`
+    : null;
+  const recentActivityMetrics = stats.recentActivity
+    ? [
+        { key: '7', label: 'Last 7 days', value: stats.recentActivity.last7Days },
+        { key: '30', label: 'Last 30 days', value: stats.recentActivity.last30Days },
+        { key: '90', label: 'Last 90 days', value: stats.recentActivity.last90Days },
+      ]
+    : null;
 
   const formatTemperature = useCallback((value: number | null | undefined) => {
     if (value == null || Number.isNaN(value)) return '—';
@@ -577,62 +613,105 @@ export default function ProfileView({
           <Sparkles aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />
           Angler Stats
         </h2>
-        <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div
-            className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4"
-            title="Total number of catches shared by this angler"
-          >
-            <div className="accent-chip">
-              <Fish aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />
+        <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {[
+            {
+              key: 'total',
+              label: 'Total Catches',
+              value: stats.totalCatches.toLocaleString(),
+              subtitle: null,
+              icon: <Fish aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
+              title: 'Total number of catches shared by this angler',
+            },
+            {
+              key: 'trophies',
+              label: 'Trophies',
+              value: stats.trophyCount.toLocaleString(),
+              subtitle: null,
+              icon: <Medal aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
+              title: 'How many catches were marked as trophies',
+            },
+            {
+              key: 'trophy-rate',
+              label: 'Trophy Rate',
+              value: trophyRateDisplay,
+              subtitle: trophyRateSubtitle,
+              icon: <Percent aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
+              title: 'Share of catches flagged as trophies',
+            },
+            {
+              key: 'unique-species',
+              label: 'Unique Species',
+              value: stats.uniqueSpeciesCount.toLocaleString(),
+              subtitle: null,
+              icon: <Sparkles aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
+              title: 'Distinct species featured in posted catches',
+            },
+            {
+              key: 'top-species',
+              label: 'Top Species',
+              value: topSpeciesLabel,
+              subtitle: topSpeciesSubtitle,
+              icon: <Target aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
+              title: 'Most frequently caught species in shared catches',
+            },
+            {
+              key: 'average-weight',
+              label: 'Avg Catch Weight',
+              value: averageWeightText,
+              subtitle: averageWeightSubtitle,
+              icon: <Weight aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
+              title: 'Average recorded weight across catches with measurements',
+            },
+            {
+              key: 'personal-best',
+              label: 'Personal Best',
+              value: personalBestWeight,
+              subtitle: personalBestSpecies,
+              icon: <Scale aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />,
+              title: 'Heaviest recorded catch based on provided weight',
+            },
+          ].map((card) => (
+            <div
+              key={card.key}
+              className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4"
+              title={card.title}
+            >
+              <div className="accent-chip">{card.icon}</div>
+              <div>
+                <dt className="text-sm text-white/60">{card.label}</dt>
+                <dd className="text-xl font-semibold text-white">{card.value}</dd>
+                {card.subtitle ? (
+                  <p className="text-xs text-white/60">{card.subtitle}</p>
+                ) : null}
+              </div>
             </div>
-            <div>
-              <dt className="text-sm text-white/60">Total Catches</dt>
-              <dd className="text-xl font-semibold text-white">{stats.totalCatches}</dd>
-            </div>
-          </div>
-
-          <div
-            className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4"
-            title="How many catches were marked as trophies"
-          >
-            <div className="accent-chip">
-              <Medal aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />
-            </div>
-            <div>
-              <dt className="text-sm text-white/60">Trophies</dt>
-              <dd className="text-xl font-semibold text-white">{stats.trophyCount}</dd>
-            </div>
-          </div>
-
-          <div
-            className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4"
-            title="Distinct species featured in posted catches"
-          >
-            <div className="accent-chip">
-              <Sparkles aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />
-            </div>
-            <div>
-              <dt className="text-sm text-white/60">Unique Species</dt>
-              <dd className="text-xl font-semibold text-white">{stats.uniqueSpeciesCount}</dd>
-            </div>
-          </div>
-
-          <div
-            className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4"
-            title="Heaviest recorded catch based on provided weight"
-          >
-            <div className="accent-chip">
-              <Scale aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />
-            </div>
-            <div>
-              <dt className="text-sm text-white/60">Personal Best</dt>
-              <dd className="text-xl font-semibold text-white">{personalBestWeight}</dd>
-              {personalBestSpecies && (
-                <p className="text-xs text-white/60">{personalBestSpecies}</p>
-              )}
-            </div>
-          </div>
+          ))}
         </dl>
+
+        <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
+          <div className="flex items-center gap-2">
+            <CalendarDays aria-hidden className="h-5 w-5 text-[var(--profile-accent-strong)]" />
+            <p className="text-sm font-semibold text-white/80">Recent Activity</p>
+          </div>
+          {recentActivityMetrics ? (
+            <dl className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {recentActivityMetrics.map((metric) => (
+                <div
+                  key={metric.key}
+                  className="rounded-xl border border-white/10 bg-black/30 p-3 text-center sm:text-left"
+                >
+                  <dt className="text-xs uppercase tracking-wide text-white/50">{metric.label}</dt>
+                  <dd className="mt-1 text-lg font-semibold text-white">{metric.value.toLocaleString()}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p className="mt-3 text-sm text-white/60">
+              Recent catches with timestamps will appear here once they are available.
+            </p>
+          )}
+        </div>
 
         <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.02] p-4">
           <div className="flex items-center justify-between gap-2">

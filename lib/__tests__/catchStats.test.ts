@@ -55,6 +55,7 @@ describe('summarizeCatchMetrics', () => {
       species: 'Largemouth Bass',
       trophy: true,
       weight: '5 lb 4 oz',
+      caughtAt: '2024-01-05T12:00:00Z',
       environmentSnapshot: {
         weatherDescription: 'Clear',
         weatherCode: 0,
@@ -73,6 +74,7 @@ describe('summarizeCatchMetrics', () => {
       species: 'Smallmouth Bass',
       trophy: false,
       weight: '4.5 lb',
+      caughtAt: '2024-01-12T12:00:00Z',
       environmentSnapshot: {
         weatherDescription: 'Clear',
         weatherCode: 0,
@@ -91,6 +93,7 @@ describe('summarizeCatchMetrics', () => {
       species: 'LARGEMOUTH BASS',
       trophy: false,
       weight: '5.75 lb',
+      caughtAt: '2024-01-20T12:00:00Z',
       environmentSnapshot: {
         weatherDescription: 'Rain',
         weatherCode: 63,
@@ -104,8 +107,14 @@ describe('summarizeCatchMetrics', () => {
         windSpeedMph: 12,
       },
     },
-    { id: 'd', species: null, trophy: true, weight: '3 lb' },
-    { id: 'e', species: 'Trout', trophy: false, weight: 'mystery weight' },
+    { id: 'd', species: null, trophy: true, weight: '3 lb', caughtAt: '2023-11-01T12:00:00Z' },
+    {
+      id: 'e',
+      species: 'Trout',
+      trophy: false,
+      weight: 'mystery weight',
+      caughtAt: '2024-02-01T12:00:00Z',
+    },
   ];
 
   it('counts totals and trophies', () => {
@@ -241,5 +250,56 @@ describe('summarizeCatchMetrics', () => {
     assert.ok(
       Math.abs((summary.environment?.prevailingWind?.degrees ?? 0) - 47.5) < 1e-6,
     );
+  });
+
+  it('calculates trophy rate and average catch weight', () => {
+    const summary = summarizeCatchMetrics(sampleCatches);
+    assert.ok(summary.trophyRate != null);
+    assert.ok(
+      summary.trophyRate != null
+        ? Math.abs(summary.trophyRate - 0.4) < 1e-6
+        : false,
+    );
+    assert.ok(summary.averageCatchWeight);
+    assert.ok(
+      summary.averageCatchWeight
+        ? Math.abs(summary.averageCatchWeight.weight - 4.625) < 1e-6
+        : false,
+    );
+    assert.equal(summary.averageCatchWeight?.sampleSize, 4);
+    assert.equal(summary.averageCatchWeight?.weightText, '4.63 lb');
+  });
+
+  it('identifies the most frequently caught species', () => {
+    const summary = summarizeCatchMetrics(sampleCatches);
+    assert.ok(summary.mostCaughtSpecies);
+    assert.equal(summary.mostCaughtSpecies?.species, 'Largemouth Bass');
+    assert.equal(summary.mostCaughtSpecies?.count, 2);
+    assert.ok(
+      summary.mostCaughtSpecies?.share != null
+        ? Math.abs(summary.mostCaughtSpecies.share - 0.4) < 1e-6
+        : false,
+    );
+  });
+
+  it('summarizes recent activity windows', () => {
+    const originalNow = Date.now;
+    (Date as unknown as { now: () => number }).now = () => new Date('2024-03-01T12:00:00Z').getTime();
+    try {
+      const summary = summarizeCatchMetrics([
+        { id: 'fresh', caughtAt: '2024-02-28T12:00:00Z' },
+        { id: 'week', caughtAt: '2024-02-24T12:00:00Z' },
+        { id: 'month', caughtAt: '2024-02-05T12:00:00Z' },
+        { id: 'quarter', caughtAt: '2023-12-15T12:00:00Z' },
+        { id: 'old', caughtAt: '2023-09-01T12:00:00Z' },
+      ]);
+
+      assert.ok(summary.recentActivity);
+      assert.equal(summary.recentActivity?.last7Days, 2);
+      assert.equal(summary.recentActivity?.last30Days, 3);
+      assert.equal(summary.recentActivity?.last90Days, 4);
+    } finally {
+      (Date as unknown as { now: () => number }).now = originalNow;
+    }
   });
 });
