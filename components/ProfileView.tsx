@@ -20,6 +20,7 @@ import {
   Medal,
   MessageCircle,
   Percent,
+  ShieldCheck,
   Star,
   Settings,
   Scale,
@@ -129,7 +130,7 @@ type Profile = {
   email?: string;
   followers?: any[];
   following?: any[];
-  isTester?: boolean;
+  isModerator?: boolean;
   isPro?: boolean;
   about?: string;
   profileTheme?: Partial<ProfileTheme> | null;
@@ -211,8 +212,8 @@ export default function ProfileView({
   const username = profile?.username;
   const usernameDisplay = useMemo(() => {
     if (!username) return null;
-    return profile?.isTester ? `@hookd_${username}` : `@${username}`;
-  }, [profile?.isTester, username]);
+    return profile?.isModerator ? `@hookd_${username}` : `@${username}`;
+  }, [profile?.isModerator, username]);
   const isProMember = useMemo(() => Boolean(profile?.isPro), [profile?.isPro]);
   const teamAffiliations = useMemo(
     () => teams.filter((team) => Boolean(team?.id && team?.name)),
@@ -221,6 +222,16 @@ export default function ProfileView({
   const badgeItems = useMemo<BadgeItem[]>(() => {
     const items: BadgeItem[] = [];
     const seen = new Set<string>();
+
+    if (profile?.isModerator) {
+      items.push({
+        key: 'moderator',
+        label: 'Moderator',
+        className: 'border-emerald-300/60 bg-emerald-500/15 text-emerald-100',
+        icon: <ShieldCheck aria-hidden className="h-3.5 w-3.5" />,
+      });
+      seen.add('moderator');
+    }
 
     if (isProMember) {
       const { className, label } = BADGE_STYLE_MAP.pro;
@@ -260,7 +271,7 @@ export default function ProfileView({
     }
 
     return items;
-  }, [isProMember, profile?.badges]);
+  }, [isProMember, profile?.badges, profile?.isModerator]);
 
   const showBlockedNotice = !isOwner && isBlocked;
   const blockedDescription = blockedNotice
@@ -615,16 +626,16 @@ export default function ProfileView({
                     <span
                       className={clsx(
                         'flex items-center gap-1',
-                        profile?.isTester ? 'text-[var(--profile-accent-strong)] font-semibold' : undefined,
+                        profile?.isModerator ? 'text-[var(--profile-accent-strong)] font-semibold' : undefined,
                       )}
                     >
                       {usernameDisplay}
-                      {profile?.isTester && (
+                      {profile?.isModerator && (
                         <span aria-hidden className="text-[var(--profile-accent-strong)]">
-                          🎣✔
+                          🛡️
                         </span>
                       )}
-                      {profile?.isTester && <span className="sr-only">Tester</span>}
+                      {profile?.isModerator && <span className="sr-only">Moderator</span>}
                     </span>
                   </div>
                 )}

@@ -86,6 +86,7 @@ export type HookdUser = {
   following?: string[];
   createdAt?: any;
   updatedAt?: any;
+  isModerator: boolean;
   isTester: boolean;
   isPro: boolean;
   profileTheme?: ProfileTheme;
@@ -1537,6 +1538,7 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
       trophies: [],
       followers: [],
       following: [],
+      isModerator: false,
       isTester: false,             // ✅ default tester flag
       isPro: false,
       profileTheme: { ...DEFAULT_PROFILE_THEME },
@@ -1576,6 +1578,10 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
 
     if (typeof existing.isPro !== 'boolean') {
       updates.isPro = false;
+    }
+
+    if (typeof existing.isModerator !== 'boolean') {
+      updates.isModerator = false;
     }
 
     const normalizedBirthdate = normalizeBirthdate(existing.birthdate ?? null);
@@ -1788,6 +1794,7 @@ export function subscribeToNewestUser(cb: (user: HookdUser | null) => void) {
     cb({
       ...data,
       uid: docSnap.id,
+      isModerator: Boolean(data.isModerator),
       birthdate: normalizeBirthdate(data.birthdate ?? null),
       age: normalizeUserAge(data.age ?? null),
       badges: sanitizeUserBadges(data.badges),
@@ -1811,6 +1818,7 @@ export function subscribeToUser(uid: string, cb: (u: HookdUser | null) => void) 
     cb({
       ...data,
       uid,
+      isModerator: Boolean(data.isModerator),
       birthdate: normalizeBirthdate(data.birthdate ?? null),
       age: normalizeUserAge(data.age ?? null),
       badges: sanitizeUserBadges(data.badges),
@@ -1819,6 +1827,19 @@ export function subscribeToUser(uid: string, cb: (u: HookdUser | null) => void) 
       blockedByUserIds: sanitizeUidList(data.blockedByUserIds),
       licenseReminderSettings: sanitizeLicenseReminderSettings(data.licenseReminderSettings),
     });
+  });
+}
+
+export async function setModeratorStatus(uid: string, isModerator: boolean) {
+  const trimmedUid = typeof uid === 'string' ? uid.trim() : '';
+  if (!trimmedUid) {
+    throw new Error('A user ID is required to update moderator status.');
+  }
+
+  const refUser = doc(db, 'users', trimmedUid);
+  await updateDoc(refUser, {
+    isModerator: Boolean(isModerator),
+    updatedAt: serverTimestamp(),
   });
 }
 
@@ -4048,24 +4069,24 @@ export async function submitUserReport(data: {
 }
 
 export async function subscribeToPendingUserReports(
-  testerUid: string,
+  moderatorUid: string,
   cb: (reports: UserReport[]) => void,
   options: { onError?: (error: Error) => void } = {},
 ): Promise<() => void> {
   const { onError } = options;
-  const trimmedUid = typeof testerUid === 'string' ? testerUid.trim() : '';
+  const trimmedUid = typeof moderatorUid === 'string' ? moderatorUid.trim() : '';
 
   if (!trimmedUid) {
-    throw new Error('Tester credentials are required to review reports.');
+    throw new Error('Moderator credentials are required to review reports.');
   }
 
-  const testerSnap = await getDoc(doc(db, 'users', trimmedUid));
-  if (!testerSnap.exists()) {
-    throw new Error('We could not verify your tester access.');
+  const moderatorSnap = await getDoc(doc(db, 'users', trimmedUid));
+  if (!moderatorSnap.exists()) {
+    throw new Error('We could not verify your moderator access.');
   }
 
-  const testerData = testerSnap.data() as HookdUser;
-  if (!testerData.isTester) {
+  const moderatorData = moderatorSnap.data() as HookdUser;
+  if (!moderatorData.isModerator) {
     throw new Error('You are not authorized to review reports.');
   }
 

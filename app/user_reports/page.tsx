@@ -68,7 +68,7 @@ export default function UserReportsPage() {
       return () => {};
     }
 
-    if (!profile.isTester) {
+    if (!profile.isModerator) {
       defer(() => {
         setReports([]);
         setLoading(false);
@@ -107,7 +107,7 @@ export default function UserReportsPage() {
         console.error('Failed to subscribe to user reports', err);
         if (!isMounted) return;
         defer(() => {
-          setError('You are not authorized to review reports.');
+          setError('Moderator access is required to review reports.');
           setLoading(false);
         });
       }
@@ -119,14 +119,14 @@ export default function UserReportsPage() {
     };
   }, [authUser?.uid, defer, profile]);
 
-  const isTester = Boolean(profile?.isTester);
+  const isModerator = Boolean(profile?.isModerator);
   const hasReports = reports.length > 0;
 
   const content = useMemo(() => {
     if (!authUser) {
       return (
         <div className="card p-6">
-          <p className="text-white/70">Sign in with a tester account to review user reports.</p>
+          <p className="text-white/70">Sign in with a moderator account to review user reports.</p>
         </div>
       );
     }
@@ -135,16 +135,16 @@ export default function UserReportsPage() {
       return (
         <div className="card flex items-center gap-3 p-6 text-white/70">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Loading your tester permissions…
+          Loading your moderator permissions…
         </div>
       );
     }
 
-    if (!isTester) {
+    if (!isModerator) {
       return (
         <div className="card flex items-center gap-3 border-red-500/30 bg-red-500/10 p-6 text-sm text-red-100">
           <ShieldAlert className="h-5 w-5" />
-          <span>You need tester access to view pending user reports.</span>
+          <span>You need moderator access to view pending user reports.</span>
         </div>
       );
     }
@@ -216,7 +216,7 @@ export default function UserReportsPage() {
         })}
       </div>
     );
-  }, [authUser, error, hasReports, isTester, loading, profile, reports]);
+  }, [authUser, error, hasReports, isModerator, loading, profile, reports]);
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-white">
