@@ -5,10 +5,15 @@ import type {
   TimeOfDayBand,
 } from './environmentTypes';
 
+export type ImperialWeightLike = {
+  pounds?: number | null;
+  ounces?: number | null;
+};
+
 export type CatchLike = {
   trophy?: boolean | null;
   species?: string | null;
-  weight?: string | null;
+  weight?: string | ImperialWeightLike | null;
   weightValueLbs?: number | null;
   id?: string;
   environmentSnapshot?: Partial<EnvironmentSnapshot> | null;
@@ -179,7 +184,7 @@ function metersPerSecondToMilesPerHour(value: number | null): number | null {
   return Math.round(value * 2.23693629 * 100) / 100;
 }
 
-function formatWeightImperial(value: number): string {
+export function formatWeightImperial(value: number): string {
   if (!Number.isFinite(value) || value <= 0) {
     return '0 oz';
   }
@@ -399,21 +404,38 @@ export function summarizeCatchMetrics<T extends CatchLike>(catches: T[]): CatchS
       }
     }
 
-    const rawWeightText = catchItem.weight?.trim() ?? '';
-    const parsedWeight = parseCatchWeight(rawWeightText || undefined);
+    const rawWeightValue = catchItem.weight;
+    const rawWeightText = typeof rawWeightValue === 'string' ? rawWeightValue.trim() : '';
+    const parsedFromText = rawWeightText ? parseCatchWeight(rawWeightText) : null;
     const numericWeight = asNumber(catchItem.weightValueLbs);
-    const weightValue = parsedWeight ?? numericWeight;
+    let weightValue = parsedFromText ?? numericWeight;
+    let weightTextFromObject: string | null = null;
+
+    if (rawWeightValue && typeof rawWeightValue === 'object') {
+      const pounds = asNumber((rawWeightValue as ImperialWeightLike).pounds);
+      const ounces = asNumber((rawWeightValue as ImperialWeightLike).ounces);
+      if ((pounds != null && pounds > 0) || (ounces != null && ounces > 0)) {
+        const computed = (pounds ?? 0) + (ounces ?? 0) / OUNCES_PER_POUND;
+        if (computed > 0) {
+          weightValue = weightValue ?? computed;
+          weightTextFromObject = formatWeightImperial(computed);
+        }
+      }
+    }
 
     if (weightValue != null) {
       weightSampleTotal += weightValue;
       weightSampleCount += 1;
       if (!personalBest || weightValue > personalBest.weight) {
         const normalizedWeightText = (() => {
-          if (parsedWeight != null && rawWeightText) {
-            const trimmed = rawWeightText.trim();
+          if (parsedFromText != null && rawWeightText) {
+            const trimmed = rawWeightText;
             if (/[a-zA-Z]/.test(trimmed)) {
               return trimmed;
             }
+          }
+          if (weightTextFromObject) {
+            return weightTextFromObject;
           }
           return formatWeightImperial(weightValue);
         })();

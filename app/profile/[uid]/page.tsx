@@ -8,7 +8,7 @@ import NavBar from '@/components/NavBar';
 import ProfileView from '@/components/ProfileView';
 import LogbookModal from '@/components/logbook/LogbookModal';
 import LicenseReminderSettingsCard from '@/components/LicenseReminderSettingsCard';
-import { summarizeCatchMetrics, type CatchLike } from '@/lib/catchStats';
+import { formatWeightImperial, summarizeCatchMetrics, type CatchLike } from '@/lib/catchStats';
 import { app } from '@/lib/firebaseClient';
 import {
   blockUser,
@@ -63,6 +63,16 @@ type CatchData = CatchLike & {
 
 function toFiniteNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function normalizeImperialWeight(weight: unknown): { pounds: number; ounces: number } | null {
+  if (!weight || typeof weight !== 'object') return null;
+  const pounds = toFiniteNumber((weight as { pounds?: unknown }).pounds) ?? 0;
+  const ounces = toFiniteNumber((weight as { ounces?: unknown }).ounces) ?? 0;
+  if (pounds <= 0 && ounces <= 0) {
+    return null;
+  }
+  return { pounds, ounces };
 }
 
 export default function ProfilePage() {
@@ -209,12 +219,25 @@ export default function ProfilePage() {
       const normalized = data.map((item) => {
         const directWeight = toFiniteNumber(item?.weightValueLbs);
         const measurementWeight = toFiniteNumber(item?.measurements?.weightPounds);
-        const numericWeight = directWeight ?? measurementWeight;
-        const weightText = typeof item?.weight === 'string' ? item.weight : null;
+        let numericWeight = directWeight ?? measurementWeight;
+        let weightText = typeof item?.weight === 'string' ? item.weight : null;
+        const weightObject = normalizeImperialWeight(item?.weight);
+
+        if (weightObject) {
+          const computedWeight = weightObject.pounds + weightObject.ounces / 16;
+          if (computedWeight > 0) {
+            if (numericWeight == null) {
+              numericWeight = computedWeight;
+            }
+            if (!weightText) {
+              weightText = formatWeightImperial(computedWeight);
+            }
+          }
+        }
 
         return {
           ...item,
-          weight: weightText,
+          weight: weightText ?? null,
           weightValueLbs: numericWeight,
         } as CatchData;
       });

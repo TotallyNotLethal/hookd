@@ -173,6 +173,20 @@ describe('summarizeCatchMetrics', () => {
     assert.equal(summary.personalBest?.weightText, '9 lb 5 oz');
   });
 
+  it('interprets weight objects with pounds and ounces', () => {
+    const summary = summarizeCatchMetrics([
+      { id: 'first', species: 'Bass', trophy: false, weight: { pounds: 2, ounces: 8 } },
+      { id: 'heaviest', species: 'Bass', trophy: true, weight: { pounds: 3, ounces: 2 } },
+    ]);
+
+    assert.ok(summary.personalBest);
+    assert.equal(summary.personalBest?.catchId, 'heaviest');
+    assert.equal(summary.personalBest?.weightText, '3 lb 2 oz');
+    assert.ok(summary.averageCatchWeight);
+    assert.equal(summary.averageCatchWeight?.weightText, '2 lb 13 oz');
+    assert.equal(summary.averageCatchWeight?.sampleSize, 2);
+  });
+
   it('aggregates environment insights when snapshots are provided', () => {
     const summary = summarizeCatchMetrics(sampleCatches);
     assert.ok(summary.environment);
