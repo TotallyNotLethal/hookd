@@ -8,7 +8,7 @@ import NavBar from '@/components/NavBar';
 import ProfileView from '@/components/ProfileView';
 import LogbookModal from '@/components/logbook/LogbookModal';
 import LicenseReminderSettingsCard from '@/components/LicenseReminderSettingsCard';
-import { summarizeCatchMetrics } from '@/lib/catchStats';
+import { summarizeCatchMetrics, type CatchLike } from '@/lib/catchStats';
 import { app } from '@/lib/firebaseClient';
 import {
   blockUser,
@@ -40,12 +40,13 @@ type ProfileData = {
   blockedByUserIds?: string[];
 };
 
-type CatchData = {
+type CatchData = CatchLike & {
   id: string;
   imageUrl?: string;
   imageUrls?: string[];
   species?: string;
-  weight?: string;
+  weight?: string | null;
+  weightValueLbs?: number | null;
   trophy?: boolean;
   caption?: string;
   location?: string;
@@ -59,6 +60,10 @@ type CatchData = {
   commentsCount?: number;
   [key: string]: any;
 };
+
+function toFiniteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
 
 export default function ProfilePage() {
   const params = useParams<{ uid: string }>();
@@ -201,10 +206,23 @@ export default function ProfilePage() {
     }
 
     const unsubscribeCatches = subscribeToUserCatches(userId, (data) => {
-      setCatches(data);
+      const normalized = data.map((item) => {
+        const directWeight = toFiniteNumber(item?.weightValueLbs);
+        const measurementWeight = toFiniteNumber(item?.measurements?.weightPounds);
+        const numericWeight = directWeight ?? measurementWeight;
+        const weightText = typeof item?.weight === 'string' ? item.weight : null;
+
+        return {
+          ...item,
+          weight: weightText,
+          weightValueLbs: numericWeight,
+        } as CatchData;
+      });
+
+      setCatches(normalized);
       setActiveCatch((current) => {
         if (!current) return current;
-        return data.find((item) => item.id === current.id) ?? null;
+        return normalized.find((item) => item.id === current.id) ?? null;
       });
     });
     const unsubscribeTackle = subscribeToUserTackleStats(userId, (data) => setTackleStats(data));
