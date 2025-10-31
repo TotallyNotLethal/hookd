@@ -744,14 +744,11 @@ async function fetchSolunarEnhancement({
   timezone: string;
   now: Date;
 }): Promise<SolunarEnhancement | null> {
-  const apiKey = process.env.SOLUNAR_API_KEY;
-  if (!apiKey) return null;
   const offsetMinutes = resolveTimezoneOffsetMinutes(timezone, now);
   const dateStamp = formatCompactDate(now);
   const url = new URL(
     `https://api.solunar.org/solunar/${latitude.toFixed(4)},${longitude.toFixed(4)},${dateStamp},${offsetMinutes}`
   );
-  url.searchParams.set("key", apiKey);
   const response = await fetch(url.toString(), {
     headers: {
       "User-Agent": "hookd-forecasts/1.0",
@@ -1085,21 +1082,15 @@ async function buildForecastBundle({
   const timezone = forecast.timezone ?? "UTC";
 
   let solunarEnhancement: SolunarEnhancement | null = null;
-  if (process.env.SOLUNAR_API_KEY) {
-    try {
-      const started = Date.now();
-      solunarEnhancement = await fetchSolunarEnhancement({ latitude, longitude, timezone, now });
-      if (solunarEnhancement) {
-        telemetry.providerLatencyMs[SOLUNAR_SOURCE.id] = Date.now() - started;
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      telemetry.warnings.push(toTelemetry(SOLUNAR_SOURCE.id, message));
+  try {
+    const started = Date.now();
+    solunarEnhancement = await fetchSolunarEnhancement({ latitude, longitude, timezone, now });
+    if (solunarEnhancement) {
+      telemetry.providerLatencyMs[SOLUNAR_SOURCE.id] = Date.now() - started;
     }
-  } else {
-    telemetry.warnings.push(
-      toTelemetry(SOLUNAR_SOURCE.id, "SOLUNAR_API_KEY missing – skipping solunar overlay")
-    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    telemetry.warnings.push(toTelemetry(SOLUNAR_SOURCE.id, message));
   }
 
   if (solunarEnhancement) {

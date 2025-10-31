@@ -60,8 +60,6 @@ test("generateSyntheticTides returns a smooth harmonic series", () => {
 
 test("getForecastBundle provides a synthetic fallback when upstream weather fails", async () => {
   const originalFetch = globalThis.fetch;
-  const originalSolunarKey = process.env.SOLUNAR_API_KEY;
-  delete process.env.SOLUNAR_API_KEY;
   globalThis.fetch = async () => {
     throw new Error("network-unreachable");
   };
@@ -82,19 +80,12 @@ test("getForecastBundle provides a synthetic fallback when upstream weather fail
     assert.ok(bundle.telemetry.warnings.length > 0, "warnings should note synthetic fallbacks");
   } finally {
     globalThis.fetch = originalFetch;
-    if (originalSolunarKey === undefined) {
-      delete process.env.SOLUNAR_API_KEY;
-    } else {
-      process.env.SOLUNAR_API_KEY = originalSolunarKey;
-    }
   }
 });
 
 test("getForecastBundle blends NOAA tides and solunar windows when providers respond", async () => {
   const originalFetch = globalThis.fetch;
-  const originalSolunarKey = process.env.SOLUNAR_API_KEY;
   const originalNoaaToken = process.env.NOAA_API_TOKEN;
-  process.env.SOLUNAR_API_KEY = "test-key";
   process.env.NOAA_API_TOKEN = "test-token";
 
   const createOpenMeteoPayload = () => {
@@ -206,11 +197,6 @@ test("getForecastBundle blends NOAA tides and solunar windows when providers res
     );
   } finally {
     globalThis.fetch = originalFetch;
-    if (originalSolunarKey === undefined) {
-      delete process.env.SOLUNAR_API_KEY;
-    } else {
-      process.env.SOLUNAR_API_KEY = originalSolunarKey;
-    }
     if (originalNoaaToken === undefined) {
       delete process.env.NOAA_API_TOKEN;
     } else {
