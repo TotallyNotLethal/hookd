@@ -5,10 +5,15 @@ import type {
   TimeOfDayBand,
 } from './environmentTypes';
 
+export type ImperialWeightLike = {
+  pounds?: number | null;
+  ounces?: number | null;
+};
+
 export type CatchLike = {
   trophy?: boolean | null;
   species?: string | null;
-  weight?: string | null;
+  weight?: string | ImperialWeightLike | null;
   weightValueLbs?: number | null;
   id?: string;
   environmentSnapshot?: Partial<EnvironmentSnapshot> | null;
@@ -71,6 +76,7 @@ export type RecentActivitySummary = {
 const POUNDS_PER_KILOGRAM = 2.2046226218;
 const POUNDS_PER_GRAM = POUNDS_PER_KILOGRAM / 1000;
 const POUNDS_PER_OUNCE = 1 / 16;
+const OUNCES_PER_POUND = 16;
 
 const WEIGHT_PATTERN = /(\d+(?:\.\d+)?)(?:\s*)(lbs?|pounds?|lb\.?|#|oz|ounces?|kgs?|kilograms?|kg\.?|g|grams?)?/gi;
 
@@ -178,10 +184,37 @@ function metersPerSecondToMilesPerHour(value: number | null): number | null {
   return Math.round(value * 2.23693629 * 100) / 100;
 }
 
-function formatWeightPounds(value: number): string {
-  const fixed = value.toFixed(2);
-  const normalized = fixed.replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
-  return `${normalized} lb`;
+export function formatWeightImperial(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return '0 oz';
+  }
+
+  let totalOunces = Math.round(value * OUNCES_PER_POUND);
+  if (totalOunces === 0) {
+    totalOunces = 1;
+  }
+
+  let pounds = Math.floor(totalOunces / OUNCES_PER_POUND);
+  let ounces = totalOunces % OUNCES_PER_POUND;
+
+  if (ounces === OUNCES_PER_POUND) {
+    pounds += 1;
+    ounces = 0;
+  }
+
+  const parts: string[] = [];
+  if (pounds > 0) {
+    parts.push(`${pounds} lb`);
+  }
+  if (ounces > 0) {
+    parts.push(`${ounces} oz`);
+  }
+
+  if (parts.length === 0) {
+    return '0 oz';
+  }
+
+  return parts.join(' ');
 }
 
 function resolveAverageDirection(values: number[]): number | null {
@@ -371,22 +404,45 @@ export function summarizeCatchMetrics<T extends CatchLike>(catches: T[]): CatchS
       }
     }
 
-    const rawWeightText = catchItem.weight?.trim() ?? '';
-    const parsedWeight = parseCatchWeight(rawWeightText || undefined);
+    const rawWeightValue = catchItem.weight;
+    const rawWeightText = typeof rawWeightValue === 'string' ? rawWeightValue.trim() : '';
+    const parsedFromText = rawWeightText ? parseCatchWeight(rawWeightText) : null;
     const numericWeight = asNumber(catchItem.weightValueLbs);
-    const weightValue = parsedWeight ?? numericWeight;
+    let weightValue = parsedFromText ?? numericWeight;
+    let weightTextFromObject: string | null = null;
+
+    if (rawWeightValue && typeof rawWeightValue === 'object') {
+      const pounds = asNumber((rawWeightValue as ImperialWeightLike).pounds);
+      const ounces = asNumber((rawWeightValue as ImperialWeightLike).ounces);
+      if ((pounds != null && pounds > 0) || (ounces != null && ounces > 0)) {
+        const computed = (pounds ?? 0) + (ounces ?? 0) / OUNCES_PER_POUND;
+        if (computed > 0) {
+          weightValue = weightValue ?? computed;
+          weightTextFromObject = formatWeightImperial(computed);
+        }
+      }
+    }
 
     if (weightValue != null) {
       weightSampleTotal += weightValue;
       weightSampleCount += 1;
       if (!personalBest || weightValue > personalBest.weight) {
-        const weightText = parsedWeight != null && rawWeightText
-          ? rawWeightText
-          : formatWeightPounds(weightValue);
+        const normalizedWeightText = (() => {
+          if (parsedFromText != null && rawWeightText) {
+            const trimmed = rawWeightText;
+            if (/[a-zA-Z]/.test(trimmed)) {
+              return trimmed;
+            }
+          }
+          if (weightTextFromObject) {
+            return weightTextFromObject;
+          }
+          return formatWeightImperial(weightValue);
+        })();
         personalBest = {
           catchId: catchItem.id,
           weight: weightValue,
-          weightText,
+          weightText: normalizedWeightText,
           species: catchItem.species ?? undefined,
         };
       }
@@ -462,7 +518,7 @@ export function summarizeCatchMetrics<T extends CatchLike>(catches: T[]): CatchS
   const averageCatchWeight = averageWeightValue != null
     ? {
         weight: averageWeightValue,
-        weightText: formatWeightPounds(averageWeightValue),
+        weightText: formatWeightImperial(averageWeightValue),
         sampleSize: weightSampleCount,
       }
     : null;
