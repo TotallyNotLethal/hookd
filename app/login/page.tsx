@@ -141,11 +141,13 @@ export default function Page() {
     setLoading(true);
     console.log('[Auth] Google sign-in clicked — starting flow.');
 
+    const useRedirect = isMobileOrStandalone();
+
     try {
       const auth = getAuth(app);
       const provider = new GoogleAuthProvider();
 
-      if (isMobileOrStandalone()) {
+      if (useRedirect) {
         console.log('[Auth] Detected mobile/standalone — using redirect flow.');
         await setPersistence(auth, indexedDBLocalPersistence);
         console.log('[Auth] Persistence set (redirect) to indexedDBLocalPersistence.');
@@ -162,7 +164,11 @@ export default function Page() {
     } catch (err: any) {
       console.error('[Auth] ❌ Google login failed:', err);
       setError('Google sign-in failed. Please try again.');
-    } finally {
+      setLoading(false);
+      return;
+    }
+
+    if (!useRedirect) {
       setLoading(false);
     }
   }
@@ -178,7 +184,7 @@ export default function Page() {
           className="btn-primary w-full"
           disabled={loading}
         >
-          {loading ? 'Signing in…' : 'Continue with Google'}
+          {loading ? 'Please wait…' : 'Continue with Google'}
         </button>
 
         {error && (
