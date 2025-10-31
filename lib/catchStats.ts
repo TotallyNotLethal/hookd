@@ -9,6 +9,7 @@ export type CatchLike = {
   trophy?: boolean | null;
   species?: string | null;
   weight?: string | null;
+  weightValueLbs?: number | null;
   id?: string;
   environmentSnapshot?: Partial<EnvironmentSnapshot> | null;
 };
@@ -149,6 +150,12 @@ function metersPerSecondToMilesPerHour(value: number | null): number | null {
   return Math.round(value * 2.23693629 * 100) / 100;
 }
 
+function formatWeightPounds(value: number): string {
+  const fixed = value.toFixed(2);
+  const normalized = fixed.replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+  return `${normalized} lb`;
+}
+
 function resolveAverageDirection(values: number[]): number | null {
   if (!values.length) return null;
   let x = 0;
@@ -282,13 +289,20 @@ export function summarizeCatchMetrics<T extends CatchLike>(catches: T[]): CatchS
       }
     }
 
-    const weightValue = parseCatchWeight(catchItem.weight);
+    const rawWeightText = catchItem.weight?.trim() ?? '';
+    const parsedWeight = parseCatchWeight(rawWeightText || undefined);
+    const numericWeight = asNumber(catchItem.weightValueLbs);
+    const weightValue = parsedWeight ?? numericWeight;
+
     if (weightValue != null) {
       if (!personalBest || weightValue > personalBest.weight) {
+        const weightText = parsedWeight != null && rawWeightText
+          ? rawWeightText
+          : formatWeightPounds(weightValue);
         personalBest = {
           catchId: catchItem.id,
           weight: weightValue,
-          weightText: catchItem.weight?.trim() ?? `${weightValue.toFixed(2)} lb`,
+          weightText,
           species: catchItem.species ?? undefined,
         };
       }

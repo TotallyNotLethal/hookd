@@ -134,6 +134,36 @@ describe('summarizeCatchMetrics', () => {
     assert.equal(summary.personalBest, null);
   });
 
+  it('falls back to numeric weights when formatted text is missing', () => {
+    const summary = summarizeCatchMetrics([
+      { id: 'numeric-only', species: 'Bass', trophy: false, weight: null, weightValueLbs: 6.25 },
+      { id: 'text-weight', species: 'Bass', trophy: false, weight: '5 lb', weightValueLbs: null },
+    ]);
+
+    assert.ok(summary.personalBest);
+    assert.equal(summary.personalBest?.catchId, 'numeric-only');
+    assert.equal(summary.personalBest?.weight, 6.25);
+    assert.equal(summary.personalBest?.weightText, '6.25 lb');
+  });
+
+  it('normalizes weight text when only numeric values are available', () => {
+    const summary = summarizeCatchMetrics([
+      {
+        id: 'invalid-text',
+        species: 'Carp',
+        trophy: true,
+        weight: 'approximately huge',
+        weightValueLbs: 9.337,
+      },
+      { id: 'control', species: 'Perch', trophy: false, weight: '1 lb', weightValueLbs: 1 },
+    ]);
+
+    assert.ok(summary.personalBest);
+    assert.equal(summary.personalBest?.catchId, 'invalid-text');
+    assert.equal(summary.personalBest?.weight, 9.337);
+    assert.equal(summary.personalBest?.weightText, '9.34 lb');
+  });
+
   it('aggregates environment insights when snapshots are provided', () => {
     const summary = summarizeCatchMetrics(sampleCatches);
     assert.ok(summary.environment);

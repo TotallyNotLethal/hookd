@@ -19,6 +19,7 @@ function recordToCatchLike(record: CatchRecord): CatchLike {
     species: record.species,
     trophy: weight != null && weight >= 8,
     weight: weightText,
+    weightValueLbs: weight,
     environmentSnapshot: record.environmentSnapshot ?? undefined,
   };
 }

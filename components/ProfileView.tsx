@@ -107,10 +107,11 @@ type Catch = {
   imageUrl?: string;
   imageUrls?: string[];
   species?: string;
-  weight?: string;
+  weight?: string | null;
+  weightValueLbs?: number | null;
   trophy?: boolean;
   caption?: string;
-  environmentSnapshot?: EnvironmentSnapshot | null;
+  environmentSnapshot?: Partial<EnvironmentSnapshot> | null;
   [key: string]: any;
 };
 
