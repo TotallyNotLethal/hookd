@@ -16,7 +16,15 @@ import { subscribeToUserTackleStats, type UserTackleStats } from "@/lib/tackleBo
 import { USERNAME_MIN_LENGTH, validateAndNormalizeUsername } from "@/lib/username";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import clsx from "clsx";
-import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ChangeEvent,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import PostDetailModal from "@/app/feed/PostDetailModal";
 import LogbookModal from "@/components/logbook/LogbookModal";
 import {
@@ -30,9 +38,8 @@ import {
   isValidTextureKey,
 } from "@/lib/profileThemeOptions";
 import {
-  MAX_PROFILE_AGE,
-  MIN_PROFILE_AGE,
-  normalizeUserAge,
+  computeAgeFromBirthdate,
+  normalizeBirthdate,
   type HookdUser,
   type ProfileAccentKey,
   type ProfileLayoutKey,
@@ -72,17 +79,16 @@ type EditProfileModalProps = {
   user: EditProfileUser;
   catches: UserCatch[];
   onClose: () => void;
+  disableDismiss?: boolean;
 };
 
-function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
+function EditProfileModal({ user, catches, onClose, disableDismiss }: EditProfileModalProps) {
   const [displayName, setDisplayName] = useState(user?.displayName || "");
   const [bio, setBio] = useState(user?.bio || "");
   const [username, setUserName] = useState(user?.username || "");
   const [about, setAbout] = useState(user?.about || "");
-  const [ageInput, setAgeInput] = useState(
-    user?.age != null && Number.isFinite(user.age) ? String(user.age) : "",
-  );
-  const [ageError, setAgeError] = useState<string | null>(null);
+  const [birthdateInput, setBirthdateInput] = useState(user?.birthdate || "");
+  const [birthdateError, setBirthdateError] = useState<string | null>(null);
   const [theme, setTheme] = useState<ProfileTheme>(() => {
     try {
       return coerceProfileTheme(user?.profileTheme ?? null, DEFAULT_PROFILE_THEME);
@@ -112,6 +118,11 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
       return validationError?.message ?? "Invalid username.";
     }
   });
+  const computedAge = useMemo(
+    () => (birthdateInput ? computeAgeFromBirthdate(birthdateInput) : null),
+    [birthdateInput],
+  );
+  const todayIso = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   const catchIdSet = useMemo(() => new Set(catches.map((item) => item.id)), [catches]);
   const defaultAvatar = useMemo(() => user?.photoURL || "/logo.svg", [user?.photoURL]);
@@ -246,27 +257,27 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
     }
   };
 
-  const handleAgeChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleBirthdateChange = (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value;
-    setAgeInput(value);
-
-    if (!value.trim()) {
-      setAgeError(null);
+    setBirthdateInput(value);
+    if (!value) {
+      setBirthdateError(null);
       return;
     }
 
-    const numericValue = Number(value);
-    if (!Number.isFinite(numericValue)) {
-      setAgeError("Please enter a valid age.");
+    const normalized = normalizeBirthdate(value);
+    if (!normalized) {
+      setBirthdateError("Please choose a valid birthdate.");
       return;
     }
 
-    if (numericValue < MIN_PROFILE_AGE || numericValue > MAX_PROFILE_AGE) {
-      setAgeError(`Please enter an age between ${MIN_PROFILE_AGE} and ${MAX_PROFILE_AGE}.`);
+    const derivedAge = computeAgeFromBirthdate(normalized);
+    if (derivedAge === null) {
+      setBirthdateError("Birthdate must result in a valid age.");
       return;
     }
 
-    setAgeError(null);
+    setBirthdateError(null);
   };
 
   async function save() {
@@ -281,16 +292,23 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
       }
 
       if (
-        !isValidAccentKey(theme.accentColor) ||
-        !isValidTextureKey(theme.backgroundTexture) ||
-        !isValidLayoutKey(theme.layoutVariant)
+        !isValidAccentKey(theme.accentColor)
+        || !isValidTextureKey(theme.backgroundTexture)
+        || !isValidLayoutKey(theme.layoutVariant)
       ) {
         setError("Selected theme options are no longer supported. Please choose different presets.");
         return;
       }
 
-      if (ageError) {
-        setError(ageError);
+      if (!displayName.trim()) {
+        setError("Please enter a display name.");
+        return;
+      }
+
+      if (!username.trim()) {
+        const message = `Usernames must be at least ${USERNAME_MIN_LENGTH} characters long.`;
+        setUsernameError(message);
+        setError(message);
         return;
       }
 
@@ -300,7 +318,7 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
       }
 
       const updates: Record<string, any> = {
-        displayName,
+        displayName: displayName.trim(),
         bio,
         about,
         profileTheme: {
@@ -311,26 +329,31 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
         },
       };
 
-      const trimmedAge = ageInput.trim();
-      if (trimmedAge) {
-        const normalizedAge = normalizeUserAge(trimmedAge);
-        if (normalizedAge === null) {
-          const message = `Please enter an age between ${MIN_PROFILE_AGE} and ${MAX_PROFILE_AGE}.`;
-          setAgeError(message);
+      const trimmedBirthdate = birthdateInput.trim();
+      if (trimmedBirthdate) {
+        const normalizedBirthdate = normalizeBirthdate(trimmedBirthdate);
+        if (!normalizedBirthdate) {
+          const message = "Please choose a valid birthdate.";
+          setBirthdateError(message);
           setError(message);
           return;
         }
-        if (normalizedAge < MIN_PROFILE_AGE || normalizedAge > MAX_PROFILE_AGE) {
-          const message = `Please enter an age between ${MIN_PROFILE_AGE} and ${MAX_PROFILE_AGE}.`;
-          setAgeError(message);
+
+        const derivedAge = computeAgeFromBirthdate(normalizedBirthdate);
+        if (derivedAge === null) {
+          const message = "Birthdate must result in a valid age.";
+          setBirthdateError(message);
           setError(message);
           return;
         }
-        setAgeError(null);
-        updates.age = normalizedAge;
+
+        setBirthdateError(null);
+        updates.birthdate = normalizedBirthdate;
+        updates.age = derivedAge;
       } else {
+        updates.birthdate = null;
         updates.age = null;
-        setAgeError(null);
+        setBirthdateError(null);
       }
 
       if (avatarFile) {
@@ -347,23 +370,21 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
 
       setStatusMessage("Saving profile…");
       await updateUserProfile(user.uid, updates);
-      let normalizedUsername: string | null = null;
-      if (username) {
-        try {
-          normalizedUsername = validateAndNormalizeUsername(username);
-          setUsernameError(null);
-        } catch (validationError: any) {
-          const message = validationError?.message ?? "Invalid username.";
-          setUsernameError(message);
-          setError(message);
-          return;
+
+      try {
+        const normalizedUsername = validateAndNormalizeUsername(username);
+        setUsernameError(null);
+        if (normalizedUsername !== user.username) {
+          const { setUsername } = await import("@/lib/firestore");
+          await setUsername(user.uid, normalizedUsername);
         }
+      } catch (validationError: any) {
+        const message = validationError?.message ?? "Invalid username.";
+        setUsernameError(message);
+        setError(message);
+        return;
       }
 
-      if (normalizedUsername && normalizedUsername !== user.username) {
-        const { setUsername } = await import("@/lib/firestore");
-        await setUsername(user.uid, normalizedUsername);
-      }
       onClose();
     } catch (e: any) {
       setError(e.message);
@@ -376,13 +397,22 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
   return (
     <div
       className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/60 p-4"
-      onClick={onClose}
+      onClick={() => {
+        if (!disableDismiss) {
+          onClose();
+        }
+      }}
     >
       <div
         className="card w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="mb-4 text-xl font-semibold">Edit Profile</h3>
+        {disableDismiss && (
+          <p className="mb-4 rounded-xl bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+            Complete your profile details to continue using Hook&apos;d.
+          </p>
+        )}
         <div className="space-y-4">
           <input
             className="input"
@@ -405,24 +435,24 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
             </p>
           </div>
           <div className="grid gap-1">
-            <label className="text-sm text-white/70" htmlFor="age-input">
-              Age (optional)
+            <label className="text-sm text-white/70" htmlFor="birthdate-input">
+              Birthdate (optional)
             </label>
             <input
-              id="age-input"
+              id="birthdate-input"
               className="input"
-              type="number"
-              inputMode="numeric"
-              min={MIN_PROFILE_AGE}
-              max={MAX_PROFILE_AGE}
-              value={ageInput}
-              onChange={handleAgeChange}
-              placeholder="Add your age"
-              aria-invalid={ageError ? "true" : "false"}
+              type="date"
+              value={birthdateInput}
+              max={todayIso}
+              onChange={handleBirthdateChange}
+              aria-invalid={birthdateError ? "true" : "false"}
             />
-            <p className={clsx("text-xs", ageError ? "text-red-400" : "text-white/50")}
+            <p className={clsx("text-xs", birthdateError ? "text-red-400" : "text-white/50")}
             >
-              {ageError ?? `Enter a whole number between ${MIN_PROFILE_AGE} and ${MAX_PROFILE_AGE}.`}
+              {birthdateError
+                ?? (computedAge != null
+                  ? `We'll show your age as ${computedAge}.`
+                  : 'Select your birthdate to show your age automatically.')}
             </p>
           </div>
           <textarea
@@ -623,7 +653,11 @@ function EditProfileModal({ user, catches, onClose }: EditProfileModalProps) {
   );
 }
 
-export default function Page() {
+function ProfilePageContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const forcingSetup = searchParams.has("setup");
+  const searchParamsString = searchParams.toString();
   const [authUser, setAuthUser] = useState<any>(null);
   const [profile, setProfile] = useState<OwnedProfile | null>(null);
   const [catches, setCatches] = useState<UserCatch[]>([]);
@@ -633,6 +667,17 @@ export default function Page() {
   const [activeCatch, setActiveCatch] = useState<UserCatch | null>(null);
   const [isLogbookModalOpen, setIsLogbookModalOpen] = useState(false);
   const catchSummary = useMemo(() => summarizeCatchMetrics(catches), [catches]);
+  const requiresBasics = useMemo(() => {
+    if (!profile) {
+      return forcingSetup;
+    }
+
+    const username = typeof profile.username === "string" ? profile.username.trim() : "";
+    const display = typeof profile.displayName === "string" ? profile.displayName.trim() : "";
+    const displayIsDefault = display.toLowerCase() === "angler";
+
+    return forcingSetup || !username || !display || displayIsDefault;
+  }, [profile, forcingSetup]);
   const { isPro: hasProAccess } = useProAccess();
   const canManageLogbook = useMemo(() => Boolean(hasProAccess), [hasProAccess]);
 
@@ -657,6 +702,26 @@ export default function Page() {
   const handleCloseActiveCatch = useCallback(() => {
     setActiveCatch(null);
   }, []);
+
+  useEffect(() => {
+    if (!requiresBasics && forcingSetup) {
+      const nextParams = new URLSearchParams(searchParamsString);
+      nextParams.delete("setup");
+      const query = nextParams.toString();
+      router.replace(`/profile${query ? `?${query}` : ""}`, { scroll: false });
+    }
+  }, [requiresBasics, forcingSetup, router, searchParamsString]);
+
+  const handleCloseEditor = useCallback(() => {
+    setEditing(false);
+    if (forcingSetup) {
+      const nextParams = new URLSearchParams(searchParamsString);
+      nextParams.delete("setup");
+      const query = nextParams.toString();
+      router.replace(`/profile${query ? `?${query}` : ""}`, { scroll: false });
+    }
+  }, [forcingSetup, router, searchParamsString]);
+  const isEditing = requiresBasics || editing;
 
   useEffect(() => {
     const auth = getAuth(app);
@@ -749,11 +814,12 @@ export default function Page() {
         />
       </section>
 
-      {editing && (
+      {isEditing && (
         <EditProfileModal
-          user={{ ...profile, uid: authUser.uid }}
+          user={{ ...(profile ?? {}), uid: authUser.uid }}
           catches={catches}
-          onClose={() => setEditing(false)}
+          onClose={handleCloseEditor}
+          disableDismiss={requiresBasics}
         />
       )}
       {activeCatch && (
@@ -768,5 +834,13 @@ export default function Page() {
         <LogbookModal open={isLogbookModalOpen} onClose={() => setIsLogbookModalOpen(false)} />
       )}
     </main>
+  );
+}
+
+export default function Page() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-white/70">Loading…</div>}>
+      <ProfilePageContent />
+    </Suspense>
   );
 }

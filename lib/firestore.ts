@@ -76,6 +76,7 @@ export type HookdUser = {
   uid: string;
   displayName: string;
   username: string;
+  birthdate?: string | null;
   photoURL?: string;
   header?: string;
   bio?: string;
@@ -147,6 +148,82 @@ export function normalizeUserAge(input: unknown): number | null {
   }
 
   return null;
+}
+
+export function normalizeBirthdate(input: unknown): string | null {
+  if (!input) {
+    return null;
+  }
+
+  if (typeof input === 'string') {
+    const trimmed = input.trim();
+    if (!trimmed) return null;
+    const match = /^\d{4}-\d{2}-\d{2}$/;
+    if (!match.test(trimmed)) {
+      return null;
+    }
+    const date = new Date(trimmed + 'T00:00:00Z');
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+    return trimmed;
+  }
+
+  if (input instanceof Date) {
+    if (Number.isNaN(input.getTime())) {
+      return null;
+    }
+    return input.toISOString().slice(0, 10);
+  }
+
+  if (input instanceof Timestamp) {
+    const date = input.toDate();
+    if (Number.isNaN(date.getTime())) {
+      return null;
+    }
+    return date.toISOString().slice(0, 10);
+  }
+
+  return null;
+}
+
+export function computeAgeFromBirthdate(birthdate: string | null | undefined): number | null {
+  if (!birthdate) {
+    return null;
+  }
+
+  const normalized = normalizeBirthdate(birthdate);
+  if (!normalized) {
+    return null;
+  }
+
+  const [yearStr, monthStr, dayStr] = normalized.split('-');
+  const year = Number.parseInt(yearStr, 10);
+  const month = Number.parseInt(monthStr, 10) - 1;
+  const day = Number.parseInt(dayStr, 10);
+  const birthDate = new Date(Date.UTC(year, month, day));
+  if (Number.isNaN(birthDate.getTime())) {
+    return null;
+  }
+
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+
+  let age = today.getUTCFullYear() - birthDate.getUTCFullYear();
+  const monthDiff = today.getUTCMonth() - birthDate.getUTCMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getUTCDate() < birthDate.getUTCDate())) {
+    age -= 1;
+  }
+
+  if (!Number.isFinite(age)) {
+    return null;
+  }
+
+  if (age < MIN_PROFILE_AGE || age > MAX_PROFILE_AGE) {
+    return null;
+  }
+
+  return age;
 }
 
 export function sanitizeUserBadges(input: unknown): string[] {
@@ -1452,6 +1529,7 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
       uid: user.uid,
       displayName: user.displayName || 'Angler',
       username: '',                // ✅ default username
+      birthdate: null,
       photoURL: user.photoURL || undefined,
       header: undefined,
       bio: '',
@@ -1500,15 +1578,27 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
       updates.isPro = false;
     }
 
+    const normalizedBirthdate = normalizeBirthdate(existing.birthdate ?? null);
+    if (existing.birthdate !== normalizedBirthdate) {
+      updates.birthdate = normalizedBirthdate;
+    }
+
     const normalizedAge = normalizeUserAge(existing.age ?? null);
-    if (existing.age !== normalizedAge) {
+    const derivedAge = computeAgeFromBirthdate(normalizedBirthdate);
+    if (derivedAge !== null && derivedAge !== normalizedAge) {
+      updates.age = derivedAge;
+    } else if (existing.age !== normalizedAge) {
       updates.age = normalizedAge;
     }
 
-    const normalizedBadges = syncBadgesForAge(existing.badges ?? [], normalizedAge);
-    if (JSON.stringify(existing.badges ?? []) !== JSON.stringify(normalizedBadges)) {
-      updates.badges = normalizedBadges;
+    const normalizedBadgesFromAge = syncBadgesForAge(existing.badges ?? [], derivedAge ?? normalizedAge);
+    if (
+      JSON.stringify(existing.badges ?? [])
+      !== JSON.stringify(normalizedBadgesFromAge)
+    ) {
+      updates.badges = normalizedBadgesFromAge;
     }
+
 
     const normalizedBlocked = sanitizeUidList(existing.blockedUserIds);
     if (
@@ -1566,12 +1656,13 @@ export async function updateUserProfile(
     profileTheme?: Partial<ProfileTheme> | null;
     isPro?: boolean;
     age?: number | null;
+    birthdate?: string | null;
     badges?: string[] | null;
     [key: string]: any;
   },
 ) {
   const refUser = doc(db, 'users', uid);
-  const { profileTheme, about, age, badges, ...rest } = data;
+  const { profileTheme, about, age, birthdate, badges, ...rest } = data;
 
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(refUser);
@@ -1591,8 +1682,18 @@ export async function updateUserProfile(
       payload.profileTheme = themeToPersist;
     }
 
+    let nextBirthdate: string | null = normalizeBirthdate(existing.birthdate ?? null);
+    if (birthdate !== undefined) {
+      nextBirthdate = normalizeBirthdate(birthdate);
+      payload.birthdate = nextBirthdate;
+    }
+
     let nextAge: number | null = normalizeUserAge(existing.age ?? null);
-    if (age !== undefined) {
+    if (birthdate !== undefined) {
+      const derivedAge = computeAgeFromBirthdate(nextBirthdate);
+      nextAge = derivedAge;
+      payload.age = derivedAge;
+    } else if (age !== undefined) {
       nextAge = normalizeUserAge(age);
       payload.age = nextAge;
     }
@@ -1687,6 +1788,7 @@ export function subscribeToNewestUser(cb: (user: HookdUser | null) => void) {
     cb({
       ...data,
       uid: docSnap.id,
+      birthdate: normalizeBirthdate(data.birthdate ?? null),
       age: normalizeUserAge(data.age ?? null),
       badges: sanitizeUserBadges(data.badges),
       notificationPreferences: sanitizeNotificationPreferences(data.notificationPreferences),
@@ -1709,6 +1811,7 @@ export function subscribeToUser(uid: string, cb: (u: HookdUser | null) => void) 
     cb({
       ...data,
       uid,
+      birthdate: normalizeBirthdate(data.birthdate ?? null),
       age: normalizeUserAge(data.age ?? null),
       badges: sanitizeUserBadges(data.badges),
       notificationPreferences: sanitizeNotificationPreferences(data.notificationPreferences),

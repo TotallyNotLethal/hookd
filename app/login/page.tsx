@@ -1,5 +1,5 @@
 'use client';
-import { app } from '@/lib/firebaseClient';
+import { app, db } from '@/lib/firebaseClient';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   getAuth,
@@ -14,8 +14,9 @@ import {
   browserLocalPersistence,
   indexedDBLocalPersistence,
 } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
-import { ensureUserProfile } from '@/lib/firestore';
+import { ensureUserProfile, type HookdUser } from '@/lib/firestore';
 
 export default function Page() {
   const router = useRouter();
@@ -36,7 +37,31 @@ export default function Page() {
       handledAuthRef.current = true;
       console.log('[Auth] ✅ Auth success, user-uid:', user.uid);
       await ensureUserProfile(user);
-      router.replace('/feed');
+      try {
+        const profileSnap = await getDoc(doc(db, 'users', user.uid));
+        const profileData = profileSnap.exists()
+          ? (profileSnap.data() as HookdUser)
+          : null;
+        const username =
+          typeof profileData?.username === 'string'
+            ? profileData.username.trim()
+            : '';
+        const displayNameRaw =
+          (typeof profileData?.displayName === 'string'
+            ? profileData.displayName
+            : user.displayName) ?? '';
+        const displayName = displayNameRaw.trim();
+        const displayIsDefault = !displayName || displayName.toLowerCase() === 'angler';
+
+        if (!username || displayIsDefault) {
+          router.replace('/profile?setup=1');
+        } else {
+          router.replace('/feed');
+        }
+      } catch (profileError) {
+        console.error('[Auth] ⚠️ Failed to inspect profile after signup:', profileError);
+        router.replace('/profile?setup=1');
+      }
     },
     [router],
   );
