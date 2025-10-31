@@ -3612,6 +3612,119 @@ export async function sendChatMessage(data: {
   }
 }
 
+export type GroupChatMessage = ChatMessage & { groupId: string };
+
+export function subscribeToGroupChatMessages(
+  groupId: string,
+  cb: (messages: GroupChatMessage[]) => void,
+  options: { limit?: number; onError?: (error: Error) => void } = {},
+) {
+  if (!groupId) {
+    throw new Error('groupId is required for group chat subscriptions.');
+  }
+
+  const { limit: limitCount = 150, onError } = options;
+  const q = query(
+    collection(db, 'groupChatMessages'),
+    where('groupId', '==', groupId),
+    orderBy('createdAt', 'desc'),
+    limit(limitCount),
+  );
+
+  return onSnapshot(q, (snap) => {
+    const items: GroupChatMessage[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as Record<string, any>;
+      const createdAt = data.createdAt instanceof Timestamp
+        ? data.createdAt.toDate()
+        : data.createdAt && typeof data.createdAt.toDate === 'function'
+          ? data.createdAt.toDate()
+          : null;
+
+      const rawMentions = Array.isArray(data.mentions) ? data.mentions : [];
+      const mentions = rawMentions.reduce<ChatMessageMention[]>((acc, mention) => {
+        if (!mention || typeof mention !== 'object') return acc;
+        const uid = typeof mention.uid === 'string' ? mention.uid.trim() : '';
+        const username = typeof mention.username === 'string' ? mention.username.trim() : '';
+        if (!uid || !username) return acc;
+        const normalizedUsername = username.toLowerCase();
+        if (acc.some((item) => item.uid === uid || item.username === normalizedUsername)) return acc;
+        acc.push({
+          uid,
+          username: normalizedUsername,
+          displayName: typeof mention.displayName === 'string' ? mention.displayName : null,
+        });
+        return acc;
+      }, []);
+
+      items.push({
+        id: docSnap.id,
+        groupId,
+        text: typeof data.text === 'string' ? data.text : '',
+        uid: typeof data.uid === 'string' ? data.uid : '',
+        displayName: typeof data.displayName === 'string' ? data.displayName : 'Angler',
+        photoURL: data.photoURL ?? null,
+        createdAt,
+        isPro: typeof data.isPro === 'boolean' ? data.isPro : false,
+        mentions,
+      });
+    });
+
+    items.sort((a, b) => {
+      const aTime = a.createdAt?.getTime() ?? 0;
+      const bTime = b.createdAt?.getTime() ?? 0;
+      return aTime - bTime;
+    });
+
+    cb(items);
+  }, (error) => {
+    console.error('Failed to subscribe to group chat messages', error);
+    if (onError) onError(error);
+  });
+}
+
+export async function sendGroupChatMessage(data: {
+  groupId: string;
+  uid: string;
+  displayName: string;
+  text: string;
+  isPro: boolean;
+  photoURL?: string | null;
+  mentions?: ChatMessageMention[];
+}) {
+  const normalized = data.text.trim();
+  if (!normalized) {
+    throw new Error('Message cannot be empty');
+  }
+  if (!data.groupId) {
+    throw new Error('groupId is required.');
+  }
+
+  const mentions = Array.isArray(data.mentions)
+    ? data.mentions.reduce<ChatMessageMention[]>((acc, mention) => {
+        if (!mention || typeof mention !== 'object') return acc;
+        const uid = typeof mention.uid === 'string' ? mention.uid.trim() : '';
+        const username = typeof mention.username === 'string' ? mention.username.trim().toLowerCase() : '';
+        const displayName = typeof mention.displayName === 'string' ? mention.displayName : null;
+        if (!uid || !username) return acc;
+        if (acc.some((item) => item.uid === uid || item.username === username)) return acc;
+        acc.push({ uid, username, displayName });
+        return acc;
+      }, [])
+    : [];
+
+  await addDoc(collection(db, 'groupChatMessages'), {
+    groupId: data.groupId,
+    uid: data.uid,
+    displayName: data.displayName,
+    text: normalized.slice(0, 2000),
+    photoURL: data.photoURL ?? null,
+    isPro: Boolean(data.isPro),
+    createdAt: serverTimestamp(),
+    mentions,
+  });
+}
+
 export function getDirectMessageThreadId(uidA: string, uidB: string) {
   return [uidA, uidB].sort((a, b) => a.localeCompare(b)).join('__');
 }
