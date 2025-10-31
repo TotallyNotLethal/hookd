@@ -10,6 +10,8 @@ import { fishingSpots } from '@/lib/fishingSpots';
 import type { ForecastBundle } from '@/lib/forecastTypes';
 import type { CatchVisibility } from '@/lib/catches';
 import { app } from '@/lib/firebaseClient';
+import { useOfflineStatus } from '@/hooks/useOfflineStatus';
+import { queueCatch, syncQueuedCatches } from '@/lib/offlineStorage';
 
 const auth = getAuth(app);
 
@@ -132,6 +134,7 @@ export default function LogbookContent({ showIntroduction = true }: { showIntrod
   const [plannerSpotId, setPlannerSpotId] = useState<string>(fishingSpots[0]?.id ?? '');
   const [plannerForecast, setPlannerForecast] = useState<ForecastBundle | null>(null);
   const [selectedVisibility, setSelectedVisibility] = useState<'all' | CatchVisibility>('all');
+  const offline = useOfflineStatus();
 
   const plannerSpot = useMemo(
     () => fishingSpots.find((spot) => spot.id === plannerSpotId) ?? fishingSpots[0] ?? null,
@@ -196,6 +199,24 @@ export default function LogbookContent({ showIntroduction = true }: { showIntrod
     }
   }, [authLoading, fetchEntries, user]);
 
+  useEffect(() => {
+    if (!user || !offline.online) return;
+    let cancelled = false;
+    const run = async () => {
+      const result = await syncQueuedCatches({
+        userId: user.uid,
+        getAuthToken: () => user.getIdToken(),
+      });
+      if (!cancelled && result.synced > 0) {
+        await fetchEntries();
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchEntries, offline.online, user]);
+
   const populateFormForEditing = useCallback((entry: CatchEntry) => {
     const caughtAt = new Date(entry.caughtAt);
     const isoDate = Number.isNaN(caughtAt.getTime()) ? '' : caughtAt.toISOString();
@@ -225,6 +246,10 @@ export default function LogbookContent({ showIntroduction = true }: { showIntrod
   const handleDelete = useCallback(
     async (id: string) => {
       if (!user) return;
+      if (!offline.online) {
+        setEntriesError('Deleting catches while offline is not supported.');
+        return;
+      }
       if (typeof window !== 'undefined') {
         const confirm = window.confirm('Delete this catch?');
         if (!confirm) return;
@@ -248,7 +273,7 @@ export default function LogbookContent({ showIntroduction = true }: { showIntrod
         setEntriesError(error instanceof Error ? error.message : 'Unable to delete catch.');
       }
     },
-    [editingId, fetchEntries, resetForm, user],
+    [editingId, fetchEntries, offline.online, resetForm, user],
   );
 
   const handleSubmit = useCallback(
@@ -351,28 +376,60 @@ export default function LogbookContent({ showIntroduction = true }: { showIntrod
 
       try {
         const token = await user.getIdToken();
-        const response = await fetch(editingId ? `/api/catches/${editingId}` : '/api/catches', {
-          method: editingId ? 'PATCH' : 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(payload),
-        });
-        if (!response.ok) {
-          const body = await response.json().catch(() => ({}));
-          const message = typeof body?.error === 'string' ? body.error : `Save failed (${response.status})`;
+        const attemptNetwork = offline.online
+          ? await fetch(editingId ? `/api/catches/${editingId}` : '/api/catches', {
+              method: editingId ? 'PATCH' : 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify(payload),
+            })
+          : null;
+
+        if (attemptNetwork && !attemptNetwork.ok) {
+          const body = await attemptNetwork.json().catch(() => ({}));
+          const message = typeof body?.error === 'string' ? body.error : `Save failed (${attemptNetwork.status})`;
           throw new Error(message);
         }
-        await fetchEntries();
-        resetForm();
+
+        if (!attemptNetwork) {
+          const previousSnapshot = editingId ? entries.find((entry) => entry.id === editingId) ?? null : null;
+          await queueCatch({
+            userId: user.uid,
+            method: editingId ? 'PATCH' : 'POST',
+            catchId: editingId ?? undefined,
+            payload,
+            baseUpdatedAt: previousSnapshot?.updatedAt ?? null,
+            previousSnapshot,
+          });
+          setFormErrors({ general: 'Catch saved offline. It will sync automatically when you reconnect.' });
+          resetForm();
+        } else {
+          await fetchEntries();
+          resetForm();
+        }
       } catch (error) {
-        setFormErrors({ general: error instanceof Error ? error.message : 'Unable to save catch.' });
+        if (!offline.online) {
+          const previousSnapshot = editingId ? entries.find((entry) => entry.id === editingId) ?? null : null;
+          await queueCatch({
+            userId: user.uid,
+            method: editingId ? 'PATCH' : 'POST',
+            catchId: editingId ?? undefined,
+            payload,
+            baseUpdatedAt: previousSnapshot?.updatedAt ?? null,
+            previousSnapshot,
+          });
+          setFormErrors({ general: 'Catch saved offline. It will sync automatically when you reconnect.' });
+          resetForm();
+        } else {
+          setFormErrors({ general: error instanceof Error ? error.message : 'Unable to save catch.' });
+        }
       } finally {
         setSubmitting(false);
       }
     },
-    [editingId, fetchEntries, form, plannerForecast, resetForm, user],
+    [editingId, entries, fetchEntries, form, offline.online, plannerForecast, resetForm, user],
   );
 
   return (
