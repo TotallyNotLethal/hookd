@@ -13,13 +13,34 @@ import {
 import Image from 'next/image';
 import Link from 'next/link';
 import { useAuthState } from 'react-firebase-hooks/auth';
-import { Loader2, MessageCircle, MessageSquare, MessageSquarePlus, Users, X } from 'lucide-react';
+import {
+  Eraser,
+  Loader2,
+  MessageCircle,
+  MessageSquare,
+  MessageSquarePlus,
+  Trash2,
+  UserCheck,
+  UserX,
+  Users,
+  X,
+} from 'lucide-react';
 
 import NavBar from '@/components/NavBar';
 import LoginButton from '@/components/auth/LoginButton';
 import DirectMessageThreadsList from '@/components/direct-messages/DirectMessageThreadsList';
 import Modal from '@/components/ui/Modal';
-import { collection, endAt, getDocs, limit, orderBy, query as firestoreQuery, startAt } from 'firebase/firestore';
+import {
+  collection,
+  doc,
+  endAt,
+  getDocs,
+  limit,
+  onSnapshot,
+  orderBy,
+  query as firestoreQuery,
+  startAt,
+} from 'firebase/firestore';
 
 import { auth, db } from '@/lib/firebaseClient';
 import {
@@ -27,7 +48,11 @@ import {
   ChatPresence,
   ChatMessageMention,
   Team,
+  clearChatMessages,
+  deleteChatMessage,
+  listMutedUsers,
   sendChatMessage,
+  setChatMute,
   subscribeToChatMessages,
   subscribeToChatPresence,
   subscribeToTeamsForUser,
@@ -72,6 +97,16 @@ export default function ChatPage() {
   const [activeMentionRange, setActiveMentionRange] = useState<{ start: number; end: number } | null>(null);
   const [isMentionLoading, setIsMentionLoading] = useState(false);
   const [selectedMentions, setSelectedMentions] = useState<ChatMessageMention[]>([]);
+  const [moderationError, setModerationError] = useState<string | null>(null);
+  const [mutedUsers, setMutedUsers] = useState<string[]>([]);
+  const [deletingMessageIds, setDeletingMessageIds] = useState<Record<string, boolean>>({});
+  const [pendingMuteActions, setPendingMuteActions] = useState<Record<string, boolean>>({});
+  const [isClearingChannel, setIsClearingChannel] = useState(false);
+  const [isChatMuted, setIsChatMuted] = useState(false);
+  const [isCheckingMute, setIsCheckingMute] = useState(false);
+
+  const isModerator = Boolean(userProfile?.isModerator);
+  const moderatorMutedUserSet = useMemo(() => new Set(mutedUsers), [mutedUsers]);
 
   useEffect(() => {
     if (!user?.uid) {
@@ -117,6 +152,28 @@ export default function ChatPage() {
   }, [user?.uid]);
 
   useEffect(() => {
+    if (!user?.uid) {
+      setIsChatMuted(false);
+      setIsCheckingMute(false);
+      return;
+    }
+
+    setIsCheckingMute(true);
+    const muteRef = doc(db, 'chatMutes', user.uid);
+    const unsubscribe = onSnapshot(muteRef, (snapshot) => {
+      setIsChatMuted(snapshot.exists());
+      setIsCheckingMute(false);
+    }, (err) => {
+      console.error('Failed to subscribe to chat mute status', err);
+      setIsCheckingMute(false);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [user?.uid]);
+
+  useEffect(() => {
     const unsubscribe = subscribeToChatMessages((incoming) => {
       setMessages(incoming);
       setIsLoading(false);
@@ -151,6 +208,34 @@ export default function ChatPage() {
       unsubscribe();
     };
   }, [user?.uid]);
+
+  useEffect(() => {
+    if (!isModerator) {
+      setMutedUsers([]);
+      setModerationError(null);
+      return;
+    }
+
+    let isActive = true;
+
+    (async () => {
+      try {
+        const muted = await listMutedUsers({ isModerator });
+        if (isActive) {
+          setMutedUsers(muted);
+        }
+      } catch (err) {
+        console.error('Failed to load muted users', err);
+        if (isActive) {
+          setModerationError('We could not load the current mute list.');
+        }
+      }
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isModerator]);
 
   useEffect(() => {
     if (!user?.uid) {
@@ -448,6 +533,11 @@ export default function ChatPage() {
       return;
     }
 
+    if (isChatMuted) {
+      setSendError('You are currently muted from chat.');
+      return;
+    }
+
     const trimmed = input.trim();
     if (!trimmed) {
       return;
@@ -486,9 +576,103 @@ export default function ChatPage() {
       setActiveMentionRange(null);
     } catch (err) {
       console.error('Failed to send chat message', err);
-      setSendError('Unable to send that message. Please try again.');
+      if (err instanceof Error) {
+        setSendError(err.message);
+      } else {
+        setSendError('Unable to send that message. Please try again.');
+      }
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!user?.uid || !isModerator || !messageId) {
+      return;
+    }
+
+    setModerationError(null);
+    setDeletingMessageIds((prev) => ({ ...prev, [messageId]: true }));
+
+    try {
+      await deleteChatMessage({
+        moderatorUid: user.uid,
+        isModerator,
+        messageId,
+      });
+    } catch (err) {
+      console.error('Failed to delete chat message', err);
+      setModerationError('We could not delete that message. Please try again.');
+    } finally {
+      setDeletingMessageIds((prev) => {
+        const next = { ...prev };
+        delete next[messageId];
+        return next;
+      });
+    }
+  };
+
+  const handleToggleMute = async (targetUid: string, mute: boolean) => {
+    if (!user?.uid || !isModerator || !targetUid) {
+      return;
+    }
+
+    setModerationError(null);
+    setPendingMuteActions((prev) => ({ ...prev, [targetUid]: true }));
+
+    try {
+      await setChatMute({
+        moderatorUid: user.uid,
+        isModerator,
+        targetUid,
+        mute,
+      });
+
+      setMutedUsers((prev) => {
+        if (mute) {
+          if (prev.includes(targetUid)) {
+            return prev;
+          }
+          return [...prev, targetUid];
+        }
+
+        return prev.filter((id) => id !== targetUid);
+      });
+    } catch (err) {
+      console.error('Failed to update mute state', err);
+      setModerationError('We could not update the mute list. Please try again.');
+    } finally {
+      setPendingMuteActions((prev) => {
+        const next = { ...prev };
+        delete next[targetUid];
+        return next;
+      });
+    }
+  };
+
+  const handleClearChannel = async () => {
+    if (!user?.uid || !isModerator) {
+      return;
+    }
+
+    const confirmed = window.confirm('This will remove all messages from the general channel. Continue?');
+    if (!confirmed) {
+      return;
+    }
+
+    setModerationError(null);
+    setIsClearingChannel(true);
+
+    try {
+      await clearChatMessages({
+        moderatorUid: user.uid,
+        isModerator,
+      });
+    } catch (err) {
+      console.error('Failed to clear chat messages', err);
+      setModerationError('We could not clear the channel. Please try again.');
+    } finally {
+      setIsClearingChannel(false);
     }
   };
 
@@ -564,11 +748,29 @@ export default function ChatPage() {
                       : `${presenceCount} angler${presenceCount === 1 ? '' : 's'} online`}
                   </div>
                 </div>
+                {isModerator ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleClearChannel}
+                      className="inline-flex items-center gap-2 rounded-full border border-red-500/40 px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-red-200 transition hover:bg-red-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:opacity-60"
+                      disabled={isClearingChannel}
+                    >
+                      <Eraser className="h-4 w-4" />
+                      {isClearingChannel ? 'Clearing…' : 'Clear channel'}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
 
             <div className="flex h-[60vh] flex-col">
               <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-slate-950/40" aria-live="polite">
+                {moderationError ? (
+                  <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
+                    {moderationError}
+                  </div>
+                ) : null}
                 {error ? (
                   <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200">
                     {error}
@@ -608,20 +810,60 @@ export default function ChatPage() {
                       <span className="sr-only">View {message.displayName}&apos;s profile</span>
                     </Link>
                     <div className="flex-1 space-y-1">
-                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-white/60">
-                        <Link
-                          href={`/profile/${message.uid}`}
-                          prefetch={false}
-                          className="rounded font-medium text-white transition hover:text-brand-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-                        >
-                          {message.displayName}
-                        </Link>
-                        {message.isPro ? (
-                          <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/40 bg-amber-400/10 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-amber-200">
-                            Pro
-                          </span>
+                      <div className="flex flex-wrap items-start gap-2">
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-white/60">
+                          <Link
+                            href={`/profile/${message.uid}`}
+                            prefetch={false}
+                            className="rounded font-medium text-white transition hover:text-brand-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                          >
+                            {message.displayName}
+                          </Link>
+                          {message.isPro ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-amber-300/40 bg-amber-400/10 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-amber-200">
+                              Pro
+                            </span>
+                          ) : null}
+                          <span>{message.timestampLabel}</span>
+                          {isModerator && moderatorMutedUserSet.has(message.uid) ? (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-red-400/40 bg-red-500/10 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-red-200">
+                              Muted
+                            </span>
+                          ) : null}
+                        </div>
+                        {isModerator ? (
+                          <div className="ml-auto flex items-center gap-2 text-[0.65rem] uppercase tracking-[0.16em] text-white/60">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteMessage(message.id)}
+                              className="inline-flex items-center gap-1 rounded-full border border-white/15 px-2 py-1 transition hover:border-red-400 hover:text-red-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:opacity-60"
+                              disabled={Boolean(deletingMessageIds[message.id])}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              {deletingMessageIds[message.id] ? 'Removing…' : 'Delete'}
+                            </button>
+                            {message.uid !== user?.uid ? (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleMute(message.uid, !moderatorMutedUserSet.has(message.uid))}
+                                className="inline-flex items-center gap-1 rounded-full border border-white/15 px-2 py-1 transition hover:border-brand-300 hover:text-brand-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 disabled:opacity-60"
+                                disabled={Boolean(pendingMuteActions[message.uid])}
+                              >
+                                {moderatorMutedUserSet.has(message.uid) ? (
+                                  <>
+                                    <UserCheck className="h-3.5 w-3.5" />
+                                    {pendingMuteActions[message.uid] ? 'Updating…' : 'Unmute'}
+                                  </>
+                                ) : (
+                                  <>
+                                    <UserX className="h-3.5 w-3.5" />
+                                    {pendingMuteActions[message.uid] ? 'Updating…' : 'Mute'}
+                                  </>
+                                )}
+                              </button>
+                            ) : null}
+                          </div>
                         ) : null}
-                        <span>{message.timestampLabel}</span>
                       </div>
                       <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-white/90">
                         {renderMessageContent(message)}
@@ -740,7 +982,7 @@ export default function ChatPage() {
                     <button
                       type="submit"
                       className="btn-primary inline-flex items-center justify-center px-5 py-2 text-sm disabled:opacity-60"
-                      disabled={!user || isSending}
+                      disabled={!user || isSending || isChatMuted || isCheckingMute}
                     >
                       {isSending ? (
                         <>
@@ -752,6 +994,12 @@ export default function ChatPage() {
                       )}
                     </button>
                   </div>
+                  {isCheckingMute ? (
+                    <p className="text-xs text-white/50">Checking your chat permissions…</p>
+                  ) : null}
+                  {isChatMuted ? (
+                    <p className="text-xs text-red-300">You are currently muted from chat.</p>
+                  ) : null}
                   {sendError ? (
                     <p className="text-xs text-red-300">{sendError}</p>
                   ) : null}

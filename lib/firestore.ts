@@ -3679,6 +3679,107 @@ export function subscribeToChatMessages(
   });
 }
 
+function assertModeratorAccess(isModerator: boolean, action: string) {
+  if (!isModerator) {
+    throw new Error(`Only moderators can ${action}.`);
+  }
+}
+
+export async function deleteChatMessage(options: {
+  moderatorUid: string;
+  isModerator: boolean;
+  messageId: string;
+}) {
+  const { isModerator, messageId } = options;
+  assertModeratorAccess(isModerator, 'delete chat messages');
+
+  if (!messageId) {
+    throw new Error('A messageId is required to delete a chat message.');
+  }
+
+  const messageRef = doc(db, 'chatMessages', messageId);
+  await deleteDoc(messageRef);
+}
+
+export async function clearChatMessages(options: {
+  moderatorUid: string;
+  isModerator: boolean;
+  batchSize?: number;
+}) {
+  const { isModerator, batchSize = 200 } = options;
+  assertModeratorAccess(isModerator, 'clear chat history');
+
+  const effectiveBatchSize = Math.max(1, Math.min(batchSize, 500));
+  let deletedCount = 0;
+
+  // Delete in batches to avoid exceeding Firestore limits
+  while (true) {
+    const snapshot = await getDocs(query(
+      collection(db, 'chatMessages'),
+      orderBy('createdAt', 'desc'),
+      limit(effectiveBatchSize),
+    ));
+
+    if (snapshot.empty) {
+      break;
+    }
+
+    const batch = writeBatch(db);
+    snapshot.forEach((docSnap) => {
+      batch.delete(docSnap.ref);
+    });
+
+    await batch.commit();
+    deletedCount += snapshot.size;
+
+    if (snapshot.size < effectiveBatchSize) {
+      break;
+    }
+  }
+
+  return deletedCount;
+}
+
+export async function setChatMute(options: {
+  moderatorUid: string;
+  isModerator: boolean;
+  targetUid: string;
+  mute: boolean;
+}) {
+  const { moderatorUid, isModerator, targetUid, mute } = options;
+  assertModeratorAccess(isModerator, mute ? 'mute chat participants' : 'unmute chat participants');
+
+  if (!targetUid) {
+    throw new Error('A target user is required to update mute status.');
+  }
+
+  const muteRef = doc(db, 'chatMutes', targetUid);
+
+  if (mute) {
+    await setDoc(muteRef, {
+      muted: true,
+      mutedBy: moderatorUid,
+      mutedAt: serverTimestamp(),
+    }, { merge: true });
+  } else {
+    await deleteDoc(muteRef);
+  }
+}
+
+export async function listMutedUsers(options: { isModerator: boolean }) {
+  const { isModerator } = options;
+  assertModeratorAccess(isModerator, 'view muted users');
+
+  const snapshot = await getDocs(collection(db, 'chatMutes'));
+  const mutedIds = new Set<string>();
+
+  snapshot.forEach((docSnap) => {
+    mutedIds.add(docSnap.id);
+  });
+
+  return Array.from(mutedIds);
+}
+
 export async function sendChatMessage(data: {
   uid: string;
   displayName: string;
@@ -3690,6 +3791,11 @@ export async function sendChatMessage(data: {
   const normalized = data.text.trim();
   if (!normalized) {
     throw new Error('Message cannot be empty');
+  }
+
+  const muteDoc = await getDoc(doc(db, 'chatMutes', data.uid));
+  if (muteDoc.exists()) {
+    throw new Error('You are currently muted from chat.');
   }
 
   const mentions = Array.isArray(data.mentions)
