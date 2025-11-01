@@ -24,7 +24,6 @@ import type {
   Tournament,
   TournamentLeaderboardEntry,
 } from "@/lib/firestore";
-import { reverseGeocodeLocation } from "@/lib/location";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthState } from "react-firebase-hooks/auth";
 import PostDetailModal from "@/app/feed/PostDetailModal";
@@ -97,16 +96,16 @@ export default function Page() {
       Promise.resolve().then(fn);
     }
   }, []);
-  const defaultConditionsLocation = useMemo(
-    () => ({
-      name: "Canton, OH",
-      latitude: 40.7989,
-      longitude: -81.3784,
-      timezone: "America/New_York",
-    }),
-    [],
-  );
-  const [fallbackConditionsLocation, setFallbackConditionsLocation] = useState(defaultConditionsLocation);
+  const [fallbackConditionsLocation, setFallbackConditionsLocation] = useState<
+    | {
+        name: string;
+        latitude: number;
+        longitude: number;
+        timezone?: string;
+      }
+    | null
+  >(null);
+  const [locationPermissionError, setLocationPermissionError] = useState<string | null>(null);
   const topWeightLeaders = useMemo(
     () => weightLeaders.filter((entry) => (entry.weightScore ?? 0) > 0).slice(0, 3),
     [weightLeaders],
@@ -145,34 +144,6 @@ export default function Page() {
 
     const storageKey = "hookd:last-known-location";
 
-    const applyLocation = (payload: {
-      name: string;
-      latitude: number;
-      longitude: number;
-      timezone: string | undefined;
-    }) => {
-      setFallbackConditionsLocation({
-        name: payload.name,
-        latitude: payload.latitude,
-        longitude: payload.longitude,
-        timezone: payload.timezone ?? defaultConditionsLocation.timezone,
-      });
-
-      try {
-        window.localStorage.setItem(
-          storageKey,
-          JSON.stringify({
-            name: payload.name,
-            latitude: payload.latitude,
-            longitude: payload.longitude,
-            timezone: payload.timezone ?? defaultConditionsLocation.timezone,
-          }),
-        );
-      } catch (error) {
-        console.warn("Unable to persist location fallback", error);
-      }
-    };
-
     try {
       const cached = window.localStorage.getItem(storageKey);
       if (cached) {
@@ -180,72 +151,54 @@ export default function Page() {
         const latitude = Number(parsed?.latitude);
         const longitude = Number(parsed?.longitude);
         const name = typeof parsed?.name === "string" ? parsed.name : null;
+        const timezone = typeof parsed?.timezone === "string" ? parsed.timezone : undefined;
         if (name && Number.isFinite(latitude) && Number.isFinite(longitude)) {
-          applyLocation({
-            name,
-            latitude,
-            longitude,
-            timezone:
-              typeof parsed?.timezone === "string" && parsed.timezone
-                ? parsed.timezone
-                : defaultConditionsLocation.timezone,
+          defer(() => {
+            setFallbackConditionsLocation({
+              name,
+              latitude,
+              longitude,
+              timezone,
+            });
           });
         }
       }
     } catch (error) {
       console.warn("Unable to load cached location", error);
     }
+  }, [defer]);
 
-    if (!navigator.geolocation) {
-      return;
-    }
+  const handleConditionsLocationResolved = useCallback(
+    (payload: { name: string; latitude: number; longitude: number; timezone?: string }) => {
+      setFallbackConditionsLocation(payload);
+      setLocationPermissionError(null);
 
-    let active = true;
+      if (typeof window === "undefined") {
+        return;
+      }
 
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        if (!active) return;
-        const latitude = position.coords.latitude;
-        const longitude = position.coords.longitude;
-        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-          return;
-        }
+      try {
+        window.localStorage.setItem(
+          "hookd:last-known-location",
+          JSON.stringify({
+            name: payload.name,
+            latitude: payload.latitude,
+            longitude: payload.longitude,
+            timezone: payload.timezone,
+          }),
+        );
+      } catch (error) {
+        console.warn("Unable to persist location fallback", error);
+      }
+    },
+    [],
+  );
 
-        const timezone =
-          Intl.DateTimeFormat().resolvedOptions().timeZone ?? defaultConditionsLocation.timezone;
-
-        try {
-          const name = await reverseGeocodeLocation(
-            latitude,
-            longitude,
-            defaultConditionsLocation.name,
-          );
-          if (!active) return;
-          applyLocation({ name, latitude, longitude, timezone });
-        } catch (error) {
-          console.warn("Unable to resolve detected location", error);
-          if (!active) return;
-          applyLocation({
-            name: defaultConditionsLocation.name,
-            latitude,
-            longitude,
-            timezone,
-          });
-        }
-      },
-      (error) => {
-        console.warn("Unable to determine geolocation", error);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 8000,
-      },
+  const handleConditionsPermissionDenied = useCallback(() => {
+    setLocationPermissionError(
+      "We need access to your location to show nearby bite conditions. Update your browser permissions and try again.",
     );
-
-    return () => {
-      active = false;
-    };
-  }, [defaultConditionsLocation]);
+  }, []);
 
   const filterPosts = useCallback(
     (posts: any[]) => {
@@ -438,9 +391,16 @@ export default function Page() {
 
           <div className="glass rounded-3xl p-6 border-white/10">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {locationPermissionError ? (
+                <div className="sm:col-span-2 rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                  {locationPermissionError}
+                </div>
+              ) : null}
               <ConditionsWidget
                 className="sm:col-span-2"
-                fallbackLocation={fallbackConditionsLocation}
+                fallbackLocation={fallbackConditionsLocation ?? undefined}
+                onLocationResolved={handleConditionsLocationResolved}
+                onLocationPermissionDenied={handleConditionsPermissionDenied}
               />
               <div className="card p-4">
                 <h3 className="font-medium mb-2">Trending Lakes</h3>
