@@ -9,6 +9,7 @@ import { app } from '@/lib/firebaseClient';
 import { HookdUser, Notification, subscribeToUser } from '@/lib/firestore';
 import { useNotifications } from '@/hooks/useNotifications';
 import NotificationPreferencesModal from './NotificationPreferencesModal';
+import LoginButton from './auth/LoginButton';
 import {
   Bell,
   Home,
@@ -371,8 +372,10 @@ export default function NavBar() {
                   </>
                 ) : (
                   <>
-                    <Link href="/login" className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">Log in</Link>
-                    <Link href="/login" className="btn-primary">Sign up</Link>
+                    <LoginButton className="px-4 py-2 rounded-xl border border-white/15 hover:bg-white/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">
+                      Log in
+                    </LoginButton>
+                    <LoginButton className="btn-primary">Sign up</LoginButton>
                   </>
                 )}
               </div>
@@ -557,12 +560,9 @@ export default function NavBar() {
                   )}
                 </Link>
               ) : (
-                <Link
-                  href="/login"
-                  className="inline-flex items-center justify-center rounded-xl border border-white/15 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-                >
+                <LoginButton className="inline-flex items-center justify-center rounded-xl border border-white/15 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">
                   Log in
-                </Link>
+                </LoginButton>
               )}
             </div>
           </div>
@@ -655,14 +655,13 @@ export default function NavBar() {
               </li>
               {!user ? (
                 <li>
-                  <Link
-                    href="/login"
+                  <LoginButton
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition bg-slate-900/80 shadow-inner hover:bg-slate-900/95 hover:ring-1 hover:ring-white/10"
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition bg-slate-900/80 shadow-inner hover:bg-slate-900/95 hover:ring-1 hover:ring-white/10"
                   >
                     <LogIn className="h-5 w-5" />
                     <span>Login</span>
-                  </Link>
+                  </LoginButton>
                 </li>
               ) : (
                 <li>

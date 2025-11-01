@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 import NavBar from '@/components/NavBar';
+import LoginButton from '@/components/auth/LoginButton';
 import { useProAccess } from '@/hooks/useProAccess';
 import {
   TEAM_LOGO_ALLOWED_TYPES,
@@ -573,10 +574,10 @@ export default function TeamsPage() {
         {!user ? (
           <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-white/80">
             <p className="mb-4 text-sm">Sign in to start a team and invite friends.</p>
-            <Link href="/login" className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm">
+            <LoginButton className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm">
               <ShieldCheck className="h-4 w-4" />
               Log in
-            </Link>
+            </LoginButton>
           </div>
         ) : proLoading ? (
           <div className="flex items-center gap-3 rounded-3xl border border-white/10 bg-white/5 p-6 text-white/70">
