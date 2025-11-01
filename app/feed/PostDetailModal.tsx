@@ -5,13 +5,14 @@ import {
   addComment,
   deleteCatch,
   deleteComment,
+  updateComment,
   subscribeToComments,
   subscribeToUserLike,
   toggleLike,
 } from '@/lib/firestore';
 import { getAuth } from 'firebase/auth';
 import { app } from '@/lib/firebaseClient';
-import { Heart, Trash2 } from 'lucide-react';
+import { Heart, Trash2, Pencil } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import ProBadge from '@/components/ProBadge';
@@ -49,6 +50,10 @@ export default function PostDetailModal({
   const [liked, setLiked] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [commentActionBusy, setCommentActionBusy] = useState<string | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState('');
+  const [savingCommentId, setSavingCommentId] = useState<string | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
   const locationIsPrivate = Boolean(post?.locationPrivate);
   const canShowLocation =
     post?.location && (!locationIsPrivate || (user && user.uid === post.uid));
@@ -167,6 +172,69 @@ export default function PostDetailModal({
       setCommentActionBusy(null);
     }
   }
+
+  const handleStartEditComment = useCallback(
+    (commentId: string) => {
+      if (!user?.uid) return;
+      const target = comments.find((comment) => comment.id === commentId);
+      if (!target || target.uid !== user.uid) return;
+      setEditingCommentId(commentId);
+      setEditingText(target.text ?? '');
+      setEditError(null);
+    },
+    [comments, user?.uid],
+  );
+
+  const handleCancelEditComment = useCallback(() => {
+    setEditingCommentId(null);
+    setEditingText('');
+    setSavingCommentId(null);
+    setEditError(null);
+  }, []);
+
+  const handleSaveEditedComment = useCallback(async () => {
+    if (!editingCommentId || !post?.id || !user?.uid) return;
+
+    const trimmed = editingText.trim();
+    if (!trimmed) {
+      setEditError('Comment cannot be empty');
+      return;
+    }
+
+    const previousComments = comments;
+    const optimisticTimestampSeconds = Math.floor(Date.now() / 1000);
+
+    setSavingCommentId(editingCommentId);
+    setEditError(null);
+    setComments((prev) =>
+      prev.map((comment) =>
+        comment.id === editingCommentId
+          ? {
+              ...comment,
+              text: trimmed,
+              updatedAt: {
+                seconds: optimisticTimestampSeconds,
+                nanoseconds: 0,
+              },
+            }
+          : comment,
+      ),
+    );
+
+    try {
+      await updateComment(post.id, editingCommentId, user.uid, trimmed);
+      handleCancelEditComment();
+    } catch (error) {
+      console.error('Failed to update comment', error);
+      setComments(previousComments);
+      setEditError('Failed to update comment. Please try again.');
+      const original = previousComments.find((comment) => comment.id === editingCommentId);
+      if (original) {
+        setEditingText(original.text ?? '');
+      }
+      setSavingCommentId(null);
+    }
+  }, [comments, editingCommentId, editingText, handleCancelEditComment, post?.id, user?.uid]);
 
   const postTime = post?.createdAt?.seconds
     ? timeAgo(post.createdAt.seconds * 1000)
@@ -771,7 +839,19 @@ export default function PostDetailModal({
                   <div className="flex-1 space-y-3 overflow-y-auto max-h-[320px] pr-2 pb-16">
                     {comments.map((c) => {
                       const canDeleteComment = user && (c.uid === user.uid || isOwner);
+                      const canEditComment = user && c.uid === user.uid;
                       const isDeletingComment = commentActionBusy === c.id;
+                      const isEditing = editingCommentId === c.id;
+                      const isSavingEdit = savingCommentId === c.id;
+                      const createdAtSeconds = typeof c.createdAt?.seconds === 'number'
+                        ? c.createdAt.seconds
+                        : null;
+                      const updatedAtSeconds = typeof c.updatedAt?.seconds === 'number'
+                        ? c.updatedAt.seconds
+                        : null;
+                      const showEditedIndicator = Boolean(
+                        updatedAtSeconds && updatedAtSeconds !== createdAtSeconds,
+                      );
                       return (
                         <div
                           key={c.id}
@@ -779,30 +859,80 @@ export default function PostDetailModal({
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1">
-                              <span
-                                className="font-medium text-blue-400 hover:underline"
+                              <button
+                                type="button"
+                                className="text-left font-medium text-blue-400 hover:underline"
                                 onClick={() => router.push(`/profile/${c.uid}`)}
                               >
                                 {c.displayName}
-                              </span>{' '}
-                              {c.text}
-                            </div>
-                            {canDeleteComment && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteComment(c.id)}
-                                disabled={isDeletingComment}
-                                className="opacity-50 transition hover:opacity-100 disabled:opacity-30"
-                                title="Delete comment"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                <span className="sr-only">Delete comment</span>
                               </button>
-                            )}
+                              <div className="mt-0.5 whitespace-pre-line">
+                                {isEditing ? (
+                                  <div className="space-y-2">
+                                    <textarea
+                                      className="w-full rounded-md bg-white/10 px-3 py-2 text-sm text-white outline-none"
+                                      value={editingText}
+                                      rows={3}
+                                      onChange={(event) => setEditingText(event.target.value)}
+                                      disabled={isSavingEdit}
+                                    />
+                                    {editError && (
+                                      <p className="text-xs text-red-400">{editError}</p>
+                                    )}
+                                    <div className="flex gap-2">
+                                      <button
+                                        type="button"
+                                        className="rounded-md bg-blue-500 px-3 py-1 text-xs font-medium hover:bg-blue-600 disabled:opacity-60"
+                                        onClick={handleSaveEditedComment}
+                                        disabled={isSavingEdit}
+                                      >
+                                        {isSavingEdit ? 'Saving…' : 'Save'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="rounded-md bg-white/10 px-3 py-1 text-xs font-medium hover:bg-white/20"
+                                        onClick={handleCancelEditComment}
+                                        disabled={isSavingEdit}
+                                      >
+                                        Cancel
+                                      </button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <p>{c.text}</p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {canEditComment && !isEditing && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditComment(c.id)}
+                                  className="opacity-50 transition hover:opacity-100"
+                                  title="Edit comment"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                  <span className="sr-only">Edit comment</span>
+                                </button>
+                              )}
+                              {canDeleteComment && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteComment(c.id)}
+                                  disabled={isDeletingComment || isEditing}
+                                  className="opacity-50 transition hover:opacity-100 disabled:opacity-30"
+                                  title="Delete comment"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                  <span className="sr-only">Delete comment</span>
+                                </button>
+                              )}
+                            </div>
                           </div>
                           {c.createdAt?.seconds && (
-                            <span className="mt-0.5 text-xs opacity-50">
+                            <span className="mt-0.5 flex items-center gap-2 text-xs opacity-50">
                               {timeAgo(c.createdAt.seconds * 1000)}
+                              {showEditedIndicator && <span className="text-[10px] uppercase tracking-wide">edited</span>}
                             </span>
                           )}
                         </div>
