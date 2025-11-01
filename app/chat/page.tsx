@@ -497,12 +497,21 @@ export default function ChatPage() {
       <NavBar />
       <section className="container pt-nav pb-16">
         <div className="flex flex-col gap-6">
-          <header className="flex flex-col gap-2">
+          <header className="flex flex-col gap-3">
             <div className="flex items-center gap-2 text-sm uppercase tracking-[0.2em] text-white/60">
               <MessageSquare className="h-4 w-4" />
-              <span>Community Board</span>
+              <span>Community</span>
             </div>
-            <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">Live Chat</h1>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="flex-1 text-3xl font-semibold tracking-tight md:text-4xl">Live Chat</h1>
+              <Link
+                href="/groups"
+                className="btn-primary inline-flex items-center justify-center gap-2 whitespace-nowrap px-4 py-2 text-sm"
+              >
+                <Users className="h-4 w-4" />
+                Explore groups
+              </Link>
+            </div>
             <p className="text-white/70 max-w-2xl">
               Share quick updates, celebrate catches, and plan your next trip with the Hook&apos;d crew. Messages update in real time
               so you&apos;re always in the loop.
