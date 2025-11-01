@@ -79,7 +79,7 @@ export default function FishIdentifierPage() {
   return (
     <main>
       <NavBar />
-      <section className="container pt-28 pb-16 space-y-10">
+      <section className="container pt-nav pb-16 space-y-10">
         <header className="max-w-3xl space-y-4">
           <p className="text-sm uppercase tracking-[0.3em] text-white/60">Instant ID</p>
           <h1 className="text-3xl md:text-4xl font-semibold text-white">Identify a fish with a quick photo upload</h1>

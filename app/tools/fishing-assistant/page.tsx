@@ -204,7 +204,7 @@ export default function FishingAssistantPage() {
   return (
     <main>
       <NavBar />
-      <section className="container space-y-10 pt-28 pb-16">
+      <section className="container space-y-10 pt-nav pb-16">
         <header className="max-w-3xl space-y-4">
           <p className="text-sm uppercase tracking-[0.3em] text-white/60">Hook&apos;d Pro Tool</p>
           <h1 className="text-3xl font-semibold text-white md:text-4xl">Rapid-fire fishing guidance, tuned for Hook&apos;d</h1>

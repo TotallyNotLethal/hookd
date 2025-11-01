@@ -217,7 +217,7 @@ export default function GroupsIndexPage() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-white">
       <NavBar />
-      <section className="container pt-28 pb-16">
+      <section className="container pt-nav pb-16">
         <header className="mb-12 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.3em] text-white/40">Crews</p>

@@ -11,6 +11,22 @@
   --nav-height: 5.5rem;
 }
 
+@layer utilities {
+  .pt-nav {
+    padding-top: var(--nav-height);
+  }
+
+  .pb-mobile-nav {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 4.5rem);
+  }
+
+  @screen sm {
+    .pb-mobile-nav {
+      padding-bottom: 0;
+    }
+  }
+}
+
 .leaflet-top {
   top: var(--nav-height);
 }

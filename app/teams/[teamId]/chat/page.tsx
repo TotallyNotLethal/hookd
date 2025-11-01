@@ -137,7 +137,7 @@ export default function TeamChatPage() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-white">
       <NavBar />
-      <section className="container pt-28 pb-16">
+      <section className="container pt-nav pb-16">
         <header className="mb-6 flex flex-col gap-2">
           <Link
             href="/teams"

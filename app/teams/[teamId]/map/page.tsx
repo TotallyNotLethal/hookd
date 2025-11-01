@@ -44,7 +44,7 @@ export default function TeamMapPage() {
     return (
       <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-white">
         <NavBar />
-        <section className="container pt-28 pb-16">
+        <section className="container pt-nav pb-16">
           <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-white/70">
             <p className="text-lg font-semibold text-white">Team not found</p>
             <p className="mt-2 text-sm text-white/60">
@@ -66,7 +66,7 @@ export default function TeamMapPage() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-white">
       <NavBar />
-      <section className="container pt-28 pb-16">
+      <section className="container pt-nav pb-16">
         {loading ? (
           <div className="flex items-center gap-3 rounded-3xl border border-white/10 bg-white/5 p-6 text-white/70">
             <Loader2 className="h-5 w-5 animate-spin" />

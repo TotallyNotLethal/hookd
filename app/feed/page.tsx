@@ -409,7 +409,7 @@ function FeedContent() {
   return (
     <main>
       <NavBar />
-      <section className="container pt-28 pb-10">
+      <section className="container pt-nav pb-10">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-semibold">Latest Catches</h2>
           <button className="btn-primary" onClick={() => setOpen(true)}>

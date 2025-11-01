@@ -15,7 +15,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <OfflineBanner />
-        <div className="min-h-screen pb-[calc(env(safe-area-inset-bottom)+4.5rem)] sm:pb-0">
+        <div className="min-h-screen pt-nav pb-mobile-nav">
           {children}
         </div>
         <MobileTabBar />

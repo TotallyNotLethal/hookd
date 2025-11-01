@@ -787,7 +787,7 @@ function ProfilePageContent() {
     return (
       <main>
         <NavBar />
-        <section className="container pt-28 pb-10">
+        <section className="container pt-nav pb-10">
           <div className="card p-6">
             <p className="text-white/70">Please sign in to view your profile.</p>
           </div>
@@ -799,7 +799,7 @@ function ProfilePageContent() {
   return (
     <main>
       <NavBar />
-      <section className="container pt-28 pb-10">
+      <section className="container pt-nav pb-10">
         <ProfileView
           profile={profile}
           catches={catches}
