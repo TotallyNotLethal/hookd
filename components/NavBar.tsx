@@ -335,7 +335,7 @@ export default function NavBar() {
             <div className="flex items-center gap-4">
               {/* Logo */}
               <Link href="/" className="flex items-center gap-3">
-                <Image src="/logo.svg" alt="Hook'd" width={36} height={36} className="rounded-xl shadow-glow" />
+                <Image src="/logo.svg" alt="" width={36} height={36} className="rounded-xl shadow-glow" />
                 <span className="text-xl font-semibold tracking-tight">Hook&apos;d</span>
               </Link>
 
@@ -588,7 +588,7 @@ export default function NavBar() {
           >
             <div className="flex items-center justify-between">
               <Link href="/" className="flex items-center gap-3" onClick={() => setIsMobileMenuOpen(false)}>
-                <Image src="/logo.svg" alt="Hook'd" width={32} height={32} className="rounded-xl shadow-glow" />
+                <Image src="/logo.svg" alt="" width={32} height={32} className="rounded-xl shadow-glow" />
                 <span className="text-lg font-semibold tracking-tight">Hook&apos;d</span>
               </Link>
               <button
