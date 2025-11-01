@@ -16,6 +16,7 @@ import { useAuthState } from 'react-firebase-hooks/auth';
 import { Loader2, MessageCircle, MessageSquare, MessageSquarePlus, Users, X } from 'lucide-react';
 
 import NavBar from '@/components/NavBar';
+import LoginButton from '@/components/auth/LoginButton';
 import DirectMessageThreadsList from '@/components/direct-messages/DirectMessageThreadsList';
 import Modal from '@/components/ui/Modal';
 import { collection, endAt, getDocs, limit, orderBy, query as firestoreQuery, startAt } from 'firebase/firestore';
@@ -627,9 +628,9 @@ export default function ChatPage() {
                   <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
                     <p>Sign in to join the conversation and sync your messages across devices.</p>
                     <div>
-                      <Link href="/login" className="btn-primary inline-flex items-center justify-center px-4 py-2 text-sm">
+                      <LoginButton className="btn-primary inline-flex items-center justify-center px-4 py-2 text-sm">
                         Log in to chat
-                      </Link>
+                      </LoginButton>
                     </div>
                   </div>
                 ) : null}
@@ -785,10 +786,10 @@ export default function ChatPage() {
             ) : (
               <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-sm text-white/70">
                 <p className="mb-3">Sign in to view and send private messages.</p>
-                <Link href="/login" className="btn-primary inline-flex items-center justify-center gap-2 px-4 py-2 text-sm">
+                <LoginButton className="btn-primary inline-flex items-center justify-center gap-2 px-4 py-2 text-sm">
                   <MessageSquarePlus className="h-4 w-4" />
                   Log in to message anglers
-                </Link>
+                </LoginButton>
               </div>
             )}
           </div>

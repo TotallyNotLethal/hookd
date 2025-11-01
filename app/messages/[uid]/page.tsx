@@ -9,6 +9,7 @@ import clsx from 'clsx';
 import { Loader2, Lock, MailPlus } from 'lucide-react';
 
 import NavBar from '@/components/NavBar';
+import LoginButton from '@/components/auth/LoginButton';
 import { auth } from '@/lib/firebaseClient';
 import {
   DirectMessage,
@@ -277,10 +278,10 @@ export default function DirectMessagePage() {
             ) : !user ? (
               <div className="flex flex-col items-center gap-4 p-8 text-center text-sm text-white/70">
                 <p>Sign in to send private messages.</p>
-                <Link href="/login" className="btn-primary inline-flex items-center justify-center gap-2 px-4 py-2 text-sm">
+                <LoginButton className="btn-primary inline-flex items-center justify-center gap-2 px-4 py-2 text-sm">
                   <MailPlus className="h-4 w-4" />
                   Log in to continue
-                </Link>
+                </LoginButton>
               </div>
             ) : user.uid === otherUid ? (
               <div className="p-8 text-sm text-white/70">

@@ -5,6 +5,7 @@ import { useAuthState } from 'react-firebase-hooks/auth';
 import { MessageCircle, MessageSquarePlus } from 'lucide-react';
 
 import NavBar from '@/components/NavBar';
+import LoginButton from '@/components/auth/LoginButton';
 import DirectMessageThreadsList from '@/components/direct-messages/DirectMessageThreadsList';
 import { auth } from '@/lib/firebaseClient';
 
@@ -31,10 +32,10 @@ export default function MessagesPage() {
             {!user ? (
               <div className="p-8 text-center text-sm text-white/70">
                 <p className="mb-4">Sign in to view and send private messages.</p>
-                <Link href="/login" className="btn-primary inline-flex items-center justify-center gap-2 px-4 py-2 text-sm">
+                <LoginButton className="btn-primary inline-flex items-center justify-center gap-2 px-4 py-2 text-sm">
                   <MessageSquarePlus className="h-4 w-4" />
                   Log in to message anglers
-                </Link>
+                </LoginButton>
               </div>
             ) : (
               <div className="p-6">

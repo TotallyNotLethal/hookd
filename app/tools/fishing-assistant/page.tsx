@@ -9,6 +9,7 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import type { Options as RehypeSanitizeOptions } from "rehype-sanitize";
 
 import NavBar from "@/components/NavBar";
+import LoginButton from "@/components/auth/LoginButton";
 import { useProAccess } from "@/hooks/useProAccess";
 
 type ChatRole = "user" | "assistant";
@@ -232,9 +233,9 @@ export default function FishingAssistantPage() {
                   Manage membership
                 </Link>
               ) : (
-                <Link href="/login" className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm">
+                <LoginButton className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm">
                   Sign in to upgrade
-                </Link>
+                </LoginButton>
               )}
               <Link
                 href="/map"

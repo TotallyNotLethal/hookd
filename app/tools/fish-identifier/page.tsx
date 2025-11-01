@@ -6,6 +6,7 @@ import Image from "next/image";
 import { Loader2 } from "lucide-react";
 
 import NavBar from "@/components/NavBar";
+import LoginButton from "@/components/auth/LoginButton";
 import { useProAccess } from "@/hooks/useProAccess";
 
 interface CandidatePrediction {
@@ -101,15 +102,15 @@ export default function FishIdentifierPage() {
               creation tools.
             </p>
             <div className="flex flex-wrap gap-3">
-              {profile ? (
-                <Link href="/profile" className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm">
-                  Manage membership
-                </Link>
-              ) : (
-                <Link href="/login" className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm">
-                  Sign in to upgrade
-                </Link>
-              )}
+            {profile ? (
+              <Link href="/profile" className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm">
+                Manage membership
+              </Link>
+            ) : (
+              <LoginButton className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm">
+                Sign in to upgrade
+              </LoginButton>
+            )}
               <Link
                 href="/tools/fishing-assistant"
                 className="inline-flex items-center gap-2 rounded-xl border border-amber-300/40 px-4 py-2 text-sm text-amber-100 transition hover:border-amber-200/60 hover:text-amber-50"

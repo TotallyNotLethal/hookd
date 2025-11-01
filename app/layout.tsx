@@ -3,6 +3,7 @@ import "./globals.css";
 
 import MobileTabBar from "@/components/MobileTabBar";
 import OfflineBanner from "@/components/OfflineBanner";
+import { LoginModalProvider } from "@/components/auth/LoginModalContext";
 
 export const metadata: Metadata = {
   title: "Hook'd – Fishing Social",
@@ -14,11 +15,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
-        <OfflineBanner />
-        <div className="min-h-screen pt-nav pb-mobile-nav">
-          {children}
-        </div>
-        <MobileTabBar />
+        <LoginModalProvider>
+          <OfflineBanner />
+          <div className="min-h-screen pt-nav pb-mobile-nav">
+            {children}
+          </div>
+          <MobileTabBar />
+        </LoginModalProvider>
       </body>
     </html>
   );

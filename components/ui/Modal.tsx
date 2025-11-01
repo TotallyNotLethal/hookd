@@ -47,12 +47,73 @@ export default function Modal({
     document.body.style.overflow = 'hidden';
 
     const frame = requestAnimationFrame(() => {
-      contentRef.current?.focus();
+      const node = contentRef.current;
+      if (!node) {
+        return;
+      }
+      const focusableElements = Array.from(
+        node.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea, input, select, details, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => !element.hasAttribute('aria-hidden'));
+
+      if (focusableElements.length > 0) {
+        focusableElements[0].focus();
+      } else {
+        node.focus();
+      }
     });
 
     return () => {
       document.body.style.overflow = previousOverflow;
       cancelAnimationFrame(frame);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const node = contentRef.current;
+    if (!node) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') {
+        return;
+      }
+
+      const focusableElements = Array.from(
+        node.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea, input, select, details, [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => !element.hasAttribute('aria-hidden'));
+
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        node.focus();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const current = document.activeElement as HTMLElement | null;
+
+      if (event.shiftKey) {
+        if (!current || current === firstElement) {
+          event.preventDefault();
+          lastElement.focus();
+        }
+      } else {
+        if (!current || current === lastElement) {
+          event.preventDefault();
+          firstElement.focus();
+        }
+      }
+    };
+
+    node.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      node.removeEventListener('keydown', handleKeyDown);
     };
   }, [open]);
 

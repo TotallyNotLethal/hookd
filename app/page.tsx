@@ -3,6 +3,7 @@ import { auth } from "@/lib/firebaseClient";
 import NavBar from "@/components/NavBar";
 import Image from "next/image";
 import Link from "next/link";
+import LoginButton from "@/components/auth/LoginButton";
 import PostCard from "@/components/PostCard";
 import ConditionsWidget from "@/components/ConditionsWidget";
 import TrendingExplorer from "@/components/TrendingExplorer";
@@ -428,12 +429,9 @@ export default function Page() {
                   Share a Catch
                 </Link>
               ) : (
-                <Link
-                  href="/login"
-                  className="px-6 py-3 text-base md:text-lg rounded-xl border border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
-                >
+                <LoginButton className="px-6 py-3 text-base md:text-lg rounded-xl border border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">
                   Sign In
-                </Link>
+                </LoginButton>
               )}
             </div>
           </div>
