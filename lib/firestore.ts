@@ -4183,6 +4183,7 @@ export async function addComment(
     photoURL: data.photoURL ?? actorData?.photoURL ?? null,
     text: trimmed,
     createdAt: serverTimestamp(),
+    likesCount: 0,
   });
 
   await updateDoc(postRef, { commentsCount: increment(1) });
@@ -4347,6 +4348,94 @@ export async function updateComment(
       updatedAt: serverTimestamp(),
     });
   });
+}
+
+export async function toggleCommentLike(catchId: string, commentId: string, uid: string) {
+  if (!catchId || !commentId || !uid) {
+    throw new Error('Missing required parameters to toggle a comment like.');
+  }
+
+  const commentRef = doc(db, 'catches', catchId, 'comments', commentId);
+  const likeRef = doc(db, 'catches', catchId, 'comments', commentId, 'likes', uid);
+
+  await runTransaction(db, async (tx) => {
+    const commentSnap = await tx.get(commentRef);
+
+    if (!commentSnap.exists()) {
+      throw new Error('Comment not found.');
+    }
+
+    const likeSnap = await tx.get(likeRef);
+    const commentData = commentSnap.data() as Record<string, any>;
+    const currentLikes = typeof commentData.likesCount === 'number' ? commentData.likesCount : 0;
+
+    if (likeSnap.exists()) {
+      const nextLikes = Math.max(0, currentLikes - 1);
+      tx.delete(likeRef);
+      tx.update(commentRef, { likesCount: nextLikes });
+    } else {
+      const nextLikes = currentLikes + 1;
+      tx.set(likeRef, { uid, createdAt: serverTimestamp() });
+      tx.update(commentRef, { likesCount: nextLikes });
+    }
+  });
+}
+
+export function subscribeToCommentLikes(
+  catchId: string,
+  commentId: string,
+  uid: string | null | undefined,
+  cb: (state: { count: number; liked: boolean }) => void,
+) {
+  const commentRef = doc(db, 'catches', catchId, 'comments', commentId);
+  let latestCount = 0;
+  let latestLiked = false;
+  let hasCount = false;
+  let hasLiked = !uid;
+
+  const emitIfReady = () => {
+    if (hasCount && hasLiked) {
+      cb({ count: latestCount, liked: latestLiked });
+    }
+  };
+
+  const unsubscribeComment = onSnapshot(commentRef, (snapshot) => {
+    hasCount = true;
+    if (snapshot.exists()) {
+      const data = snapshot.data() as Record<string, any>;
+      latestCount = typeof data.likesCount === 'number' ? data.likesCount : 0;
+    } else {
+      latestCount = 0;
+    }
+    emitIfReady();
+  });
+
+  let unsubscribeLike: (() => void) | null = null;
+
+  if (uid) {
+    const likeRef = doc(db, 'catches', catchId, 'comments', commentId, 'likes', uid);
+    unsubscribeLike = onSnapshot(
+      likeRef,
+      (snapshot) => {
+        hasLiked = true;
+        latestLiked = snapshot.exists();
+        emitIfReady();
+      },
+      () => {
+        hasLiked = true;
+        latestLiked = false;
+        emitIfReady();
+      },
+    );
+  } else {
+    latestLiked = false;
+    emitIfReady();
+  }
+
+  return () => {
+    unsubscribeComment();
+    unsubscribeLike?.();
+  };
 }
 
 export function subscribeToComments(catchId: string, cb: (arr: any[]) => void) {
