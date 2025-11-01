@@ -57,6 +57,17 @@ body {
     radial-gradient(65% 60% at 50% 85%, rgba(14, 165, 233, 0.18), transparent 80%),
     linear-gradient(180deg, rgba(8, 26, 45, 0.65) 0%, rgba(11, 19, 33, 0.82) 55%, var(--bg) 100%);
   background-blend-mode: screen, screen, screen, normal;
+  background-repeat: no-repeat;
+  background-size:
+    130% 120%,
+    140% 130%,
+    160% 160%,
+    100% 100%;
+  background-position:
+    10% 5%,
+    90% 0%,
+    50% 110%,
+    50% 100%;
 }
 
 .profile-theme {
