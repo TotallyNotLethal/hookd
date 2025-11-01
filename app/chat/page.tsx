@@ -67,6 +67,8 @@ type UserProfile = {
   [key: string]: unknown;
 };
 
+const AUTO_SCROLL_THRESHOLD_PX = 120;
+
 export default function ChatPage() {
   const [user] = useAuthState(auth);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -80,6 +82,8 @@ export default function ChatPage() {
   const [isDmModalOpen, setIsDmModalOpen] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const messageListRef = useRef<HTMLDivElement | null>(null);
+  const shouldAutoScrollRef = useRef(true);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const mentionListId = 'chat-mention-suggestions';
@@ -190,8 +194,36 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
-    if (!endRef.current) return;
-    endRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    const container = messageListRef.current;
+    if (!container) return;
+
+    const updateShouldAutoScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const distanceFromBottom = scrollHeight - (scrollTop + clientHeight);
+      shouldAutoScrollRef.current = distanceFromBottom <= AUTO_SCROLL_THRESHOLD_PX;
+    };
+
+    updateShouldAutoScroll();
+    container.addEventListener('scroll', updateShouldAutoScroll);
+
+    return () => {
+      container.removeEventListener('scroll', updateShouldAutoScroll);
+    };
+  }, []);
+
+  useEffect(() => {
+    const container = messageListRef.current;
+    if (!container || !shouldAutoScrollRef.current) return;
+
+    const scrollToBottom = () => {
+      container.scrollTop = container.scrollHeight;
+    };
+
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(scrollToBottom);
+    } else {
+      scrollToBottom();
+    }
   }, [messages.length]);
 
   useEffect(() => {
@@ -765,7 +797,11 @@ export default function ChatPage() {
             </div>
 
             <div className="flex h-[60vh] flex-col">
-              <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-slate-950/40" aria-live="polite">
+              <div
+                ref={messageListRef}
+                className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-slate-950/40"
+                aria-live="polite"
+              >
                 {moderationError ? (
                   <div className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200">
                     {moderationError}
