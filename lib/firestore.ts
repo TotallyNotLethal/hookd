@@ -4311,6 +4311,44 @@ export async function deleteComment(catchId: string, commentId: string, requeste
   }
 }
 
+export async function updateComment(
+  catchId: string,
+  commentId: string,
+  requesterUid: string,
+  newText: string,
+) {
+  const trimmed = newText.trim();
+  if (!catchId || !commentId || !requesterUid) {
+    throw new Error('Missing required parameters to update a comment.');
+  }
+
+  if (!trimmed) {
+    throw new Error('Comment cannot be empty');
+  }
+
+  const commentRef = doc(db, 'catches', catchId, 'comments', commentId);
+
+  await runTransaction(db, async (tx) => {
+    const commentSnap = await tx.get(commentRef);
+
+    if (!commentSnap.exists()) {
+      throw new Error('Comment not found.');
+    }
+
+    const commentData = commentSnap.data() as Record<string, any>;
+    const authorUid = typeof commentData.uid === 'string' ? commentData.uid : null;
+
+    if (!authorUid || authorUid !== requesterUid) {
+      throw new Error('You do not have permission to edit this comment.');
+    }
+
+    tx.update(commentRef, {
+      text: trimmed,
+      updatedAt: serverTimestamp(),
+    });
+  });
+}
+
 export function subscribeToComments(catchId: string, cb: (arr: any[]) => void) {
   const q = query(collection(db, 'catches', catchId, 'comments'), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snap) => {
