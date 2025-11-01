@@ -153,6 +153,7 @@ export default function NavBar() {
   }, []);
 
   const isProMember = useMemo(() => Boolean(profile?.isPro), [profile?.isPro]);
+  const profileAriaLabel = isProMember ? 'Profile, Pro member' : 'Profile';
 
   const displayedNotifications = useMemo(() => notifications.slice(0, 20), [notifications]);
 
@@ -506,7 +507,7 @@ export default function NavBar() {
               {user ? (
                 <Link
                   href="/profile"
-                  aria-label="Profile"
+                  aria-label={profileAriaLabel}
                   className="relative hidden sm:inline-flex rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
                 >
                   <Image
@@ -542,7 +543,7 @@ export default function NavBar() {
               {user ? (
                 <Link
                   href="/profile"
-                  aria-label="Profile"
+                  aria-label={profileAriaLabel}
                   className="relative inline-flex rounded-full border border-white/15 p-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
                 >
                   <Image
