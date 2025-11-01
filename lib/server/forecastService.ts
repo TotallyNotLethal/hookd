@@ -326,6 +326,23 @@ function resolveTimezoneOffsetMinutes(timezone: string | null | undefined, refer
   if (!timezone) {
     return -reference.getTimezoneOffset();
   }
+
+  const trimmed = timezone.trim();
+  if (trimmed === "UTC" || trimmed === "GMT") {
+    return 0;
+  }
+
+  const utcOffsetMatch = /^UTC(?<sign>[+-])(\d{1,2})(?::?(\d{2}))?$/i.exec(trimmed);
+  if (utcOffsetMatch?.groups?.sign) {
+    const sign = utcOffsetMatch.groups.sign === "-" ? -1 : 1;
+    const hours = Number.parseInt(utcOffsetMatch[2] ?? "0", 10);
+    const minutes = Number.parseInt(utcOffsetMatch[3] ?? "0", 10);
+    if (Number.isFinite(hours) && Number.isFinite(minutes)) {
+      const offset = sign * (hours * 60 + minutes);
+      return Number.isNaN(offset) ? -reference.getTimezoneOffset() : offset;
+    }
+  }
+
   try {
     const formatter = new Intl.DateTimeFormat("en-US", {
       timeZone: timezone,
