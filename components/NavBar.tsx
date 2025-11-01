@@ -585,7 +585,7 @@ export default function NavBar() {
             className={`fixed inset-y-0 left-0 z-40 w-72 max-w-full transform border-r border-white/10 bg-slate-950/80 px-6 py-6 transition-transform duration-300 ease-in-out backdrop-blur ${
               isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
             }`}
-            aria-hidden={!isMobileMenuOpen}
+            inert={!isMobileMenuOpen}
           >
             <div className="flex items-center justify-between">
               <Link href="/" className="flex items-center gap-3" onClick={() => setIsMobileMenuOpen(false)}>
