@@ -652,7 +652,7 @@ export default function ConditionsWidget({
       <div className={`card p-4 flex flex-col gap-3 ${className}`}>
         <div>
           <p className="text-xs uppercase tracking-wide text-white/50">Hook&apos;d Pro</p>
-          <h3 className="font-semibold text-lg text-white">Bite Signals</h3>
+          <h2 className="font-semibold text-lg text-white">Bite Signals</h2>
         </div>
         <p className="text-sm text-white/70">
           Upgrade to Hook&apos;d Pro to unlock localized bite predictions powered by community catches and live conditions.
@@ -668,7 +668,7 @@ export default function ConditionsWidget({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs uppercase tracking-wide text-white/50">Bite Signals</p>
-          <h3 className="font-semibold text-lg text-white">{locationLabel}</h3>
+          <h2 className="font-semibold text-lg text-white">{locationLabel}</h2>
           <p className="mt-1 text-[11px] text-white/40">
             {locationStatus === "locating"
               ? "Detecting your location…"
