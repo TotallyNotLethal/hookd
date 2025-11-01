@@ -186,12 +186,18 @@ const createBaseLayerSources = (): BaseLayerSource[] => {
   ];
 };
 
+type FocusChangeMetadata = {
+  source?: "geolocation" | "search" | "marker";
+  label?: string;
+};
+
 type FishingMapProps = {
   allowedUids?: string[];
   includeReferenceSpots?: boolean;
   className?: string;
   showRegulationsToggle?: boolean;
   isProMember?: boolean;
+  onFocusChange?: (position: [number, number], metadata?: FocusChangeMetadata) => void;
 };
 
 const icon = new L.Icon({
@@ -283,6 +289,7 @@ export default function FishingMap({
   className,
   showRegulationsToggle = true,
   isProMember = false,
+  onFocusChange,
 }: FishingMapProps) {
   const router = useRouter();
   const [userPosition, setUserPosition] = useState<[number, number]>(DEFAULT_POSITION);
@@ -430,6 +437,16 @@ export default function FishingMap({
     setShowRegulations(allowRegulationOverlay);
   }, [allowRegulationOverlay]);
 
+  const handleFocusChange = useCallback(
+    (position: [number, number], metadata?: FocusChangeMetadata) => {
+      setUserPosition(position);
+      if (typeof onFocusChange === "function") {
+        onFocusChange(position, metadata);
+      }
+    },
+    [onFocusChange],
+  );
+
   const requestUserPosition = useCallback(() => {
     if (!geoSupported || typeof navigator === "undefined" || !navigator.geolocation) {
       setGeoStatus("Location detection isn't available in this browser.");
@@ -448,7 +465,8 @@ export default function FishingMap({
         if (!isMountedRef.current) {
           return;
         }
-        setUserPosition([position.coords.latitude, position.coords.longitude]);
+        const nextPosition: [number, number] = [position.coords.latitude, position.coords.longitude];
+        handleFocusChange(nextPosition, { source: "geolocation", label: "Your location" });
         setGeoLoading(false);
         setGeoStatus(null);
       },
@@ -462,7 +480,7 @@ export default function FishingMap({
       },
       { enableHighAccuracy: true, timeout: 5000 },
     );
-  }, [geoLoading, geoSupported]);
+  }, [geoLoading, geoSupported, handleFocusChange]);
 
   useEffect(() => {
     const unsubscribe = subscribeToCatchesWithCoordinates(
@@ -656,9 +674,10 @@ export default function FishingMap({
     if (map) {
       map.flyTo(nextPosition, Math.max(map.getZoom(), 11), { duration: 1.2 });
     }
-    setUserPosition(nextPosition);
+    const label = feature.place_name ?? feature.text ?? searchQuery;
+    handleFocusChange(nextPosition, { source: "search", label });
     setSearchResults([]);
-    setSearchQuery(feature.place_name ?? feature.text ?? searchQuery);
+    setSearchQuery(label);
     setSearchError(null);
   };
 
@@ -862,7 +881,18 @@ export default function FishingMap({
                       pathOptions={{ color: circleColor, weight: 1, fillColor: circleColor, fillOpacity: 0.7 }}
                     />
                   ))}
-                  <Marker position={[spot.latitude, spot.longitude]} icon={icon}>
+                  <Marker
+                    position={[spot.latitude, spot.longitude]}
+                    icon={icon}
+                    eventHandlers={{
+                      click: () => {
+                        handleFocusChange([spot.latitude, spot.longitude], {
+                          source: "marker",
+                          label: spot.name,
+                        });
+                      },
+                    }}
+                  >
                     <Popup>
                       <div className="space-y-2">
                         <h3 className="text-base font-semibold">{spot.name}</h3>

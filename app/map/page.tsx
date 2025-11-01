@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import NavBar from "@/components/NavBar";
 import TrendingExplorer from "@/components/TrendingExplorer";
 import ForecastPanel from "@/components/forecasts/ForecastPanel";
+import { Loader2, AlertTriangle } from "lucide-react";
 import {
   subscribeToActiveTournaments,
   subscribeToSpeciesTrendingInsights,
@@ -16,28 +17,35 @@ import type {
   Tournament,
   TournamentLeaderboardEntry,
 } from "@/lib/firestore";
-import { fishingSpots } from "@/lib/fishingSpots";
 import { useProAccess } from "@/hooks/useProAccess";
 
 const FishingMap = dynamic(() => import("@/components/FishingMap"), { ssr: false });
+
+type MapFocusMetadata = {
+  label?: string | null;
+  source?: "geolocation" | "search" | "marker";
+};
 
 export default function MapPage() {
   const [activeTournaments, setActiveTournaments] = useState<Tournament[]>([]);
   const [weightLeaders, setWeightLeaders] = useState<TournamentLeaderboardEntry[]>([]);
   const [lengthLeaders, setLengthLeaders] = useState<TournamentLeaderboardEntry[]>([]);
   const [speciesInsights, setSpeciesInsights] = useState<SpeciesTrendingInsight[]>([]);
-  const [selectedSpotId, setSelectedSpotId] = useState<string | null>(
-    fishingSpots.length > 0 ? fishingSpots[0]!.id : null
-  );
+  const [focusedLocation, setFocusedLocation] = useState<{
+    position: [number, number];
+    label?: string;
+  } | null>(null);
   const { isPro, profile } = useProAccess();
 
-  const selectedSpot = useMemo(() => {
-    if (!selectedSpotId) return fishingSpots[0] ?? null;
-    return fishingSpots.find((spot) => spot.id === selectedSpotId) ?? fishingSpots[0] ?? null;
-  }, [selectedSpotId]);
-
-  const forecastLatitude = selectedSpot?.latitude ?? 40.7989;
-  const forecastLongitude = selectedSpot?.longitude ?? -81.3784;
+  const handleMapFocusChange = useCallback(
+    (position: [number, number], metadata?: MapFocusMetadata) => {
+      setFocusedLocation({
+        position,
+        label: metadata?.label ?? undefined,
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     const unsubscribeWeight = subscribeToTournamentLeaderboardByWeight(10, (entries) => {
@@ -83,6 +91,10 @@ export default function MapPage() {
       <NavBar />
       <section className="px-4 pt-nav pb-16 sm:px-6">
         <div className="container space-y-10">
+          <div>
+            <FishingMap isProMember={isPro} onFocusChange={handleMapFocusChange} />
+          </div>
+
           <header className="max-w-3xl space-y-4">
             <p className="text-sm uppercase tracking-[0.3em] text-white/60">Plan smarter</p>
             <h1 className="text-3xl md:text-4xl font-semibold text-white">
@@ -93,41 +105,48 @@ export default function MapPage() {
               legally and efficiently. Adjust the filters to surface the best spots for your target species and tap a marker to
               review catches, baits, and bag limits.
             </p>
-        </header>
+          </header>
 
-        <div className="space-y-4">
-          <div className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-medium text-white">Environmental outlook</p>
-              <p className="text-xs text-white/60">
-                Compare bite windows before you drop a pin. Forecasts update every few minutes.
-              </p>
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-white/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium text-white">Environmental outlook</p>
+                <p className="text-xs text-white/60">
+                  Compare bite windows before you drop a pin. Forecasts update every few minutes.
+                </p>
+              </div>
+              <div className="flex flex-col items-start gap-1 text-xs text-white/60 sm:items-end">
+                <span className="uppercase tracking-[0.2em] text-white/40">Location</span>
+                {focusedLocation ? (
+                  <span className="text-sm font-semibold text-white">
+                    {focusedLocation.label ??
+                      `${focusedLocation.position[0].toFixed(3)}, ${focusedLocation.position[1].toFixed(3)}`}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2 text-xs text-white/60">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Waiting for map selection…
+                  </span>
+                )}
+              </div>
             </div>
-            <label className="text-xs text-white/70">
-              <span className="mr-2 uppercase tracking-[0.2em] text-white/40">Location</span>
-              <select
-                className="input bg-slate-950/80 text-sm"
-                value={selectedSpotId ?? ""}
-                onChange={(event) => setSelectedSpotId(event.target.value || null)}
-              >
-                {fishingSpots.slice(0, 12).map((spot) => (
-                  <option key={spot.id} value={spot.id}>
-                    {spot.name}, {spot.state}
-                  </option>
-                ))}
-              </select>
-            </label>
+
+            {focusedLocation ? (
+              <ForecastPanel
+                latitude={focusedLocation.position[0]}
+                longitude={focusedLocation.position[1]}
+                locationLabel={focusedLocation.label}
+                viewer={profile}
+              />
+            ) : (
+              <div className="glass rounded-3xl border border-dashed border-white/20 bg-white/5 p-6 text-sm text-white/70">
+                <div className="flex items-center gap-3 text-white/60">
+                  <AlertTriangle className="h-4 w-4" />
+                  Select a marker, search for a place, or use geolocation to load forecasts for a spot.
+                </div>
+              </div>
+            )}
           </div>
-
-          <ForecastPanel
-            latitude={forecastLatitude}
-            longitude={forecastLongitude}
-            locationLabel={selectedSpot ? `${selectedSpot.name}, ${selectedSpot.state}` : undefined}
-            viewer={profile}
-          />
-        </div>
-
-        <FishingMap isProMember={isPro} />
         </div>
       </section>
 
