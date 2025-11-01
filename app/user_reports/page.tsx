@@ -225,7 +225,7 @@ export default function UserReportsPage() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-white">
       <NavBar />
-      <section className="container pt-28 pb-16">
+      <section className="container pt-nav pb-16">
         <header className="mb-8 space-y-2">
           <div className="flex items-center gap-2 text-sm uppercase tracking-[0.2em] text-white/60">
             <ShieldAlert className="h-4 w-4" />

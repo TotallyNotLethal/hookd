@@ -388,7 +388,7 @@ export default function Page() {
       ) : null}
 
       {/* --- HERO SECTION --- */}
-      <section className="relative pt-28">
+      <section className="relative pt-nav">
         <div className="absolute inset-0 -z-10">
           <Image
             src="/sample/catches/bass1.jpg"

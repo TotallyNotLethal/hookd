@@ -347,7 +347,7 @@ export default function ProfilePage() {
   return (
     <main>
       <NavBar />
-      <section className="container space-y-6 pt-28 pb-10">
+      <section className="container space-y-6 pt-nav pb-10">
         {loading ? (
           <div className="card p-6">
             <p className="text-white/70">Loading profile…</p>

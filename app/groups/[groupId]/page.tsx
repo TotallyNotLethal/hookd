@@ -494,7 +494,7 @@ export default function GroupDetailPage() {
     return (
       <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-white">
         <NavBar />
-        <section className="container pt-28 pb-16">
+        <section className="container pt-nav pb-16">
           <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-white/70">
             <p className="text-lg font-semibold text-white">Sign in to view groups</p>
             <p className="mt-2 text-sm text-white/60">
@@ -510,7 +510,7 @@ export default function GroupDetailPage() {
     return (
       <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-white">
         <NavBar />
-        <section className="container pt-28 pb-16">
+        <section className="container pt-nav pb-16">
           <div className="rounded-3xl border border-red-500/40 bg-red-500/10 p-6 text-red-200">
             <p className="text-lg font-semibold">We couldn&apos;t load this group</p>
             <p className="mt-2 text-sm">{groupError}</p>
@@ -524,7 +524,7 @@ export default function GroupDetailPage() {
     return (
       <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-white">
         <NavBar />
-        <section className="container pt-28 pb-16">
+        <section className="container pt-nav pb-16">
           <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-white/70">
             <p className="text-lg font-semibold text-white">Group not found</p>
             <p className="mt-2 text-sm text-white/60">We couldn&apos;t locate that group. Double-check the link or return to the groups dashboard.</p>
@@ -544,7 +544,7 @@ export default function GroupDetailPage() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-white">
       <NavBar />
-      <section className="container pt-28 pb-16">
+      <section className="container pt-nav pb-16">
         <div className="space-y-12">
           <header className="flex flex-col gap-6 rounded-3xl border border-white/10 bg-white/5 p-6 md:flex-row md:items-center">
             <div className="flex items-center gap-4">

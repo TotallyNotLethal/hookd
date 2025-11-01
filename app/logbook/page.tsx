@@ -7,7 +7,7 @@ export default function LogbookPage() {
   return (
     <main>
       <NavBar />
-      <section className="container pt-28 pb-16">
+      <section className="container pt-nav pb-16">
         <LogbookContent />
       </section>
     </main>
