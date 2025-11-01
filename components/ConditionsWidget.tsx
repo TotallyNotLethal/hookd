@@ -359,11 +359,26 @@ export default function ConditionsWidget({
       Number.isFinite(fallbackLocation.latitude) &&
       Number.isFinite(fallbackLocation.longitude)
     ) {
-      setLocation({
-        name: fallbackLocation.name ?? "Your location",
-        latitude: fallbackLocation.latitude,
-        longitude: fallbackLocation.longitude,
-        timezone: fallbackLocation.timezone,
+      const targetName = fallbackLocation.name ?? "Your location";
+      setLocation((previous) => {
+        if (
+          previous &&
+          Number.isFinite(previous.latitude) &&
+          Number.isFinite(previous.longitude) &&
+          Math.abs(previous.latitude - fallbackLocation.latitude) < 1e-6 &&
+          Math.abs(previous.longitude - fallbackLocation.longitude) < 1e-6 &&
+          previous.timezone === fallbackLocation.timezone &&
+          previous.name === targetName
+        ) {
+          return previous;
+        }
+
+        return {
+          name: targetName,
+          latitude: fallbackLocation.latitude,
+          longitude: fallbackLocation.longitude,
+          timezone: fallbackLocation.timezone,
+        };
       });
       setGeolocationError(null);
       setLocationStatus((previous) => (previous === "locating" ? previous : "resolved"));
