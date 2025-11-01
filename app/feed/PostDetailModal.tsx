@@ -7,7 +7,9 @@ import {
   deleteComment,
   updateComment,
   subscribeToComments,
+  subscribeToCommentLikes,
   subscribeToUserLike,
+  toggleCommentLike,
   toggleLike,
 } from '@/lib/firestore';
 import { getAuth } from 'firebase/auth';
@@ -46,6 +48,8 @@ export default function PostDetailModal({
   const user = auth.currentUser;
   const router = useRouter();
   const [comments, setComments] = useState<any[]>([]);
+  const [commentLikesState, setCommentLikesState] = useState<Record<string, { count: number; liked: boolean }>>({});
+  const [commentLikePending, setCommentLikePending] = useState<Record<string, boolean>>({});
   const [text, setText] = useState('');
   const [liked, setLiked] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -124,6 +128,74 @@ export default function PostDetailModal({
       unsubComments?.();
     };
   }, [post.id, user?.uid]);
+
+  useEffect(() => {
+    if (!post?.id || comments.length === 0) {
+      return;
+    }
+
+    const unsubscribes = comments.map((comment) =>
+      subscribeToCommentLikes(post.id, comment.id, user?.uid ?? null, (state) => {
+        setCommentLikesState((prev) => {
+          const previous = prev[comment.id];
+          if (previous && previous.count === state.count && previous.liked === state.liked) {
+            return prev;
+          }
+          return { ...prev, [comment.id]: state };
+        });
+      }),
+    );
+
+    return () => {
+      unsubscribes.forEach((unsub) => {
+        if (typeof unsub === 'function') {
+          unsub();
+        }
+      });
+    };
+  }, [comments, post?.id, user?.uid]);
+
+  useEffect(() => {
+    const validIds = new Set(comments.map((comment) => comment.id));
+
+    setCommentLikesState((prev) => {
+      let changed = false;
+      const next: typeof prev = {};
+
+      for (const [id, value] of Object.entries(prev)) {
+        if (validIds.has(id)) {
+          next[id] = value;
+        } else {
+          changed = true;
+        }
+      }
+
+      if (!changed && Object.keys(prev).length === Object.keys(next).length) {
+        return prev;
+      }
+
+      return next;
+    });
+
+    setCommentLikePending((prev) => {
+      let changed = false;
+      const next: typeof prev = {};
+
+      for (const [id, value] of Object.entries(prev)) {
+        if (validIds.has(id)) {
+          next[id] = value;
+        } else {
+          changed = true;
+        }
+      }
+
+      if (!changed && Object.keys(prev).length === Object.keys(next).length) {
+        return prev;
+      }
+
+      return next;
+    });
+  }, [comments]);
 
   async function sendComment() {
     if (!user || !text.trim()) return;
@@ -235,6 +307,47 @@ export default function PostDetailModal({
       setSavingCommentId(null);
     }
   }, [comments, editingCommentId, editingText, handleCancelEditComment, post?.id, user?.uid]);
+
+  const handleToggleCommentLike = useCallback(async (commentId: string) => {
+    if (!post?.id || !user?.uid) return;
+    if (commentLikePending[commentId]) return;
+
+    const target = comments.find((comment) => comment.id === commentId);
+    if (!target) return;
+
+    const previousState = commentLikesState[commentId];
+    const currentCount = previousState?.count
+      ?? (typeof target.likesCount === 'number' ? target.likesCount : 0);
+    const currentLiked = previousState?.liked ?? false;
+    const nextLiked = !currentLiked;
+    const nextCount = Math.max(0, currentCount + (nextLiked ? 1 : -1));
+
+    setCommentLikePending((prev) => ({ ...prev, [commentId]: true }));
+    setCommentLikesState((prev) => ({
+      ...prev,
+      [commentId]: { count: nextCount, liked: nextLiked },
+    }));
+
+    try {
+      await toggleCommentLike(post.id, commentId, user.uid);
+    } catch (error) {
+      console.error('Failed to toggle comment like', error);
+      setCommentLikesState((prev) => {
+        if (previousState) {
+          return { ...prev, [commentId]: previousState };
+        }
+        const clone = { ...prev };
+        delete clone[commentId];
+        return clone;
+      });
+      alert('Failed to update like. Please try again.');
+    } finally {
+      setCommentLikePending((prev) => {
+        const { [commentId]: _ignored, ...rest } = prev;
+        return rest;
+      });
+    }
+  }, [commentLikePending, commentLikesState, comments, post?.id, user?.uid]);
 
   const postTime = post?.createdAt?.seconds
     ? timeAgo(post.createdAt.seconds * 1000)
@@ -843,6 +956,11 @@ export default function PostDetailModal({
                       const isDeletingComment = commentActionBusy === c.id;
                       const isEditing = editingCommentId === c.id;
                       const isSavingEdit = savingCommentId === c.id;
+                      const commentLikeState = commentLikesState[c.id];
+                      const commentLiked = commentLikeState?.liked ?? false;
+                      const commentLikesCount = commentLikeState?.count
+                        ?? (typeof c.likesCount === 'number' ? c.likesCount : 0);
+                      const likeButtonDisabled = !user?.uid || Boolean(commentLikePending[c.id]);
                       const createdAtSeconds = typeof c.createdAt?.seconds === 'number'
                         ? c.createdAt.seconds
                         : null;
@@ -904,6 +1022,24 @@ export default function PostDetailModal({
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleToggleCommentLike(c.id)}
+                                disabled={likeButtonDisabled}
+                                className={`flex items-center gap-1 text-xs transition ${
+                                  commentLiked
+                                    ? 'text-red-400'
+                                    : 'opacity-60 hover:opacity-100'
+                                } ${likeButtonDisabled ? 'cursor-default opacity-40' : ''}`}
+                                title={commentLiked ? 'Unlike comment' : 'Like comment'}
+                              >
+                                <Heart
+                                  className={`h-4 w-4 ${
+                                    commentLiked ? 'fill-red-400 stroke-red-400' : ''
+                                  }`}
+                                />
+                                <span>{commentLikesCount}</span>
+                              </button>
                               {canEditComment && !isEditing && (
                                 <button
                                   type="button"
