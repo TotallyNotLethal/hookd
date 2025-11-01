@@ -39,6 +39,26 @@ body {
   @apply rounded-2xl bg-[var(--card)] border border-white/10 shadow-soft;
 }
 
+.hero-surface {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background-color: var(--bg);
+}
+
+.hero-surface::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(85% 65% at 20% 25%, rgba(56, 189, 248, 0.28), transparent 70%),
+    radial-gradient(70% 60% at 80% 20%, rgba(59, 130, 246, 0.24), transparent 75%),
+    radial-gradient(65% 60% at 50% 85%, rgba(14, 165, 233, 0.18), transparent 80%),
+    linear-gradient(180deg, rgba(8, 26, 45, 0.65) 0%, rgba(11, 19, 33, 0.82) 55%, var(--bg) 100%);
+  background-blend-mode: screen, screen, screen, normal;
+}
+
 .profile-theme {
   --profile-accent-strong: #0d8be6;
   --profile-accent-soft: rgba(13, 139, 230, 0.14);

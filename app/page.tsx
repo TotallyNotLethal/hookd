@@ -1,7 +1,6 @@
 'use client';
 import { auth } from "@/lib/firebaseClient";
 import NavBar from "@/components/NavBar";
-import Image from "next/image";
 import Link from "next/link";
 import PostCard from "@/components/PostCard";
 import ConditionsWidget from "@/components/ConditionsWidget";
@@ -388,16 +387,7 @@ export default function Page() {
       ) : null}
 
       {/* --- HERO SECTION --- */}
-      <section className="relative pt-28">
-        <div className="absolute inset-0 -z-10">
-          <Image
-            src="/sample/catches/bass1.jpg"
-            alt="Angler proudly holding a largemouth bass at sunset"
-            fill
-            className="object-cover opacity-30 brightness-110"
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-[rgba(8,26,45,0.6)] via-[rgba(11,19,33,0.8)] to-[var(--bg)]" />
-        </div>
+      <section className="relative pt-28 hero-surface">
 
         <div className="container grid lg:grid-cols-2 gap-10 items-center py-16">
           <div className="space-y-6">
