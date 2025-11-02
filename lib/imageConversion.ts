@@ -132,7 +132,57 @@ async function loadDrawableResource(file: File): Promise<DrawableResource> {
   return loadViaImageElement(file);
 }
 
+async function convertUsingHeic2Any(file: File): Promise<PreparedImage | null> {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const heic2anyModule = await import('heic2any');
+    const heic2any = (heic2anyModule as { default?: unknown }).default ?? heic2anyModule;
+
+    if (typeof heic2any !== 'function') {
+      return null;
+    }
+
+    const result = await (heic2any as (
+      options: { blob: Blob; toType?: string; quality?: number }
+    ) => Promise<Blob | Blob[]>)(
+      {
+        blob: file,
+        toType: DEFAULT_OUTPUT_TYPE,
+        quality: DEFAULT_QUALITY,
+      },
+    );
+
+    const blob = Array.isArray(result) ? result[0] : result;
+    if (!(blob instanceof Blob)) {
+      return null;
+    }
+
+    const extension = DEFAULT_OUTPUT_TYPE.split('/')[1] ?? 'jpg';
+    const convertedFile = new File([blob], deriveConvertedName(file, extension), {
+      type: blob.type || DEFAULT_OUTPUT_TYPE,
+      lastModified: file.lastModified,
+    });
+
+    return {
+      file: convertedFile,
+      originalFile: file,
+      converted: true,
+    };
+  } catch (error) {
+    console.warn('heic2any conversion failed. Falling back to canvas based conversion.', error);
+    return null;
+  }
+}
+
 async function convertHeicFile(file: File): Promise<PreparedImage> {
+  const heic2anyResult = await convertUsingHeic2Any(file);
+  if (heic2anyResult) {
+    return heic2anyResult;
+  }
+
   const resource = await loadDrawableResource(file);
 
   const { width, height } = resource;
