@@ -324,6 +324,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
   const [coordinatesResolvedName, setCoordinatesResolvedName] = useState<string | null>(null);
   const initialCaptureRef = useRef<{ date: string; time: string } | null>(null);
+  const previousUploadsRef = useRef<UploadSelection[]>([]);
   const [captureWasCorrected, setCaptureWasCorrected] = useState(false);
   const [environmentSnapshot, setEnvironmentSnapshot] = useState<EnvironmentSnapshot | null>(null);
   const [environmentBands, setEnvironmentBands] = useState<EnvironmentBands | null>(null);
@@ -1120,10 +1121,24 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   }, [isSelectingCatchUploads, pendingUploads]);
 
   useEffect(() => {
-    return () => {
-      allUploads.forEach((upload) => URL.revokeObjectURL(upload.previewUrl));
-    };
+    const previousUploads = previousUploadsRef.current;
+    if (previousUploads.length) {
+      const currentIds = new Set(allUploads.map((upload) => upload.id));
+      for (const upload of previousUploads) {
+        if (!currentIds.has(upload.id)) {
+          URL.revokeObjectURL(upload.previewUrl);
+        }
+      }
+    }
+
+    previousUploadsRef.current = allUploads;
   }, [allUploads]);
+
+  useEffect(() => {
+    return () => {
+      previousUploadsRef.current.forEach((upload) => URL.revokeObjectURL(upload.previewUrl));
+    };
+  }, []);
 
   useEffect(() => {
     isMountedRef.current = true;
