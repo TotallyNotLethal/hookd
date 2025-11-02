@@ -144,6 +144,21 @@ type UploadSelection = {
   previewUrl: string;
 };
 
+const mergeUploads = (...groups: UploadSelection[][]): UploadSelection[] => {
+  const seen = new Set<string>();
+  const merged: UploadSelection[] = [];
+
+  for (const group of groups) {
+    for (const item of group) {
+      if (seen.has(item.id)) continue;
+      seen.add(item.id);
+      merged.push(item);
+    }
+  }
+
+  return merged;
+};
+
 const parseGpsPositionString = (value: unknown): Coordinates | null => {
   if (typeof value !== 'string') {
     return null;
@@ -309,6 +324,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
   const [coordinatesResolvedName, setCoordinatesResolvedName] = useState<string | null>(null);
   const initialCaptureRef = useRef<{ date: string; time: string } | null>(null);
+  const previousUploadsRef = useRef<UploadSelection[]>([]);
   const [captureWasCorrected, setCaptureWasCorrected] = useState(false);
   const [environmentSnapshot, setEnvironmentSnapshot] = useState<EnvironmentSnapshot | null>(null);
   const [environmentBands, setEnvironmentBands] = useState<EnvironmentBands | null>(null);
@@ -1002,21 +1018,95 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     }
 
     resetCatchDetails();
-    setPendingUploads((previous) => {
-      const merged = [...currentCatchUploads, ...previous];
-      const seen = new Set<string>();
-      const deduped: UploadSelection[] = [];
-      for (const item of merged) {
-        if (seen.has(item.id)) continue;
-        seen.add(item.id);
-        deduped.push(item);
-      }
-      return deduped;
-    });
+    setPendingUploads((previous) => mergeUploads(currentCatchUploads, previous));
     setSelectedUploadIds(new Set(currentCatchUploads.map((upload) => upload.id)));
     setCurrentCatchUploads([]);
     setIsSelectingCatchUploads(true);
   }, [currentCatchUploads, resetCatchDetails]);
+
+  const handleRemoveUploadCompletely = useCallback(
+    (id: string) => {
+      const nextAllUploads = allUploads.filter((upload) => upload.id !== id);
+      const nextPendingUploads = pendingUploads.filter((upload) => upload.id !== id);
+      const nextCurrentCatchUploads = currentCatchUploads.filter((upload) => upload.id !== id);
+
+      if (nextAllUploads.length === allUploads.length) {
+        return;
+      }
+
+      const removedUpload = allUploads.find((upload) => upload.id === id);
+      if (removedUpload) {
+        URL.revokeObjectURL(removedUpload.previewUrl);
+      }
+
+      setAllUploads(nextAllUploads);
+      setPendingUploads(nextPendingUploads);
+      setCurrentCatchUploads(nextCurrentCatchUploads);
+
+      let nextSelectedIds = new Set(selectedUploadIds);
+      nextSelectedIds.delete(id);
+
+      if (nextAllUploads.length === 0) {
+        resetCatchDetails();
+        setPendingUploads([]);
+        setCurrentCatchUploads([]);
+        setIsSelectingCatchUploads(false);
+        nextSelectedIds = new Set();
+        setSelectedUploadIds(nextSelectedIds);
+        return;
+      }
+
+      if (!isSelectingCatchUploads && nextCurrentCatchUploads.length === 0) {
+        resetCatchDetails();
+        if (nextPendingUploads.length > 0) {
+          setIsSelectingCatchUploads(true);
+          nextSelectedIds = new Set();
+        }
+      }
+
+      if (isSelectingCatchUploads && nextPendingUploads.length === 0) {
+        resetCatchDetails();
+        setIsSelectingCatchUploads(false);
+      }
+
+      setSelectedUploadIds(nextSelectedIds);
+    },
+    [
+      allUploads,
+      currentCatchUploads,
+      isSelectingCatchUploads,
+      pendingUploads,
+      resetCatchDetails,
+      selectedUploadIds,
+    ],
+  );
+
+  const handleReturnUploadToSelection = useCallback(
+    (id: string) => {
+      const upload = currentCatchUploads.find((item) => item.id === id);
+      if (!upload) {
+        return;
+      }
+
+      const nextCurrentCatchUploads = currentCatchUploads.filter((item) => item.id !== id);
+      const nextPendingUploads = mergeUploads([upload], pendingUploads);
+
+      setCurrentCatchUploads(nextCurrentCatchUploads);
+      setPendingUploads(nextPendingUploads);
+
+      let nextSelectedIds = new Set(selectedUploadIds);
+      nextSelectedIds.delete(id);
+
+      if (nextCurrentCatchUploads.length === 0) {
+        resetCatchDetails();
+        setIsSelectingCatchUploads(true);
+        nextSelectedIds = new Set([upload.id]);
+      }
+
+      setSelectedUploadIds(nextSelectedIds);
+    },
+    [currentCatchUploads, pendingUploads, resetCatchDetails, selectedUploadIds],
+  );
 
   useEffect(() => {
     if (!isSelectingCatchUploads) {
@@ -1031,10 +1121,24 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   }, [isSelectingCatchUploads, pendingUploads]);
 
   useEffect(() => {
-    return () => {
-      allUploads.forEach((upload) => URL.revokeObjectURL(upload.previewUrl));
-    };
+    const previousUploads = previousUploadsRef.current;
+    if (previousUploads.length) {
+      const currentIds = new Set(allUploads.map((upload) => upload.id));
+      for (const upload of previousUploads) {
+        if (!currentIds.has(upload.id)) {
+          URL.revokeObjectURL(upload.previewUrl);
+        }
+      }
+    }
+
+    previousUploadsRef.current = allUploads;
   }, [allUploads]);
+
+  useEffect(() => {
+    return () => {
+      previousUploadsRef.current.forEach((upload) => URL.revokeObjectURL(upload.previewUrl));
+    };
+  }, []);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -1645,6 +1749,18 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
                         checked={selected}
                         onChange={() => handleToggleUploadSelection(upload.id)}
                       />
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          handleRemoveUploadCompletely(upload.id);
+                        }}
+                        className="absolute right-2 top-2 rounded-full bg-black/60 p-1 text-xs text-white transition hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                        aria-label="Delete photo"
+                      >
+                        ✕
+                      </button>
                       <img
                         src={upload.previewUrl}
                         alt={`Catch upload ${index + 1}`}
@@ -1668,7 +1784,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
                 })}
               </div>
               <p className="text-xs text-white/50">
-                Tip: Group multiple angles of the same fish together. Leave photos unchecked to log them as separate catches.
+                Tip: Group multiple angles of the same fish together. Leave photos unchecked to log them as separate catches, or
+                use the × button to delete images you do not want to upload.
               </p>
             </div>
           ) : (
@@ -1698,6 +1815,26 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
                         key={upload.id}
                         className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-lg border border-white/10"
                       >
+                        <div className="absolute right-1 top-1 flex flex-col gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleReturnUploadToSelection(upload.id)}
+                            className="rounded-full bg-black/60 p-1 text-[10px] text-white transition hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                            aria-label="Move photo back to selection"
+                            title="Move back to selection"
+                          >
+                            ↺
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveUploadCompletely(upload.id)}
+                            className="rounded-full bg-black/60 p-1 text-[10px] text-white transition hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400"
+                            aria-label="Delete photo"
+                            title="Delete photo"
+                          >
+                            ✕
+                          </button>
+                        </div>
                         <img
                           src={upload.previewUrl}
                           alt={`Catch photo ${index + 1}`}
@@ -1719,7 +1856,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
                     <span>
                       {pendingUploads.length
                         ? `${pendingUploads.length} photo${pendingUploads.length === 1 ? '' : 's'} waiting to be grouped.`
-                        : 'All uploaded photos are assigned to this catch.'}
+                        : 'All uploaded photos are assigned to this catch.'}{' '}
+                      Use the photo controls to return a shot to selection or delete it entirely.
                     </span>
                     <button
                       type="button"
@@ -2241,7 +2379,11 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
             <button type="button" onClick={onClose} className="btn-secondary w-full sm:w-auto">
               Cancel
             </button>
-            <button type="submit" disabled={uploading} className="btn-primary w-full sm:w-auto">
+            <button
+              type="submit"
+              disabled={uploading || currentCatchUploads.length === 0}
+              className="btn-primary w-full sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
+            >
               {uploading ? 'Uploading…' : 'Upload'}
             </button>
           </div>
