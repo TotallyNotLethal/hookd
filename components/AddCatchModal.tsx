@@ -39,6 +39,7 @@ import {
 } from '@/lib/regulationsStore';
 import FishSelector from './FishSelector';
 import WeightPicker, { type WeightValue } from './WeightPicker';
+import { ImageConversionError, prepareImageForUpload } from '@/lib/imageConversion';
 
 const DEFAULT_CENTER = { lat: 39.8283, lng: -98.5795 };
 const EMPTY_TOURNAMENT_HASHTAGS: string[] = [];
@@ -139,6 +140,7 @@ interface Coordinates {
 type UploadSelection = {
   id: string;
   file: File;
+  originalFile: File;
   previewUrl: string;
 };
 
@@ -767,11 +769,14 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     setIsNativeApp(isCapacitorNative());
   }, []);
 
-  const makeUploadSelection = useCallback((selectedFile: File): UploadSelection => {
+  const makeUploadSelection = useCallback(async (selectedFile: File): Promise<UploadSelection> => {
+    const prepared = await prepareImageForUpload(selectedFile);
+    const previewUrl = URL.createObjectURL(prepared.file);
     return {
       id: crypto.randomUUID(),
-      file: selectedFile,
-      previewUrl: URL.createObjectURL(selectedFile),
+      file: prepared.file,
+      originalFile: prepared.originalFile,
+      previewUrl,
     };
   }, []);
 
@@ -787,9 +792,10 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       if (!primaryFile) {
         return;
       }
+      const primaryOriginalFile = uploads[0]?.originalFile ?? primaryFile;
 
       setFile(primaryFile);
-      setOriginalFile(primaryFile);
+      setOriginalFile(primaryOriginalFile);
       setReadingMetadata(true);
       setCaptureDate('');
       setCaptureTime('');
@@ -808,7 +814,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       setLocationError(null);
 
       try {
-        const metadata = (await parse(primaryFile, {
+        const metadata = (await parse(primaryOriginalFile, {
           pick: [
             'DateTimeOriginal',
             'GPSLatitude',
@@ -887,43 +893,70 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
 
   const loadSingleFile = useCallback(
     async (selectedFile: File) => {
-      const upload = makeUploadSelection(selectedFile);
-      setAllUploads([upload]);
-      setPendingUploads([]);
-      setIsSelectingCatchUploads(false);
-      setSelectedUploadIds(new Set([upload.id]));
-      setCompletedCatchCount(0);
-      await initializeCatchFromUploads([upload]);
+      try {
+        const upload = await makeUploadSelection(selectedFile);
+        setAllUploads([upload]);
+        setPendingUploads([]);
+        setIsSelectingCatchUploads(false);
+        setSelectedUploadIds(new Set([upload.id]));
+        setCompletedCatchCount(0);
+        await initializeCatchFromUploads([upload]);
+      } catch (error) {
+        console.error('Unable to prepare photo for upload', error);
+        const message =
+          error instanceof ImageConversionError
+            ? error.message
+            : 'We were unable to process that photo. Please try again with a JPEG or PNG image.';
+        alert(message);
+      }
     },
     [initializeCatchFromUploads, makeUploadSelection],
   );
 
   const handleUploadInputChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
-      const files = event.target.files;
+      const input = event.target;
+      const files = input.files;
       if (!files || files.length === 0) {
         return;
       }
 
-      const uploads = Array.from(files, (item) => makeUploadSelection(item));
-      setAllUploads(uploads);
-      setCompletedCatchCount(0);
+      const preparedUploads: UploadSelection[] = [];
+      try {
+        for (const item of Array.from(files)) {
+          const upload = await makeUploadSelection(item);
+          preparedUploads.push(upload);
+        }
+        const uploads = preparedUploads;
+        setAllUploads(uploads);
+        setCompletedCatchCount(0);
 
-      if (uploads.length === 1) {
-        await initializeCatchFromUploads(uploads);
-        setPendingUploads([]);
-        setIsSelectingCatchUploads(false);
-        setSelectedUploadIds(new Set([uploads[0]!.id]));
-      } else {
-        resetCatchDetails();
-        setCurrentCatchUploads([]);
-        setPendingUploads(uploads);
-        setIsSelectingCatchUploads(true);
-        setSelectedUploadIds(new Set());
+        if (uploads.length === 1) {
+          await initializeCatchFromUploads(uploads);
+          setPendingUploads([]);
+          setIsSelectingCatchUploads(false);
+          setSelectedUploadIds(new Set([uploads[0]!.id]));
+        } else {
+          resetCatchDetails();
+          setCurrentCatchUploads([]);
+          setPendingUploads(uploads);
+          setIsSelectingCatchUploads(true);
+          setSelectedUploadIds(new Set());
+        }
+      } catch (error) {
+        console.error('Unable to prepare selected photos for upload', error);
+        preparedUploads.forEach((upload) => {
+          URL.revokeObjectURL(upload.previewUrl);
+        });
+        const message =
+          error instanceof ImageConversionError
+            ? error.message
+            : 'We were unable to process one of the selected photos. Please try again with JPEG or PNG images.';
+        alert(message);
+      } finally {
+        // allow re-selecting the same files
+        input.value = '';
       }
-
-      // allow re-selecting the same files
-      event.target.value = '';
     },
     [initializeCatchFromUploads, makeUploadSelection, resetCatchDetails],
   );
