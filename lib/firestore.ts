@@ -2,6 +2,7 @@
 import { FirebaseError } from "firebase/app";
 import { app, db } from "./firebaseClient";
 import { validateAndNormalizeUsername } from "./username";
+import { getCachedValue, primeCachedValue, setCachedValue } from "./localCache";
 import {
   doc, setDoc, getDoc, updateDoc, serverTimestamp,
   addDoc, collection, onSnapshot, orderBy, query, where,
@@ -69,6 +70,21 @@ export async function uploadTeamAsset(teamId: string, file: File) {
   await uploadBytes(storageRef, file, { contentType: file.type });
   const url = await getDownloadURL(storageRef);
   return url;
+}
+
+const FEED_CACHE_TTL_MS = 1000 * 60 * 10; // 10 minutes
+const PROFILE_CACHE_TTL_MS = 1000 * 60 * 60; // 1 hour
+const MAP_CACHE_TTL_MS = 1000 * 60 * 30; // 30 minutes
+
+const FEED_CACHE_LIMIT = 50;
+const PROFILE_CATCH_CACHE_LIMIT = 100;
+const MAP_CATCH_CACHE_LIMIT = 250;
+
+function cacheArraySubset<T>(key: string, values: T[], limit: number) {
+  const maxItems = Number.isFinite(limit) && limit >= 0 ? Math.floor(limit) : values.length;
+  const payload =
+    maxItems >= 0 && maxItems < values.length ? values.slice(0, maxItems) : values.slice();
+  setCachedValue(key, payload as unknown as T[]);
 }
 
 /** ---------- Types ---------- */
@@ -1044,10 +1060,14 @@ export function applyAcceptedMemberToTeamArrays(team: TeamArrays, memberUid: str
 }
 
 export function subscribeToTeamMembership(uid: string, cb: (membership: TeamMembership | null) => void) {
+  const cacheKey = `team-membership:${uid}`;
+  primeCachedValue<TeamMembership | null>(cacheKey, cb, { maxAgeMs: PROFILE_CACHE_TTL_MS });
+
   const membershipRef = doc(db, 'teamMemberships', uid);
   return onSnapshot(membershipRef, (snap) => {
     if (!snap.exists()) {
       cb(null);
+      setCachedValue(cacheKey, null);
       return;
     }
 
@@ -1064,11 +1084,14 @@ export function subscribeToTeamMembership(uid: string, cb: (membership: TeamMemb
         ? data.updatedAt.toDate()
         : null;
 
-    cb({
+    const membership: TeamMembership = {
       teamId: typeof data.teamId === 'string' && data.teamId ? data.teamId : null,
       createdAt,
       updatedAt,
-    });
+    };
+
+    cb(membership);
+    setCachedValue(cacheKey, membership);
   });
 }
 
@@ -1812,15 +1835,19 @@ export function subscribeToNewestUser(cb: (user: HookdUser | null) => void) {
 }
 
 export function subscribeToUser(uid: string, cb: (u: HookdUser | null) => void) {
+  const cacheKey = `user:${uid}`;
+  primeCachedValue<HookdUser | null>(cacheKey, cb, { maxAgeMs: PROFILE_CACHE_TTL_MS });
+
   const refUser = doc(db, 'users', uid);
   return onSnapshot(refUser, (snap) => {
     if (!snap.exists()) {
       cb(null);
+      setCachedValue(cacheKey, null);
       return;
     }
 
     const data = snap.data() as HookdUser;
-    cb({
+    const normalized: HookdUser = {
       ...data,
       uid,
       isModerator: Boolean(data.isModerator),
@@ -1832,7 +1859,10 @@ export function subscribeToUser(uid: string, cb: (u: HookdUser | null) => void) 
       blockedUserIds: sanitizeUidList(data.blockedUserIds),
       blockedByUserIds: sanitizeUidList(data.blockedByUserIds),
       licenseReminderSettings: sanitizeLicenseReminderSettings(data.licenseReminderSettings),
-    });
+    };
+
+    cb(normalized);
+    setCachedValue(cacheKey, normalized);
   });
 }
 
@@ -2046,11 +2076,22 @@ export async function unblockUser(actorUid: string, targetUid: string) {
 }
 
 export function subscribeToUserCatches(uid: string, cb: (arr: any[]) => void) {
+  const cacheKey = `user:${uid}:catches`;
+  const cached = getCachedValue<any[]>(cacheKey, { maxAgeMs: PROFILE_CACHE_TTL_MS });
+  if (Array.isArray(cached)) {
+    try {
+      cb(cached);
+    } catch (error) {
+      console.error('Failed to deliver cached catches for user', uid, error);
+    }
+  }
+
   const q = query(collection(db, 'catches'), where('uid', '==', uid), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snap) => {
     const arr: any[] = [];
     snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
     cb(arr);
+    cacheArraySubset(cacheKey, arr, PROFILE_CATCH_CACHE_LIMIT);
   });
 }
 
@@ -2621,6 +2662,16 @@ export async function kickTeamMember({
 }
 
 export function subscribeToTeamsForUser(uid: string, cb: (teams: Team[]) => void) {
+  const cacheKey = `user:${uid}:teams`;
+  const cached = getCachedValue<Team[]>(cacheKey, { maxAgeMs: PROFILE_CACHE_TTL_MS });
+  if (Array.isArray(cached)) {
+    try {
+      cb(cached);
+    } catch (error) {
+      console.error('Failed to deliver cached teams for user', uid, error);
+    }
+  }
+
   const q = query(collection(db, 'teams'), where('memberUids', 'array-contains', uid));
   return onSnapshot(q, (snap) => {
     const teams: Team[] = [];
@@ -2630,17 +2681,24 @@ export function subscribeToTeamsForUser(uid: string, cb: (teams: Team[]) => void
     });
     teams.sort((a, b) => (b.updatedAt?.getTime() ?? 0) - (a.updatedAt?.getTime() ?? 0));
     cb(teams);
+    setCachedValue(cacheKey, teams.slice());
   });
 }
 
 export function subscribeToTeam(teamId: string, cb: (team: Team | null) => void) {
+  const cacheKey = `team:${teamId}`;
+  primeCachedValue<Team | null>(cacheKey, cb, { maxAgeMs: PROFILE_CACHE_TTL_MS });
+
   const ref = doc(db, 'teams', teamId);
   return onSnapshot(ref, (snap) => {
     if (!snap.exists()) {
       cb(null);
+      setCachedValue(cacheKey, null);
       return;
     }
-    cb(deserializeTeam(snap.id, snap.data() as Record<string, any>));
+    const team = deserializeTeam(snap.id, snap.data() as Record<string, any>);
+    cb(team);
+    setCachedValue(cacheKey, team);
   });
 }
 
@@ -2967,11 +3025,22 @@ export async function createCatch(input: CatchInput) {
 }
 
 export function subscribeToFeedCatches(cb: (arr: any[]) => void) {
+  const cacheKey = 'feed:all';
+  const cached = getCachedValue<any[]>(cacheKey, { maxAgeMs: FEED_CACHE_TTL_MS });
+  if (Array.isArray(cached)) {
+    try {
+      cb(cached);
+    } catch (error) {
+      console.error('Failed to deliver cached feed', error);
+    }
+  }
+
   const q = query(collection(db, 'catches'), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snap) => {
     const arr: any[] = [];
     snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
     cb(arr);
+    cacheArraySubset(cacheKey, arr, FEED_CACHE_LIMIT);
   });
 }
 
@@ -3008,6 +3077,16 @@ export function subscribeToTeamFeedCatches(memberUids: string[], cb: (arr: any[]
     return () => {};
   }
 
+  const cacheKey = `feed:team:${cleaned.slice().sort().join(',')}`;
+  const cached = getCachedValue<any[]>(cacheKey, { maxAgeMs: FEED_CACHE_TTL_MS });
+  if (Array.isArray(cached)) {
+    try {
+      cb(cached);
+    } catch (error) {
+      console.error('Failed to deliver cached team feed', error);
+    }
+  }
+
   const chunkSize = 10;
   const chunkResults = new Map<number, Map<string, any>>();
   const unsubscribers: (() => void)[] = [];
@@ -3019,6 +3098,7 @@ export function subscribeToTeamFeedCatches(memberUids: string[], cb: (arr: any[]
     });
     merged.sort((a, b) => valueToMillis(b.createdAt) - valueToMillis(a.createdAt));
     cb(merged);
+    cacheArraySubset(cacheKey, merged, FEED_CACHE_LIMIT);
   };
 
   for (let index = 0; index < cleaned.length; index += chunkSize) {
@@ -3080,6 +3160,16 @@ export function subscribeToFollowingFeedCatches(
     return () => {};
   }
 
+  const cacheKey = `feed:following:${cleaned.slice().sort().join(',')}`;
+  const cached = getCachedValue<any[]>(cacheKey, { maxAgeMs: FEED_CACHE_TTL_MS });
+  if (Array.isArray(cached)) {
+    try {
+      cb(cached);
+    } catch (error) {
+      console.error('Failed to deliver cached following feed', error);
+    }
+  }
+
   const chunkSize = 10;
   const chunkResults = new Map<number, Map<string, any>>();
   const unsubscribers: (() => void)[] = [];
@@ -3091,6 +3181,7 @@ export function subscribeToFollowingFeedCatches(
     });
     merged.sort((a, b) => valueToMillis(b.createdAt) - valueToMillis(a.createdAt));
     cb(merged);
+    cacheArraySubset(cacheKey, merged, FEED_CACHE_LIMIT);
   };
 
   for (let index = 0; index < cleaned.length; index += chunkSize) {
@@ -3124,6 +3215,16 @@ export function subscribeToLocalFeedCatches(
   radiusMiles: number,
   cb: (arr: any[]) => void,
 ) {
+  const cacheKey = 'feed:local';
+  const cached = getCachedValue<{ items: any[] }>(cacheKey, { maxAgeMs: FEED_CACHE_TTL_MS });
+  if (cached && Array.isArray(cached.items)) {
+    try {
+      cb(cached.items);
+    } catch (error) {
+      console.error('Failed to deliver cached local feed', error);
+    }
+  }
+
   const q = query(collection(db, 'catches'), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snap) => {
     const results: any[] = [];
@@ -3141,6 +3242,11 @@ export function subscribeToLocalFeedCatches(
     });
     results.sort((a, b) => valueToMillis(b.createdAt) - valueToMillis(a.createdAt));
     cb(results);
+    setCachedValue(cacheKey, {
+      center: { lat: center.lat, lng: center.lng },
+      radiusMiles,
+      items: results.length > FEED_CACHE_LIMIT ? results.slice(0, FEED_CACHE_LIMIT) : results.slice(),
+    });
   });
 }
 
@@ -3162,6 +3268,16 @@ export function subscribeToCatchesWithCoordinates(
   if (allowed && allowed.length === 0) {
     cb([]);
     return () => {};
+  }
+
+  const cacheKey = allowed ? `map:catches:${allowed.slice().sort().join(',')}` : 'map:catches:all';
+  const cached = getCachedValue<CatchWithCoordinates[]>(cacheKey, { maxAgeMs: MAP_CACHE_TTL_MS });
+  if (Array.isArray(cached)) {
+    try {
+      cb(cached);
+    } catch (error) {
+      console.error('Failed to deliver cached map catches', error);
+    }
   }
 
   const convert = (docSnap: any): CatchWithCoordinates | null => {
@@ -3221,6 +3337,7 @@ export function subscribeToCatchesWithCoordinates(
     });
 
     cb(merged);
+    cacheArraySubset(cacheKey, merged, MAP_CATCH_CACHE_LIMIT);
   };
 
   if (!allowed) {
@@ -3243,6 +3360,7 @@ export function subscribeToCatchesWithCoordinates(
       });
 
       cb(arr);
+      cacheArraySubset(cacheKey, arr, MAP_CATCH_CACHE_LIMIT);
     });
   }
 
@@ -3288,6 +3406,24 @@ export function subscribeToSpeciesTrendingInsights(
 
   const windowStart = new Date(Date.now() - weeks * 7 * 24 * 60 * 60 * 1000);
   const windowStartTimestamp = Timestamp.fromDate(windowStart);
+
+  const cacheKey = [
+    'map:species-insights',
+    weeks,
+    maxSamples,
+    speciesLimit ?? 'all',
+    minSpeciesSamples,
+    minBaitSamples,
+    topBaitsPerSpecies,
+  ].join(':');
+  const cached = getCachedValue<SpeciesTrendingInsight[]>(cacheKey, { maxAgeMs: MAP_CACHE_TTL_MS });
+  if (Array.isArray(cached)) {
+    try {
+      cb(cached);
+    } catch (error) {
+      console.error('Failed to deliver cached species insights', error);
+    }
+  }
 
   const catchesRef = collection(db, 'catches');
   const catchesQuery = query(
@@ -3453,11 +3589,18 @@ export function subscribeToSpeciesTrendingInsights(
         return a.species.localeCompare(b.species);
       });
 
-      cb(typeof speciesLimit === 'number' ? insights.slice(0, speciesLimit) : insights);
+      const result = typeof speciesLimit === 'number' ? insights.slice(0, speciesLimit) : insights;
+      cb(result);
+      setCachedValue(cacheKey, result);
     },
     (error) => {
       console.warn('Failed to load species trending insights', error);
-      cb([]);
+      const fallback = getCachedValue<SpeciesTrendingInsight[]>(cacheKey, { maxAgeMs: MAP_CACHE_TTL_MS });
+      if (Array.isArray(fallback)) {
+        cb(fallback);
+      } else {
+        cb([]);
+      }
     },
   );
 }
@@ -4614,6 +4757,16 @@ export function subscribeToActiveTournaments(
   const tournamentsRef = collection(db, TOURNAMENTS_COLLECTION);
   const q = query(tournamentsRef, where('endAt', '>=', nowTimestamp), orderBy('endAt', 'asc'));
 
+  const cacheKey = 'map:tournaments:active';
+  const cached = getCachedValue<Tournament[]>(cacheKey, { maxAgeMs: MAP_CACHE_TTL_MS });
+  if (Array.isArray(cached)) {
+    try {
+      cb(cached);
+    } catch (error) {
+      console.error('Failed to deliver cached tournaments', error);
+    }
+  }
+
   return onSnapshot(q, (snapshot) => {
     const tournaments: Tournament[] = [];
     snapshot.forEach((docSnap) => {
@@ -4623,6 +4776,7 @@ export function subscribeToActiveTournaments(
       }
     });
     cb(tournaments);
+    setCachedValue(cacheKey, tournaments.slice());
   });
 }
 
@@ -4677,6 +4831,16 @@ export function subscribeToTournamentLeaderboardByWeight(
     limit(limitCount),
   );
 
+  const cacheKey = `map:tournaments:leaderboard:weight:${limitCount}`;
+  const cached = getCachedValue<TournamentLeaderboardEntry[]>(cacheKey, { maxAgeMs: MAP_CACHE_TTL_MS });
+  if (Array.isArray(cached)) {
+    try {
+      cb(cached);
+    } catch (error) {
+      console.error('Failed to deliver cached weight leaderboard', error);
+    }
+  }
+
   return onSnapshot(leaderboardQuery, (snapshot) => {
     const entries: TournamentLeaderboardEntry[] = [];
     snapshot.forEach((docSnap) => {
@@ -4686,6 +4850,7 @@ export function subscribeToTournamentLeaderboardByWeight(
       }
     });
     cb(entries);
+    cacheArraySubset(cacheKey, entries, limitCount);
   });
 }
 
@@ -4699,6 +4864,16 @@ export function subscribeToTournamentLeaderboardByLength(
     limit(limitCount),
   );
 
+  const cacheKey = `map:tournaments:leaderboard:length:${limitCount}`;
+  const cached = getCachedValue<TournamentLeaderboardEntry[]>(cacheKey, { maxAgeMs: MAP_CACHE_TTL_MS });
+  if (Array.isArray(cached)) {
+    try {
+      cb(cached);
+    } catch (error) {
+      console.error('Failed to deliver cached length leaderboard', error);
+    }
+  }
+
   return onSnapshot(leaderboardQuery, (snapshot) => {
     const entries: TournamentLeaderboardEntry[] = [];
     snapshot.forEach((docSnap) => {
@@ -4708,6 +4883,7 @@ export function subscribeToTournamentLeaderboardByLength(
       }
     });
     cb(entries);
+    cacheArraySubset(cacheKey, entries, limitCount);
   });
 }
 
