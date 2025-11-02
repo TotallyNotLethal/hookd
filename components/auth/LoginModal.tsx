@@ -64,8 +64,12 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
       setAuthUser(user);
       setLoading(true);
       console.log('[Auth] ✅ Auth success, user-uid:', user.uid);
-      await ensureUserProfile(user);
+
+      let targetRoute: string | null = null;
+
       try {
+        await ensureUserProfile(user);
+
         const profileSnap = await getDoc(doc(db, 'users', user.uid));
         const profileData = profileSnap.exists()
           ? (profileSnap.data() as HookdUser)
@@ -83,19 +87,23 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
 
         if (!username) {
           console.log('[Auth] Missing username, redirecting to profile setup.');
-          await router.replace('/profile?setup=1');
-          onClose();
-          return;
-        }
-
-        if (displayIsDefault) {
-          await router.replace('/profile?setup=1');
+          targetRoute = '/profile?setup=1';
+        } else if (displayIsDefault) {
+          targetRoute = '/profile?setup=1';
         } else {
-          await router.replace('/feed');
+          targetRoute = '/feed';
         }
       } catch (profileError) {
-        console.error('[Auth] ⚠️ Failed to inspect profile after signup:', profileError);
-        await router.replace('/profile?setup=1');
+        console.error('[Auth] ⚠️ Failed to finish signup flow:', profileError);
+        setError('We had trouble finishing sign-in. Please try again.');
+        resetAuthHandling();
+        return;
+      }
+
+      try {
+        if (targetRoute) {
+          await router.replace(targetRoute);
+        }
       } finally {
         if (typeof window !== 'undefined') {
           window.sessionStorage.removeItem(LOGIN_REDIRECT_STORAGE_KEY);
@@ -103,7 +111,7 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
         onClose();
       }
     },
-    [onClose, router],
+    [onClose, resetAuthHandling, router],
   );
 
   useEffect(() => {
