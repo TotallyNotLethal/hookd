@@ -47,7 +47,13 @@ export async function requireAuth(request: Request): Promise<AuthenticatedUser> 
   try {
     const app = getAdminApp();
     const auth = getAuth(app);
-    const decoded = await auth.verifyIdToken(token, true);
+    const hasCredential = Boolean(app.options?.credential);
+    // Revocation checks require admin credentials. In local development the
+    // Firebase admin SDK is often initialised without a service account, which
+    // would cause verifyIdToken(..., true) to throw even for valid sessions.
+    // Skip the revocation check when no credential is configured so that
+    // authenticated users can still call the API in that environment.
+    const decoded = await auth.verifyIdToken(token, hasCredential);
     if (!decoded?.uid) {
       throw new Error('Token missing uid');
     }
