@@ -142,6 +142,7 @@ type UploadSelection = {
   file: File;
   originalFile: File;
   previewUrl: string;
+  converted: boolean;
 };
 
 const mergeUploads = (...groups: UploadSelection[][]): UploadSelection[] => {
@@ -793,8 +794,11 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       file: prepared.file,
       originalFile: prepared.originalFile,
       previewUrl,
+      converted: prepared.converted,
     };
   }, []);
+
+  const hasConvertedUploads = useMemo(() => allUploads.some((upload) => upload.converted), [allUploads]);
 
   const initializeCatchFromUploads = useCallback(
     async (uploads: UploadSelection[]) => {
@@ -1766,6 +1770,11 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
                         alt={`Catch upload ${index + 1}`}
                         className="h-32 w-full object-cover"
                       />
+                      {upload.converted && (
+                        <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-brand-500/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white shadow-lg">
+                          Converted
+                        </span>
+                      )}
                       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent" />
                       <div className="pointer-events-none absolute bottom-2 left-2 flex items-center gap-2 text-xs font-semibold text-white">
                         <span
@@ -1783,6 +1792,12 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
                   );
                 })}
               </div>
+              {hasConvertedUploads && (
+                <p className="text-xs text-white/60">
+                  HEIC photos are converted to JPEG for compatibility. We keep a copy of the original for tournament
+                  checks and metadata.
+                </p>
+              )}
               <p className="text-xs text-white/50">
                 Tip: Group multiple angles of the same fish together. Leave photos unchecked to log them as separate catches, or
                 use the × button to delete images you do not want to upload.
@@ -1840,6 +1855,11 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
                           alt={`Catch photo ${index + 1}`}
                           className="h-full w-full object-cover"
                         />
+                        {upload.converted && (
+                          <span className="pointer-events-none absolute left-1 top-1 rounded-full bg-brand-500/80 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white shadow">
+                            Converted
+                          </span>
+                        )}
                         {currentCatchUploads.length > 1 && (
                           <span className="absolute bottom-1 right-1 rounded-full bg-black/60 px-2 text-[10px] font-medium text-white">
                             {index + 1}
@@ -1868,6 +1888,12 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
                     </button>
                   </div>
                 )}
+                {hasConvertedUploads && (
+                  <p className="text-xs text-white/60">
+                    HEIC photos are converted to JPEG behind the scenes for compatibility. Your original files remain linked
+                    for verification and metadata.
+                  </p>
+                )}
                 {isNativeApp ? (
                   <Fragment>
                     <div className="flex flex-wrap gap-2">
@@ -1888,7 +1914,12 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
                     </div>
                     {currentCatchUploads.length > 0 && (
                       <p className="text-xs text-white/60">
-                        Selected: {currentCatchUploads.map((upload) => upload.file.name).join(', ')}
+                        Selected:{' '}
+                        {currentCatchUploads
+                          .map((upload) =>
+                            upload.converted ? `${upload.file.name} (converted)` : upload.file.name,
+                          )
+                          .join(', ')}
                       </p>
                     )}
                   </Fragment>
