@@ -2775,7 +2775,9 @@ export async function createCatch(input: CatchInput) {
 
   for (let index = 0; index < uploadFiles.length; index += 1) {
     const fileRef = ref(storage, `catches/${input.uid}/${baseId}-${index}`);
-    await uploadBytes(fileRef, uploadFiles[index]!);
+    const file = uploadFiles[index]!;
+    const metadata = file.type ? { contentType: file.type } : undefined;
+    await uploadBytes(fileRef, file, metadata);
     const url = await getDownloadURL(fileRef);
     imageUrls.push(url);
   }
