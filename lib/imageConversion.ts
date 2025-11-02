@@ -61,40 +61,104 @@ async function canvasToBlob(
   });
 }
 
-async function convertHeicFile(file: File): Promise<PreparedImage> {
+type DrawableSource = ImageBitmap | HTMLImageElement;
+
+interface DrawableResource {
+  source: DrawableSource;
+  width: number;
+  height: number;
+  cleanup: () => void;
+}
+
+async function loadViaCreateImageBitmap(file: File): Promise<DrawableResource | null> {
   if (typeof createImageBitmap !== 'function') {
-    throw new ImageConversionError(
-      'This browser does not support HEIC conversion. Please convert the photo to JPEG or PNG and try again.',
-    );
+    return null;
   }
 
-  const bitmap = await createImageBitmap(file).catch((error) => {
-    throw new ImageConversionError('Unable to read HEIC image. Please try another photo.', { cause: error });
-  });
+  try {
+    const bitmap = await createImageBitmap(file);
+    return {
+      source: bitmap,
+      width: bitmap.width,
+      height: bitmap.height,
+      cleanup: () => {
+        try {
+          bitmap.close();
+        } catch (error) {
+          console.warn('Unable to release ImageBitmap resources', error);
+        }
+      },
+    };
+  } catch (error) {
+    console.warn('createImageBitmap failed to decode HEIC. Falling back to HTMLImageElement.', error);
+    return null;
+  }
+}
+
+async function loadViaImageElement(file: File): Promise<DrawableResource> {
+  const objectUrl = URL.createObjectURL(file);
 
   try {
-    const width = bitmap.width;
-    const height = bitmap.height;
-    if (!width || !height) {
-      throw new ImageConversionError('Unable to read HEIC image dimensions.');
-    }
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+      element.decoding = 'async';
+      element.onload = () => resolve(element);
+      element.onerror = (event) => {
+        reject(event instanceof Error ? event : new Error('Failed to load image.'));
+      };
+      element.src = objectUrl;
+    });
 
-    let canvas: HTMLCanvasElement | OffscreenCanvas;
-    if (typeof OffscreenCanvas !== 'undefined') {
-      canvas = new OffscreenCanvas(width, height);
-    } else {
-      const htmlCanvas = document.createElement('canvas');
-      htmlCanvas.width = width;
-      htmlCanvas.height = height;
-      canvas = htmlCanvas;
-    }
+    return {
+      source: image,
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+      cleanup: () => {
+        URL.revokeObjectURL(objectUrl);
+      },
+    };
+  } catch (error) {
+    URL.revokeObjectURL(objectUrl);
+    throw new ImageConversionError('Unable to read HEIC image. Please try another photo.', { cause: error });
+  }
+}
 
-    const context = canvas.getContext('2d');
-    if (!context) {
-      throw new ImageConversionError('Unable to access drawing context for HEIC conversion.');
-    }
+async function loadDrawableResource(file: File): Promise<DrawableResource> {
+  const bitmapResource = await loadViaCreateImageBitmap(file);
+  if (bitmapResource) {
+    return bitmapResource;
+  }
 
-    context.drawImage(bitmap, 0, 0, width, height);
+  return loadViaImageElement(file);
+}
+
+async function convertHeicFile(file: File): Promise<PreparedImage> {
+  const resource = await loadDrawableResource(file);
+
+  const { width, height } = resource;
+  if (!width || !height) {
+    resource.cleanup();
+    throw new ImageConversionError('Unable to read HEIC image dimensions.');
+  }
+
+  let canvas: HTMLCanvasElement | OffscreenCanvas;
+  if (typeof OffscreenCanvas !== 'undefined') {
+    canvas = new OffscreenCanvas(width, height);
+  } else {
+    const htmlCanvas = document.createElement('canvas');
+    htmlCanvas.width = width;
+    htmlCanvas.height = height;
+    canvas = htmlCanvas;
+  }
+
+  const context = canvas.getContext('2d');
+  if (!context) {
+    resource.cleanup();
+    throw new ImageConversionError('Unable to access drawing context for HEIC conversion.');
+  }
+
+  try {
+    context.drawImage(resource.source, 0, 0, width, height);
     const blob = await canvasToBlob(canvas, DEFAULT_OUTPUT_TYPE, DEFAULT_QUALITY);
     const extension = DEFAULT_OUTPUT_TYPE.split('/')[1] ?? 'jpg';
     const convertedFile = new File([blob], deriveConvertedName(file, extension), {
@@ -108,7 +172,7 @@ async function convertHeicFile(file: File): Promise<PreparedImage> {
       converted: true,
     };
   } finally {
-    bitmap.close();
+    resource.cleanup();
   }
 }
 
