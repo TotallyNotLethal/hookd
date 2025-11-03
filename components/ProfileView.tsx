@@ -660,11 +660,11 @@ export default function ProfileView({
                   </div>
                 ) : null}
               </div>
-              <div className="flex items-center gap-2 sm:ml-auto">
+              <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto sm:flex-nowrap">
                 {!isOwner && onToggleFollow && canFollow && !isBlocked && (
                   <button
                     className={clsx(
-                      'rounded-xl border px-4 py-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)]',
+                      'flex-1 rounded-xl border px-4 py-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)] sm:flex-none',
                       isFollowing
                         ? 'border-white/30 bg-white/10 text-white'
                         : 'border-[var(--profile-accent-border)] text-[var(--profile-accent-strong)] hover:bg-[var(--profile-accent-soft)]',
@@ -680,7 +680,7 @@ export default function ProfileView({
                   <Link
                     href={messageHref}
                     prefetch={false}
-                    className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)]"
+                    className="inline-flex flex-1 items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)] sm:flex-none"
                   >
                     <MessageCircle className="h-4 w-4" />
                     Message
@@ -692,7 +692,7 @@ export default function ProfileView({
                     onClick={onBlockToggle}
                     disabled={blockPending}
                     className={clsx(
-                      'inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)] disabled:cursor-not-allowed disabled:opacity-60',
+                      'inline-flex flex-1 items-center gap-2 rounded-xl border px-4 py-2 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)] disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none',
                       isBlocked
                         ? 'border-white/30 bg-white/10 text-white'
                         : 'border-red-500/60 text-red-100 hover:bg-red-500/10',
@@ -706,20 +706,20 @@ export default function ProfileView({
                     type="button"
                     onClick={onReport}
                     disabled={reportPending}
-                    className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex flex-1 items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)] disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
                   >
                     Report
                   </button>
                 )}
                 {isOwner ? (
-                  <div className="relative">
+                  <div className="relative flex w-full flex-1 sm:w-auto sm:flex-none">
                     <button
                       type="button"
                       ref={settingsButtonRef}
                       onClick={() => setIsSettingsOpen((prev) => !prev)}
                       aria-haspopup="menu"
                       aria-expanded={isSettingsOpen}
-                      className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)]"
+                      className="inline-flex flex-1 items-center gap-2 rounded-xl border border-white/15 px-4 py-2 text-sm transition hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--profile-accent-ring)] sm:flex-none"
                     >
                       <Settings className="h-4 w-4" />
                       <span className="hidden sm:inline">Settings</span>
