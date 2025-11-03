@@ -124,7 +124,7 @@ export default function Modal({
   return (
     <div
       className={clsx(
-        'fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4',
+        'fixed inset-x-0 top-[var(--nav-height)] bottom-[var(--mobile-nav-height)] z-50 flex items-center justify-center bg-black/60 p-4 sm:p-6',
         overlayClassName,
       )}
       onClick={onClose}
@@ -137,7 +137,7 @@ export default function Modal({
         ref={contentRef}
         tabIndex={-1}
         className={clsx(
-          'max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-white/10 bg-slate-950 shadow-2xl shadow-black/40 focus:outline-none',
+          'max-h-[90vh] max-h-[calc(100vh-var(--nav-height)-var(--mobile-nav-height)-2rem)] sm:max-h-[calc(100vh-var(--nav-height)-2rem)] w-full max-w-2xl overflow-y-auto rounded-3xl border border-white/10 bg-slate-950 shadow-2xl shadow-black/40 focus:outline-none',
           contentClassName,
         )}
         onClick={(event) => event.stopPropagation()}

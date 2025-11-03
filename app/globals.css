@@ -9,6 +9,7 @@
   --card: #0f1a2b;
   --muted: #a7b2c2;
   --nav-height: 5.5rem;
+  --mobile-nav-height: 0px;
 }
 
 @layer utilities {
@@ -17,13 +18,19 @@
   }
 
   .pb-mobile-nav {
-    padding-bottom: calc(env(safe-area-inset-bottom) + 4.5rem);
+    padding-bottom: var(--mobile-nav-height);
   }
 
   @screen sm {
     .pb-mobile-nav {
       padding-bottom: 0;
     }
+  }
+}
+
+@media (min-width: 640px) {
+  :root {
+    --mobile-nav-height: 0px;
   }
 }
 
