@@ -91,7 +91,7 @@ function cacheArraySubset<T>(key: string, values: T[], limit: number) {
 export type HookdUser = {
   uid: string;
   displayName: string;
-  username: string;
+  username?: string | null;
   birthdate?: string | null;
   photoURL?: string;
   header?: string;
@@ -1552,7 +1552,7 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
     const payload: HookdUser = {
       uid: user.uid,
       displayName: user.displayName || 'Angler',
-      username: '',                // ✅ default username
+      username: null,
       birthdate: null,
       photoURL: user.photoURL || undefined,
       header: undefined,
@@ -1584,6 +1584,14 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
     const nextDisplayName = user.displayName || existing.displayName || 'Angler';
     if (nextDisplayName !== existing.displayName) {
       updates.displayName = nextDisplayName;
+    }
+
+    const normalizedUsername =
+      typeof existing.username === 'string' && existing.username.trim().length > 0
+        ? existing.username.trim()
+        : null;
+    if ((existing.username ?? null) !== normalizedUsername) {
+      updates.username = normalizedUsername;
     }
 
     const hasExistingPhoto = typeof existing.photoURL === 'string' && existing.photoURL.trim().length > 0;
@@ -1818,9 +1826,14 @@ export function subscribeToNewestUser(cb: (user: HookdUser | null) => void) {
 
     const docSnap = snapshot.docs[0];
     const data = docSnap.data() as HookdUser;
+    const username =
+      typeof data.username === 'string' && data.username.trim().length > 0
+        ? data.username.trim()
+        : null;
     cb({
       ...data,
       uid: docSnap.id,
+      username,
       isModerator: Boolean(data.isModerator),
       isTester: Boolean(data.isTester),
       birthdate: normalizeBirthdate(data.birthdate ?? null),
@@ -1850,6 +1863,10 @@ export function subscribeToUser(uid: string, cb: (u: HookdUser | null) => void) 
     const normalized: HookdUser = {
       ...data,
       uid,
+      username:
+        typeof data.username === 'string' && data.username.trim().length > 0
+          ? data.username.trim()
+          : null,
       isModerator: Boolean(data.isModerator),
       isTester: Boolean(data.isTester),
       birthdate: normalizeBirthdate(data.birthdate ?? null),
