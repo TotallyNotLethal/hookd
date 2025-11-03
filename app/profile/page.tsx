@@ -83,6 +83,10 @@ type EditProfileModalProps = {
   disableDismiss?: boolean;
 };
 
+type ProfileModalOverlayStyle = CSSProperties & {
+  "--profile-modal-bottom-gap"?: string;
+};
+
 function EditProfileModal({ user, catches, onClose, disableDismiss }: EditProfileModalProps) {
   const [displayName, setDisplayName] = useState(user?.displayName || "");
   const [bio, setBio] = useState(user?.bio || "");
@@ -164,7 +168,7 @@ function EditProfileModal({ user, catches, onClose, disableDismiss }: EditProfil
     }
   }, [defaultBanner, bannerFile]);
 
-  const overlayStyle: CSSProperties = {
+  const overlayStyle: ProfileModalOverlayStyle = {
     "--profile-modal-bottom-gap": "calc(env(safe-area-inset-bottom, 0px) + 4.5rem)",
   };
 
