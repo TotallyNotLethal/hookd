@@ -17,6 +17,7 @@ import { USERNAME_MIN_LENGTH, validateAndNormalizeUsername } from "@/lib/usernam
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import clsx from "clsx";
 import {
+  type CSSProperties,
   ChangeEvent,
   Suspense,
   useCallback,
@@ -162,6 +163,10 @@ function EditProfileModal({ user, catches, onClose, disableDismiss }: EditProfil
       setBannerPreview(defaultBanner);
     }
   }, [defaultBanner, bannerFile]);
+
+  const overlayStyle: CSSProperties = {
+    "--profile-modal-bottom-gap": "calc(env(safe-area-inset-bottom, 0px) + 4.5rem)",
+  };
 
   useEffect(() => {
     return () => {
@@ -416,7 +421,8 @@ function EditProfileModal({ user, catches, onClose, disableDismiss }: EditProfil
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-black/60 p-4"
+      className="fixed inset-x-0 top-[var(--nav-height)] bottom-[var(--profile-modal-bottom-gap)] sm:bottom-0 z-[1100] grid place-items-center overflow-y-auto bg-black/60 px-4 py-6 sm:px-6"
+      style={overlayStyle}
       onClick={() => {
         if (!disableDismiss) {
           onClose();
@@ -424,7 +430,7 @@ function EditProfileModal({ user, catches, onClose, disableDismiss }: EditProfil
       }}
     >
       <div
-        className="card w-full max-w-2xl max-h-[calc(100vh-2rem)] overflow-y-auto p-6"
+        className="card w-full max-w-2xl max-h-[calc(100vh-var(--nav-height)-var(--profile-modal-bottom-gap)-2rem)] overflow-y-auto p-6 sm:max-h-[calc(100vh-var(--nav-height)-2rem)]"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="mb-4 text-xl font-semibold">Edit Profile</h3>
