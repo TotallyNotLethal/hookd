@@ -40,6 +40,7 @@ const BASE_FILTERS: { key: FeedFilter; label: string }[] = [
 
 function FeedContent() {
   const [items, setItems] = useState<any[]>([]);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<any | null>(null);
   const [filter, setFilter] = useState<FeedFilter>("all");
@@ -185,33 +186,61 @@ function FeedContent() {
     let unsubscribe: (() => void) | undefined;
 
     if (filter === "all") {
+      defer(() => setIsInitialLoading(true));
       unsubscribe = subscribeToFeedCatches((posts) => {
-        setItems(filterPosts(posts));
+        defer(() => {
+          setItems(filterPosts(posts));
+          setIsInitialLoading(false);
+        });
       });
     } else if (filter === "following") {
       if (!user?.uid || effectiveFollowingIds.length === 0) {
-        defer(() => setItems([]));
+        defer(() => {
+          setItems([]);
+          setIsInitialLoading(false);
+        });
       } else {
+        defer(() => setIsInitialLoading(true));
         unsubscribe = subscribeToFollowingFeedCatches(effectiveFollowingIds, (posts) => {
-          setItems(filterPosts(posts));
+          defer(() => {
+            setItems(filterPosts(posts));
+            setIsInitialLoading(false);
+          });
         });
       }
     } else if (filter === "local") {
       if (!location) {
-        defer(() => setItems([]));
+        defer(() => {
+          setItems([]);
+          setIsInitialLoading(true);
+        });
       } else {
+        defer(() => setIsInitialLoading(true));
         unsubscribe = subscribeToLocalFeedCatches(location, 50, (posts) => {
-          setItems(filterPosts(posts));
+          defer(() => {
+            setItems(filterPosts(posts));
+            setIsInitialLoading(false);
+          });
         });
       }
     } else if (filter === "team") {
       if (!user?.uid || !team) {
-        defer(() => setItems([]));
+        defer(() => {
+          setItems([]);
+          setIsInitialLoading(false);
+        });
       } else if (teamMemberUids.length === 0) {
-        defer(() => setItems([]));
+        defer(() => {
+          setItems([]);
+          setIsInitialLoading(false);
+        });
       } else {
+        defer(() => setIsInitialLoading(true));
         unsubscribe = subscribeToTeamFeedCatches(teamMemberUids, (posts) => {
-          setItems(filterPosts(posts));
+          defer(() => {
+            setItems(filterPosts(posts));
+            setIsInitialLoading(false);
+          });
         });
       }
     }
@@ -229,8 +258,13 @@ function FeedContent() {
 
   const handleFilterSelect = useCallback(
     (next: FeedFilter) => {
+      if (next === filter && !(next === "local" && !location)) {
+        return;
+      }
+
+      setIsInitialLoading(true);
+
       if (next === "local") {
-        setFilter("local");
         if (!location) {
           if (!navigator.geolocation) {
             setGeoError("Location is not supported in this browser. Showing all catches instead.");
@@ -252,12 +286,13 @@ function FeedContent() {
             { enableHighAccuracy: false, timeout: 10000 },
           );
         }
+        setFilter("local");
         return;
       }
 
       setFilter(next);
     },
-    [location],
+    [filter, location],
   );
 
   const statusMessage = useMemo(() => {
@@ -282,14 +317,14 @@ function FeedContent() {
     if (filter === "team" && teamMemberUids.length === 0) {
       return "Invite anglers to your crew to start sharing catches.";
     }
-    if (items.length === 0) {
+    if (items.length === 0 && !isInitialLoading) {
       if (filter === "team") {
         return "Your crew hasn’t logged any catches yet.";
       }
       return "No catches yet. Be the first to share!";
     }
     return null;
-  }, [effectiveFollowingIds.length, filter, geoLoading, items.length, location, team, teamMemberUids.length, user]);
+  }, [effectiveFollowingIds.length, filter, geoLoading, isInitialLoading, items.length, location, team, teamMemberUids.length, user]);
 
   const openDetail = useCallback((post: any) => {
     setActive(post);
@@ -447,11 +482,22 @@ function FeedContent() {
         {statusMessage && (
           <p className="text-white/60 mb-4">{statusMessage}</p>
         )}
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {items.map((p) => (
-            <PostCard key={p.id} post={p} onOpen={openDetail} />
-          ))}
-        </div>
+        {isInitialLoading && items.length === 0 ? (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div
+                key={index}
+                className="h-64 rounded-2xl border border-white/10 bg-white/5 animate-pulse"
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {items.map((p) => (
+              <PostCard key={p.id} post={p} onOpen={openDetail} />
+            ))}
+          </div>
+        )}
       </section>
 
       {open && (
