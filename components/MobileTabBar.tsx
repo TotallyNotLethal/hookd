@@ -10,10 +10,11 @@ export default function MobileTabBar() {
 
   return (
     <nav
-      className="sm:hidden fixed inset-x-0 bottom-0 z-[1200] border-t border-white/10 bg-slate-950/90 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-2 backdrop-blur"
+      className="sm:hidden fixed inset-x-0 z-[1200] border-t border-white/10 bg-slate-950/90 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-2 backdrop-blur"
+      style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.5rem)' }}
       aria-label="Primary navigation"
     >
-      <div className="mx-auto flex max-w-3xl items-end justify-around gap-1 px-6">
+      <div className="mx-auto flex max-w-3xl items-center justify-around gap-1 px-6">
         {tabs.map((tab) => {
           if (tab.type !== 'link') {
             return null;
