@@ -93,8 +93,8 @@ export type HookdUser = {
   displayName: string;
   username?: string | null;
   birthdate?: string | null;
-  photoURL?: string;
-  header?: string;
+  photoURL?: string | null;
+  header?: string | null;
   bio?: string;
   about?: string;
   trophies?: string[];
@@ -1554,8 +1554,8 @@ export async function ensureUserProfile(user: { uid: string; displayName: string
       displayName: user.displayName || 'Angler',
       username: null,
       birthdate: null,
-      photoURL: user.photoURL || undefined,
-      header: undefined,
+      photoURL: user.photoURL ?? null,
+      header: null,
       bio: '',
       about: '',
       trophies: [],
