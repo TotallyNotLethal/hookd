@@ -3,6 +3,7 @@
 import Modal from '@/components/ui/Modal';
 import { ensureUserProfile, type HookdUser } from '@/lib/firestore';
 import { app, db } from '@/lib/firebaseClient';
+import { validateAndNormalizeUsername } from '@/lib/username';
 import {
   browserLocalPersistence,
   getAuth,
@@ -74,10 +75,14 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
         const profileData = profileSnap.exists()
           ? (profileSnap.data() as HookdUser)
           : null;
-        const username =
-          typeof profileData?.username === 'string'
-            ? profileData.username.trim()
-            : '';
+        let username = '';
+        if (typeof profileData?.username === 'string') {
+          try {
+            username = validateAndNormalizeUsername(profileData.username);
+          } catch {
+            username = '';
+          }
+        }
         const displayNameRaw =
           (typeof profileData?.displayName === 'string'
             ? profileData.displayName

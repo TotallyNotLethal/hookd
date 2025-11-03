@@ -85,7 +85,11 @@ type EditProfileModalProps = {
 function EditProfileModal({ user, catches, onClose, disableDismiss }: EditProfileModalProps) {
   const [displayName, setDisplayName] = useState(user?.displayName || "");
   const [bio, setBio] = useState(user?.bio || "");
-  const [username, setUserName] = useState(user?.username || "");
+  const normalizedInitialUsername = useMemo(
+    () => (typeof user?.username === "string" ? user.username.trim() : ""),
+    [user?.username],
+  );
+  const [username, setUserName] = useState(normalizedInitialUsername);
   const [about, setAbout] = useState(user?.about || "");
   const [birthdateInput, setBirthdateInput] = useState(user?.birthdate || "");
   const [birthdateError, setBirthdateError] = useState<string | null>(null);
@@ -108,16 +112,32 @@ function EditProfileModal({ user, catches, onClose, disableDismiss }: EditProfil
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [bannerError, setBannerError] = useState<string | null>(null);
   const [usernameError, setUsernameError] = useState<string | null>(() => {
-    if (!username) {
+    if (!normalizedInitialUsername) {
       return `Usernames must be at least ${USERNAME_MIN_LENGTH} characters long.`;
     }
     try {
-      validateAndNormalizeUsername(username);
+      validateAndNormalizeUsername(normalizedInitialUsername);
       return null;
     } catch (validationError: any) {
       return validationError?.message ?? "Invalid username.";
     }
   });
+
+  useEffect(() => {
+    setUserName(normalizedInitialUsername);
+
+    if (!normalizedInitialUsername) {
+      setUsernameError(`Usernames must be at least ${USERNAME_MIN_LENGTH} characters long.`);
+      return;
+    }
+
+    try {
+      validateAndNormalizeUsername(normalizedInitialUsername);
+      setUsernameError(null);
+    } catch (validationError: any) {
+      setUsernameError(validationError?.message ?? "Invalid username.");
+    }
+  }, [normalizedInitialUsername]);
   const computedAge = useMemo(
     () => (birthdateInput ? computeAgeFromBirthdate(birthdateInput) : null),
     [birthdateInput],
@@ -672,11 +692,21 @@ function ProfilePageContent() {
       return forcingSetup;
     }
 
-    const username = typeof profile.username === "string" ? profile.username.trim() : "";
+    const rawUsername = typeof profile.username === "string" ? profile.username.trim() : "";
+    let usernameIsValid = false;
+    if (rawUsername) {
+      try {
+        validateAndNormalizeUsername(rawUsername);
+        usernameIsValid = true;
+      } catch {
+        usernameIsValid = false;
+      }
+    }
+
     const display = typeof profile.displayName === "string" ? profile.displayName.trim() : "";
     const displayIsDefault = display.toLowerCase() === "angler";
 
-    return forcingSetup || !username || !display || displayIsDefault;
+    return forcingSetup || !usernameIsValid || !display || displayIsDefault;
   }, [profile, forcingSetup]);
   const { isPro: hasProAccess } = useProAccess();
   const canManageLogbook = useMemo(() => Boolean(hasProAccess), [hasProAccess]);
