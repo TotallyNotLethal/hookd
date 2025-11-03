@@ -35,8 +35,15 @@ html, body { height: 100%; }
 
 body {
   @apply bg-[var(--bg)] text-white font-inter antialiased;
-  background-image: radial-gradient(60rem 30rem at 20% -10%, rgba(13,139,230,0.15), transparent),
-                    radial-gradient(50rem 40rem at 100% 10%, rgba(0,106,179,0.12), transparent);
+  background-color: #061228;
+  background-image:
+    url("/fishing-illustration.svg"),
+    radial-gradient(80% 65% at 15% 20%, rgba(56, 189, 248, 0.22), transparent 65%),
+    radial-gradient(75% 60% at 85% 10%, rgba(14, 165, 233, 0.18), transparent 70%),
+    linear-gradient(180deg, rgba(4, 18, 35, 0.95) 0%, rgba(5, 27, 46, 0.96) 46%, rgba(8, 35, 55, 0.98) 100%);
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat;
+  background-size: min(72rem, 90vw) auto, cover, cover, cover;
+  background-position: center calc(100% - 5rem), center, center, center;
 }
 
 .glass {
