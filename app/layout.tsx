@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 import MobileTabBar from "@/components/MobileTabBar";
@@ -9,6 +9,11 @@ export const metadata: Metadata = {
   title: "Hook'd – Fishing Social",
   description: "Connect with anglers, share catches, explore fishing spots.",
   icons: [{ rel: "icon", url: "/logo.svg" }],
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
