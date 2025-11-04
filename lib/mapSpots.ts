@@ -71,6 +71,47 @@ export function computeDistanceMiles(
   return Math.round(R * c * 10) / 10;
 }
 
+function coerceCatchDate(value: unknown): Date | null {
+  if (!value) return null;
+
+  if (value instanceof Date) {
+    const time = value.getTime();
+    return Number.isNaN(time) ? null : new Date(time);
+  }
+
+  if (typeof value === "number") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  if (typeof value === "object" && typeof (value as { toDate?: () => Date }).toDate === "function") {
+    const parsed = (value as { toDate: () => Date }).toDate();
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  return null;
+}
+
+export function getCatchDate(catchDoc: CatchWithCoordinates): Date | null {
+  return (
+    coerceCatchDate(catchDoc.capturedAtDate) ??
+    coerceCatchDate(catchDoc.createdAtDate) ??
+    coerceCatchDate(catchDoc.capturedAt as unknown) ??
+    coerceCatchDate(catchDoc.createdAt as unknown) ??
+    null
+  );
+}
+
+function getCatchTime(catchDoc: CatchWithCoordinates): number {
+  const date = getCatchDate(catchDoc);
+  return date ? date.getTime() : 0;
+}
+
 function parseWeightValue(weight?: string | null): number | null {
   if (!weight) return null;
   const sanitized = weight.replace(/,/g, "").trim();
@@ -95,7 +136,7 @@ function toStaticSummary(latest: FishingSpot["latestCatch"] | null): SpotCatchSu
 }
 
 function toDynamicSummary(catchDoc: CatchWithCoordinates): SpotCatchSummary {
-  const occurredAt = catchDoc.capturedAtDate ?? catchDoc.createdAtDate ?? null;
+  const occurredAt = getCatchDate(catchDoc);
   return {
     id: catchDoc.id,
     species: catchDoc.species,
@@ -161,13 +202,7 @@ export function aggregateSpots(
 
   const dynamicBuckets: DynamicBucket[] = [];
 
-  const sortedCatches = [...catches].sort((a, b) => {
-    const aDate = a.capturedAtDate ?? a.createdAtDate ?? null;
-    const bDate = b.capturedAtDate ?? b.createdAtDate ?? null;
-    const aTime = aDate ? aDate.getTime() : 0;
-    const bTime = bDate ? bDate.getTime() : 0;
-    return aTime - bTime;
-  });
+  const sortedCatches = [...catches].sort((a, b) => getCatchTime(a) - getCatchTime(b));
 
   sortedCatches.forEach((catchDoc) => {
     if (!catchDoc.coordinates) return;
@@ -190,7 +225,7 @@ export function aggregateSpots(
     });
 
     const summary = toDynamicSummary(catchDoc);
-    const occurredAtTime = summary.occurredAt ? summary.occurredAt.getTime() : 0;
+    const occurredAtTime = summary.occurredAt?.getTime?.() ?? 0;
 
     if (matchedBucket && matchedKey) {
       matchedBucket.catchCount += 1;
