@@ -11,6 +11,7 @@ import {
   aggregateSpots,
   buildLeaderboards,
   computeDistanceMiles,
+  getCatchDate,
   getSpotCatches,
   type LeaderboardEntry,
   type MapSpot,
@@ -337,7 +338,7 @@ export default function SpotDetailPage() {
 
   const lastUpdated = useMemo(() => {
     const latest = spotCatches[0];
-    return latest?.capturedAtDate ?? latest?.createdAtDate ?? null;
+    return latest ? getCatchDate(latest) : null;
   }, [spotCatches]);
 
   const distanceFromUser = useMemo(() => {
