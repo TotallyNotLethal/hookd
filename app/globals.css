@@ -35,7 +35,21 @@
 }
 
 .leaflet-top {
-  top: var(--nav-height);
+  top: calc(var(--nav-height) + env(safe-area-inset-top, 0px));
+}
+
+.leaflet-bottom {
+  bottom: calc(var(--mobile-nav-height) + env(safe-area-inset-bottom, 0px));
+}
+
+@media (min-width: 640px) {
+  .leaflet-top {
+    top: var(--nav-height);
+  }
+
+  .leaflet-bottom {
+    bottom: 0;
+  }
 }
 
 html, body { height: 100%; }
