@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 import MobileTabBar from "@/components/MobileTabBar";
+import OceanBackground from "@/components/OceanBackground";
 import OfflineBanner from "@/components/OfflineBanner";
 import { LoginModalProvider } from "@/components/auth/LoginModalContext";
 
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body>
+        <OceanBackground />
         <LoginModalProvider>
           <OfflineBanner />
           <div className="min-h-screen pt-nav pb-mobile-nav">
