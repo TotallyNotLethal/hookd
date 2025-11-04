@@ -712,24 +712,24 @@ export default function ChatPage() {
     <>
       <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 text-white">
       <NavBar />
-      <section className="container pt-nav pb-16">
-        <div className="flex flex-col gap-6">
-          <header className="flex flex-col gap-3">
-            <div className="flex items-center gap-2 text-sm uppercase tracking-[0.2em] text-white/60">
+      <section className="container pt-nav pb-12 md:pb-16">
+        <div className="flex flex-col gap-4 md:gap-6">
+          <header className="flex flex-col gap-2 md:gap-3">
+            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-white/60 md:text-sm">
               <MessageSquare className="h-4 w-4" />
               <span>Community</span>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="flex-1 text-3xl font-semibold tracking-tight md:text-4xl">Live Chat</h1>
+            <div className="flex flex-wrap items-center gap-2 md:gap-3">
+              <h1 className="flex-1 text-2xl font-semibold tracking-tight md:text-4xl">Live Chat</h1>
               <Link
                 href="/groups"
-                className="btn-primary inline-flex items-center justify-center gap-2 whitespace-nowrap px-4 py-2 text-sm"
+                className="btn-primary inline-flex items-center justify-center gap-2 whitespace-nowrap px-3 py-2 text-sm md:px-4"
               >
                 <Users className="h-4 w-4" />
                 Explore groups
               </Link>
             </div>
-            <p className="text-white/70 max-w-2xl">
+            <p className="hidden max-w-2xl text-white/70 md:block">
               Share quick updates, celebrate catches, and plan your next trip with the Hook&apos;d crew. Messages update in real time
               so you&apos;re always in the loop.
             </p>
@@ -756,21 +756,21 @@ export default function ChatPage() {
           ) : null}
 
           <div className="glass border border-white/10 rounded-3xl p-0 overflow-hidden shadow-2xl shadow-slate-950/50">
-            <div className="flex flex-col gap-4 border-b border-white/10 bg-white/5 px-6 py-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h2 className="text-lg font-medium">General Channel</h2>
-                <p className="text-xs text-white/60">Seamless, community-wide conversations</p>
+            <div className="flex flex-col gap-3 border-b border-white/10 bg-white/5 px-4 py-3 md:flex-row md:items-center md:justify-between md:gap-4 md:px-6 md:py-4">
+              <div className="space-y-1">
+                <h2 className="text-base font-medium md:text-lg">General Channel</h2>
+                <p className="text-[0.7rem] text-white/60 md:text-xs">Seamless, community-wide conversations</p>
               </div>
-              <div className="flex flex-col items-end gap-3 md:flex-row md:items-center md:gap-6">
+              <div className="flex flex-col gap-2 md:flex-row md:items-center md:gap-6">
                 <button
                   type="button"
                   onClick={() => setIsDmModalOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-full border border-white/15 px-4 py-2 text-sm text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                  className="inline-flex items-center gap-2 rounded-full border border-white/15 px-3 py-1.5 text-sm text-white transition hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 md:px-4 md:py-2"
                 >
                   <MessageCircle className="h-4 w-4" />
                   Direct messages
                 </button>
-                <div className="text-right text-xs text-white/50">
+                <div className="hidden text-right text-xs text-white/50 md:block">
                   <div>
                     {isLoading ? 'Loading…' : `${messages.length} message${messages.length === 1 ? '' : 's'}`}
                   </div>
@@ -799,7 +799,7 @@ export default function ChatPage() {
             <div className="flex h-[60vh] flex-col">
               <div
                 ref={messageListRef}
-                className="flex-1 overflow-y-auto px-6 py-4 space-y-4 bg-slate-950/40"
+                className="flex-1 overflow-y-auto space-y-3 bg-slate-950/40 px-4 py-3 md:space-y-4 md:px-6 md:py-4"
                 aria-live="polite"
               >
                 {moderationError ? (
@@ -825,7 +825,7 @@ export default function ChatPage() {
                 ) : null}
 
                 {formattedMessages.map((message) => (
-                  <article key={message.id} className="flex items-start gap-3 text-sm">
+                  <article key={message.id} className="flex items-start gap-2 text-sm md:gap-3">
                     <Link
                       href={`/profile/${message.uid}`}
                       prefetch={false}
@@ -910,9 +910,9 @@ export default function ChatPage() {
                 <div ref={endRef} />
               </div>
 
-              <div className="border-t border-white/10 bg-slate-950/60 p-4">
+              <div className="border-t border-white/10 bg-slate-950/60 p-3 md:p-4">
                 {!user ? (
-                  <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
+                  <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-white/5 p-3 text-sm text-white/70 md:gap-3 md:p-4">
                     <p>Sign in to join the conversation and sync your messages across devices.</p>
                     <div>
                       <LoginButton className="btn-primary inline-flex items-center justify-center px-4 py-2 text-sm">
@@ -922,8 +922,8 @@ export default function ChatPage() {
                   </div>
                 ) : null}
 
-                <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-3">
-                  <label htmlFor="chat-input" className="text-xs uppercase tracking-[0.2em] text-white/50">
+                <form onSubmit={handleSubmit} className="mt-2 flex flex-col gap-2 md:mt-3 md:gap-3">
+                  <label htmlFor="chat-input" className="text-[0.65rem] uppercase tracking-[0.2em] text-white/50 md:text-xs">
                     Message
                   </label>
                   <div className="relative">
@@ -940,7 +940,7 @@ export default function ChatPage() {
                         detectMentionContext(textarea.value, textarea.selectionStart ?? textarea.value.length);
                       }}
                       placeholder={user ? 'Share a fishing report, plan a meetup, or drop a quick hello…' : 'Sign in to share a message.'}
-                      className="min-h-[96px] w-full resize-y rounded-2xl border border-white/10 bg-slate-900/80 px-4 py-3 text-sm text-white placeholder:text-white/40 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-300/40 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="min-h-[88px] w-full resize-y rounded-2xl border border-white/10 bg-slate-900/80 px-3 py-2.5 text-sm text-white placeholder:text-white/40 focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-300/40 disabled:cursor-not-allowed disabled:opacity-60 md:px-4 md:py-3"
                       disabled={!user || isSending}
                       maxLength={2000}
                       required
@@ -1011,10 +1011,10 @@ export default function ChatPage() {
                           <div className="px-3 py-2 text-sm text-white/60">No anglers found.</div>
                         ) : null}
                       </div>
-                    ) : null}
+                      ) : null}
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <span className="text-xs text-white/40">Messages update instantly for everyone online.</span>
+                    <span className="text-[0.7rem] text-white/40 md:text-xs">Messages update instantly for everyone online.</span>
                     <button
                       type="submit"
                       className="btn-primary inline-flex items-center justify-center px-5 py-2 text-sm disabled:opacity-60"
