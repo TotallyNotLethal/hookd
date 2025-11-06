@@ -53,7 +53,7 @@ export default function FishIdentifier() {
     const boxes = detOut[Object.keys(detOut)[0]].data;
     if (!boxes || boxes.length < 4) return setResult("No fish detected.");
 
-    const [x1, y1, x2, y2] = boxes;
+    const [x1, y1, x2, y2] = Array.from(boxes).map(Number);
 
     // Crop and resize to 224x224 for classifier
     const w = x2 - x1;
