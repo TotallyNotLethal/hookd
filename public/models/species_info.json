@@ -1,0 +1,20 @@
+{
+  "Largemouth_Bass": {
+    "commonName": "Largemouth Bass",
+    "habitat": "Weedy shallow lakes & slow rivers.",
+    "baitTips": "Soft plastics, frogs, spinnerbaits.",
+    "notes": "Very structure-oriented ambush predator."
+  },
+  "Smallmouth_Bass": {
+    "commonName": "Smallmouth Bass",
+    "habitat": "Clear rocky rivers and reservoirs.",
+    "baitTips": "Ned rig, tube jig, paddletail swimbait.",
+    "notes": "Hard fighter, prefers current."
+  },
+  "Bluegill_fish": {
+    "commonName": "Bluegill",
+    "habitat": "Every pond and lake in North America.",
+    "baitTips": "Worms, crickets, ice jigs.",
+    "notes": "Kids' first fish. Loves shade and cover."
+  }
+}
