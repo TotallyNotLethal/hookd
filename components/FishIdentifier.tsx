@@ -68,10 +68,14 @@ export default function FishIdentifier() {
     const clsTensor = toTensor(cropCtx.getImageData(0, 0, 224, 224), 224);
     const clsOut = await classifier.run({ images: clsTensor });
 
-    const probs = clsOut[Object.keys(clsOut)[0]].data;
-    const maxIndex = probs.indexOf(Math.max(...probs));
+    const probsRaw = clsOut[Object.keys(clsOut)[0]].data;
 
-    setResult(`${labels[maxIndex]} (${(probs[maxIndex] * 100).toFixed(1)}%)`);
+// Convert typed array → normal number[]
+const probs = Array.from(probsRaw as Iterable<number>);
+const maxIndex = probs.indexOf(Math.max(...probs));
+
+setResult(`${labels[maxIndex]} (${(probs[maxIndex] * 100).toFixed(1)}%)`);
+
   }
 
   async function startCamera() {
