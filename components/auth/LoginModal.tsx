@@ -6,6 +6,7 @@ import { app, db } from '@/lib/firebaseClient';
 import { validateAndNormalizeUsername } from '@/lib/username';
 import {
   browserLocalPersistence,
+  browserPopupRedirectResolver,
   getAuth,
   getRedirectResult,
   GoogleAuthProvider,
@@ -21,6 +22,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 
 export const LOGIN_REDIRECT_STORAGE_KEY = 'hookd:auth:loginRedirect';
 
@@ -219,6 +221,28 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
 
   const isProcessingAuth = loading || !!authUser;
 
+  const canUseSessionStorage = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    const testKey = `${LOGIN_REDIRECT_STORAGE_KEY}:test`;
+    try {
+      window.sessionStorage.setItem(testKey, '1');
+      window.sessionStorage.removeItem(testKey);
+      return true;
+    } catch (err) {
+      console.warn('[Auth] Session storage unavailable for redirect flow:', err);
+      return false;
+    }
+  }, []);
+
+  const isNativePlatform = useCallback(() => {
+    try {
+      return Capacitor?.isNativePlatform?.() ?? false;
+    } catch (err) {
+      console.warn('[Auth] Unable to detect native platform:', err);
+      return false;
+    }
+  }, []);
+
   const handleClose = useCallback(() => {
     if (!isProcessingAuth) {
       onClose();
@@ -230,7 +254,9 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
     setLoading(true);
     console.log('[Auth] Google sign-in clicked — starting flow.');
 
-    const useRedirect = isMobileOrStandalone();
+    const nativeBuild = isNativePlatform();
+    const sessionStorageAvailable = canUseSessionStorage();
+    const useRedirect = isMobileOrStandalone() && !nativeBuild && sessionStorageAvailable;
 
     try {
       const auth = getAuth(app);
@@ -240,16 +266,27 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
         console.log('[Auth] Detected mobile/standalone — using redirect flow.');
         await setPersistence(auth, indexedDBLocalPersistence);
         console.log('[Auth] Persistence set (redirect) to indexedDBLocalPersistence.');
-        if (typeof window !== 'undefined') {
+        if (sessionStorageAvailable && typeof window !== 'undefined') {
           window.sessionStorage.setItem(LOGIN_REDIRECT_STORAGE_KEY, '1');
         }
         await signInWithRedirect(auth, provider);
         return;
       }
 
-      console.log('[Auth] Desktop flow — using popup.');
+      if (!sessionStorageAvailable) {
+        console.log('[Auth] Session storage unavailable — using popup flow.');
+      } else if (nativeBuild) {
+        console.log('[Auth] Native platform detected — using in-app browser/popup flow.');
+      } else {
+        console.log('[Auth] Desktop flow — using popup.');
+      }
+
       await setPersistence(auth, browserLocalPersistence);
-      const res = (await signInWithPopup(auth, provider)) as UserCredential;
+      const res = (await signInWithPopup(
+        auth,
+        provider,
+        nativeBuild ? browserPopupRedirectResolver : undefined,
+      )) as UserCredential;
       console.log('[Auth] Popup result returned, user:', res.user?.uid);
       await handleAuthSuccess(res.user);
     } catch (err) {
@@ -265,7 +302,13 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
     if (!useRedirect && !handledAuthRef.current) {
       setLoading(false);
     }
-  }, [handleAuthSuccess, isMobileOrStandalone, resetAuthHandling]);
+  }, [
+    canUseSessionStorage,
+    handleAuthSuccess,
+    isMobileOrStandalone,
+    isNativePlatform,
+    resetAuthHandling,
+  ]);
 
   const authStatusMessage = useMemo(() => {
     if (!isProcessingAuth) {
