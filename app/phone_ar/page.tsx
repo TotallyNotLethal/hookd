@@ -136,6 +136,13 @@ export default function Page() {
   const cameraRef = useRef<any>(null);
   const modelRef = useRef<any>(null);
   const highlightRef = useRef<any>(null);
+  const anchorGroupRef = useRef<any>(null);
+  const anchorRef = useRef<any>(null);
+  const hitTestSourceRef = useRef<any>(null);
+  const viewerSpaceRef = useRef<any>(null);
+  const labelRendererRef = useRef<any>(null);
+  const css2dHelpersRef = useRef<{ CSS2DObject?: any } | null>(null);
+  const labelObjectRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const arSessionStartedRef = useRef(false);
 
@@ -246,6 +253,13 @@ export default function Page() {
     if (highlightRef.current && part.highlightPosition) {
       highlightRef.current.position.set(part.highlightPosition.x, part.highlightPosition.y, part.highlightPosition.z);
     }
+    if (labelObjectRef.current && part.highlightPosition) {
+      labelObjectRef.current.position.set(
+        part.highlightPosition.x,
+        part.highlightPosition.y + 0.08,
+        part.highlightPosition.z
+      );
+    }
   }, [selectedManual, selectedPartId]);
 
   useEffect(() => {
@@ -273,21 +287,25 @@ export default function Page() {
     loader.load(
       selectedManual.modelUrl,
       (gltf) => {
+        if (!anchorGroupRef.current) {
+          anchorGroupRef.current = new THREE.Group();
+          anchorGroupRef.current.matrixAutoUpdate = false;
+          anchorGroupRef.current.visible = false;
+          sceneRef.current.add(anchorGroupRef.current);
+        }
+
         if (modelRef.current) {
-          sceneRef.current.remove(modelRef.current);
+          anchorGroupRef.current.remove(modelRef.current);
         }
         modelRef.current = gltf.scene;
         modelRef.current.scale.set(0.8, 0.8, 0.8);
         modelRef.current.position.set(0, -0.35, -1);
-        sceneRef.current.add(modelRef.current);
+        anchorGroupRef.current.add(modelRef.current);
         setStatus("AR model placed. Move your phone to inspect the highlight.");
 
         const firstPart = selectedManual.parts[0];
         if (firstPart) {
           createHighlightSphere(THREE, firstPart);
-          rendererRef.current.setAnimationLoop(() => {
-            rendererRef.current.render(sceneRef.current, cameraRef.current);
-          });
         }
       },
       undefined,
@@ -299,14 +317,91 @@ export default function Page() {
   };
 
   const createHighlightSphere = (THREE: any, part: ManualPart) => {
+    if (!anchorGroupRef.current) return;
+
     const geo = new THREE.SphereGeometry(0.03, 24, 24);
     const mat = new THREE.MeshBasicMaterial({ color: 0xff8c42, transparent: true, opacity: 0.9 });
+
     if (highlightRef.current) {
-      sceneRef.current.remove(highlightRef.current);
+      anchorGroupRef.current.remove(highlightRef.current);
     }
+
     highlightRef.current = new THREE.Mesh(geo, mat);
     highlightRef.current.position.set(part.highlightPosition.x, part.highlightPosition.y, part.highlightPosition.z);
-    sceneRef.current.add(highlightRef.current);
+    anchorGroupRef.current.add(highlightRef.current);
+
+    if (overlayLabelRef.current && css2dHelpersRef.current?.CSS2DObject) {
+      if (labelObjectRef.current) {
+        labelObjectRef.current.removeFromParent();
+      }
+      labelObjectRef.current = new css2dHelpersRef.current.CSS2DObject(overlayLabelRef.current);
+      labelObjectRef.current.position.set(
+        part.highlightPosition.x,
+        part.highlightPosition.y + 0.08,
+        part.highlightPosition.z
+      );
+      anchorGroupRef.current.add(labelObjectRef.current);
+    }
+  };
+
+  const startArRenderLoop = () => {
+    if (!rendererRef.current) return;
+
+    rendererRef.current.setAnimationLoop((_: number, frame: any) => {
+      if (!frame || !sceneRef.current || !cameraRef.current) return;
+
+      const referenceSpace = rendererRef.current.xr.getReferenceSpace();
+      const hitTestSource = hitTestSourceRef.current;
+      const anchorGroup = anchorGroupRef.current;
+
+      if (!referenceSpace || !anchorGroup) {
+        rendererRef.current.render(sceneRef.current, cameraRef.current);
+        labelRendererRef.current?.render(sceneRef.current, cameraRef.current);
+        return;
+      }
+
+      const hitTestResults = hitTestSource ? frame.getHitTestResults(hitTestSource) : [];
+
+      if (!anchorRef.current && hitTestResults.length > 0) {
+        const hit = hitTestResults[0];
+        if (typeof (hit as any).createAnchor === "function") {
+          (hit as any)
+            .createAnchor()
+            .then((anchor: any) => {
+              anchorRef.current = anchor;
+              anchor.addEventListener("remove", () => {
+                anchorRef.current = null;
+                anchorGroup.visible = false;
+              });
+            })
+            .catch((error: any) => {
+              console.error("Anchor creation failed", error);
+            });
+        }
+      }
+
+      let pose: any = null;
+
+      if (anchorRef.current) {
+        pose = frame.getPose(anchorRef.current.anchorSpace, referenceSpace);
+      }
+
+      if (!pose && hitTestResults.length > 0) {
+        const hitPose = hitTestResults[0].getPose(referenceSpace);
+        if (hitPose) {
+          pose = hitPose;
+        }
+      }
+
+      if (pose) {
+        anchorGroup.matrix.fromArray(pose.transform.matrix);
+        anchorGroup.matrix.decompose(anchorGroup.position, anchorGroup.quaternion, anchorGroup.scale);
+        anchorGroup.visible = true;
+      }
+
+      rendererRef.current.render(sceneRef.current, cameraRef.current);
+      labelRendererRef.current?.render(sceneRef.current, cameraRef.current);
+    });
   };
 
   const initThree = async () => {
@@ -314,6 +409,11 @@ export default function Page() {
     if (rendererRef.current) return;
 
     const THREE = await import("three");
+    const { CSS2DRenderer, CSS2DObject } = await import(
+      "three/examples/jsm/renderers/CSS2DRenderer.js"
+    );
+    css2dHelpersRef.current = { CSS2DObject };
+
     sceneRef.current = new THREE.Scene();
     sceneRef.current.background = null;
 
@@ -323,6 +423,14 @@ export default function Page() {
     rendererRef.current.setSize(arContainerRef.current.clientWidth, arContainerRef.current.clientHeight);
     rendererRef.current.xr.enabled = true;
     arContainerRef.current.appendChild(rendererRef.current.domElement);
+
+    labelRendererRef.current = new CSS2DRenderer();
+    labelRendererRef.current.setSize(arContainerRef.current.clientWidth, arContainerRef.current.clientHeight);
+    labelRendererRef.current.domElement.style.position = "absolute";
+    labelRendererRef.current.domElement.style.top = "0";
+    labelRendererRef.current.domElement.style.left = "0";
+    labelRendererRef.current.domElement.style.pointerEvents = "none";
+    arContainerRef.current.appendChild(labelRendererRef.current.domElement);
 
     const light = new THREE.HemisphereLight(0xffffff, 0xbbbbff, 1.1);
     sceneRef.current.add(light);
@@ -365,6 +473,13 @@ export default function Page() {
       if (part && highlightRef.current) {
         highlightRef.current.position.set(part.highlightPosition.x, part.highlightPosition.y, part.highlightPosition.z);
       }
+      if (part && labelObjectRef.current) {
+        labelObjectRef.current.position.set(
+          part.highlightPosition.x,
+          part.highlightPosition.y + 0.08,
+          part.highlightPosition.z
+        );
+      }
       return;
     }
 
@@ -386,15 +501,47 @@ export default function Page() {
       arButton.classList.add("hidden");
       document.body.appendChild(arButton);
 
-      rendererRef.current.xr.addEventListener("sessionstart", () => {
+      rendererRef.current.xr.addEventListener("sessionstart", async () => {
         arSessionStartedRef.current = true;
         setStatus("AR session started. Anchoring model…");
         cameraFallbackRef.current?.classList.add("hidden");
+
+        const session = rendererRef.current.xr.getSession();
+        try {
+          if (session) {
+            const viewerSpace = await session.requestReferenceSpace("viewer");
+            viewerSpaceRef.current = viewerSpace;
+            hitTestSourceRef.current = await session.requestHitTestSource({ space: viewerSpace });
+          }
+        } catch (error) {
+          console.error("Hit test setup failed", error);
+          setStatus("Could not start hit testing; try moving the device closer to a surface.");
+        }
+
+        anchorRef.current = null;
         loadManualModel();
+        startArRenderLoop();
       });
 
       rendererRef.current.xr.addEventListener("sessionend", () => {
         arSessionStartedRef.current = false;
+        anchorRef.current = null;
+        if (hitTestSourceRef.current?.cancel) {
+          hitTestSourceRef.current.cancel();
+        }
+        hitTestSourceRef.current = null;
+        viewerSpaceRef.current = null;
+        if (anchorGroupRef.current) {
+          anchorGroupRef.current.visible = false;
+        }
+        if (labelObjectRef.current) {
+          labelObjectRef.current.removeFromParent();
+          labelObjectRef.current = null;
+        }
+        if (overlayLabelRef.current && cameraFallbackRef.current) {
+          cameraFallbackRef.current.appendChild(overlayLabelRef.current);
+        }
+        rendererRef.current?.setAnimationLoop(null);
         setStatus("AR session ended. Tap start to re-enter.");
         startCameraFallback();
       });
@@ -412,6 +559,10 @@ export default function Page() {
     const handleResize = () => {
       if (!rendererRef.current || !arContainerRef.current) return;
       rendererRef.current.setSize(arContainerRef.current.clientWidth, arContainerRef.current.clientHeight);
+      labelRendererRef.current?.setSize(
+        arContainerRef.current.clientWidth,
+        arContainerRef.current.clientHeight
+      );
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
