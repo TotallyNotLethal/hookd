@@ -1,7 +1,8 @@
 'use client';
 
 import { ReactNode, createContext, useCallback, useContext, useMemo, useState } from 'react';
-import LoginModal, { LOGIN_REDIRECT_STORAGE_KEY } from './LoginModal';
+import { clearLoginRedirectFlag, readLoginRedirectFlag } from './loginRedirectStorage';
+import LoginModal from './LoginModal';
 
 interface LoginModalContextValue {
   isOpen: boolean;
@@ -13,10 +14,7 @@ const LoginModalContext = createContext<LoginModalContextValue | undefined>(unde
 
 export function LoginModalProvider({ children }: { children: ReactNode }) {
   const [isOpen, setIsOpen] = useState<boolean>(() => {
-    if (typeof window === 'undefined') {
-      return false;
-    }
-    return window.sessionStorage.getItem(LOGIN_REDIRECT_STORAGE_KEY) === '1';
+    return readLoginRedirectFlag();
   });
 
   const openModal = useCallback(() => {
@@ -25,9 +23,7 @@ export function LoginModalProvider({ children }: { children: ReactNode }) {
 
   const closeModal = useCallback(() => {
     setIsOpen(false);
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.removeItem(LOGIN_REDIRECT_STORAGE_KEY);
-    }
+    clearLoginRedirectFlag();
   }, []);
 
   const value = useMemo(

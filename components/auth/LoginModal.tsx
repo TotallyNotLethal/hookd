@@ -5,6 +5,12 @@ import { ensureUserProfile, type HookdUser } from '@/lib/firestore';
 import { app, db } from '@/lib/firebaseClient';
 import { validateAndNormalizeUsername } from '@/lib/username';
 import {
+  clearLoginRedirectFlag,
+  readLoginRedirectFlag,
+  resolveLoginRedirectStorage,
+  setLoginRedirectFlag,
+} from './loginRedirectStorage';
+import {
   browserLocalPersistence,
   browserPopupRedirectResolver,
   getAuth,
@@ -24,8 +30,6 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { X } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 
-export const LOGIN_REDIRECT_STORAGE_KEY = 'hookd:auth:loginRedirect';
-
 interface LoginModalProps {
   open: boolean;
   onClose: () => void;
@@ -39,24 +43,12 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
   const handledAuthRef = useRef(false);
   const titleId = useId();
   const descriptionId = useId();
+  const getRedirectStorage = useCallback(() => resolveLoginRedirectStorage(), []);
 
   const resetAuthHandling = useCallback(() => {
     handledAuthRef.current = false;
     setAuthUser(null);
     setLoading(false);
-  }, []);
-
-  const canUseSessionStorage = useCallback(() => {
-    if (typeof window === 'undefined') return false;
-    const testKey = `${LOGIN_REDIRECT_STORAGE_KEY}:test`;
-    try {
-      window.sessionStorage.setItem(testKey, '1');
-      window.sessionStorage.removeItem(testKey);
-      return true;
-    } catch (err) {
-      console.warn('[Auth] Session storage unavailable for redirect flow:', err);
-      return false;
-    }
   }, []);
 
   useEffect(() => {
@@ -125,13 +117,11 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
           await router.replace(targetRoute);
         }
       } finally {
-        if (typeof window !== 'undefined') {
-          window.sessionStorage.removeItem(LOGIN_REDIRECT_STORAGE_KEY);
-        }
+        clearLoginRedirectFlag(getRedirectStorage());
         onClose();
       }
     },
-    [onClose, resetAuthHandling, router],
+    [getRedirectStorage, onClose, resetAuthHandling, router],
   );
 
   useEffect(() => {
@@ -176,28 +166,31 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
         console.log('[Auth] Persistence fallback to indexedDBLocalPersistence.');
       }
 
-      const shouldHandleRedirect = (() => {
-        if (typeof window === 'undefined') return false;
-        if (!canUseSessionStorage()) return false;
-        try {
-          return window.sessionStorage.getItem(LOGIN_REDIRECT_STORAGE_KEY) === '1';
-        } catch (err) {
-          console.warn('[Auth] Unable to read redirect flag:', err);
-          return false;
-        }
-      })();
+      const redirectStorage = getRedirectStorage();
+      if (!redirectStorage) {
+        console.warn('[Auth] Redirect storage missing — redirect results may be skipped.');
+      }
 
+      const shouldHandleRedirect = redirectStorage
+        ? readLoginRedirectFlag(redirectStorage)
+        : false;
+
+      if (!shouldHandleRedirect) {
+        console.log('[Auth] No redirect flag present; skipping getRedirectResult.');
+      }
+
+      let result: UserCredential | null = null;
       if (shouldHandleRedirect) {
         console.log('[Auth] Attempting getRedirectResult...');
-      }
-      const result: UserCredential | null = shouldHandleRedirect
-        ? await getRedirectResult(auth).catch((err) => {
+        result = await getRedirectResult(auth)
+          .catch((err) => {
             console.error('[Auth] ❌ getRedirectResult error:', err);
             setError('Google sign-in failed during redirect. Please try again.');
             resetAuthHandling();
             return null;
           })
-        : null;
+          .finally(() => clearLoginRedirectFlag(redirectStorage));
+      }
 
       if (cancelled) {
         return;
@@ -210,7 +203,7 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
         return;
       } else {
         if (shouldHandleRedirect) {
-          console.log('[Auth] No user from redirect result.');
+          console.warn('[Auth] Redirect flag set but no user returned; state may be missing.');
         }
       }
 
@@ -236,7 +229,7 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
         unsubscribeAuth();
       }
     };
-  }, [canUseSessionStorage, handleAuthSuccess, open, resetAuthHandling]);
+  }, [getRedirectStorage, handleAuthSuccess, open, resetAuthHandling]);
 
   const isMobileOrStandalone = useCallback(() => {
     if (typeof window === 'undefined') return false;
@@ -274,8 +267,14 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
     console.log('[Auth] Google sign-in clicked — starting flow.');
 
     const nativeBuild = isNativePlatform();
-    const sessionStorageAvailable = canUseSessionStorage();
-    const useRedirect = !nativeBuild && isMobileOrStandalone() && sessionStorageAvailable;
+    const redirectStorage = getRedirectStorage();
+    const redirectStorageAvailable = !!redirectStorage;
+    if (!redirectStorageAvailable) {
+      console.warn(
+        '[Auth] Redirect storage unavailable — redirect flow may not survive navigation.',
+      );
+    }
+    const useRedirect = !nativeBuild && isMobileOrStandalone() && redirectStorageAvailable;
 
     try {
       const auth = getAuth(app);
@@ -285,15 +284,16 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
         console.log('[Auth] Detected mobile/standalone — using redirect flow.');
         await setPersistence(auth, indexedDBLocalPersistence);
         console.log('[Auth] Persistence set (redirect) to indexedDBLocalPersistence.');
-        if (sessionStorageAvailable && typeof window !== 'undefined') {
-          window.sessionStorage.setItem(LOGIN_REDIRECT_STORAGE_KEY, '1');
+        const flagSet = setLoginRedirectFlag(redirectStorage);
+        if (!flagSet) {
+          console.warn('[Auth] Redirect flag failed to persist before navigation.');
         }
         await signInWithRedirect(auth, provider);
         return;
       }
 
-      if (!sessionStorageAvailable) {
-        console.log('[Auth] Session storage unavailable — using popup flow.');
+      if (!redirectStorageAvailable) {
+        console.log('[Auth] Persistent storage unavailable — using popup flow.');
       } else if (nativeBuild) {
         console.log(
           '[Auth] Native platform detected — forcing popup with browserPopupRedirectResolver (no redirect fallback).',
@@ -315,7 +315,7 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
       const errCode: string | undefined = err?.code;
       const popupUnsupported = errCode === 'auth/operation-not-supported-in-this-environment';
       const popupBlocked = errCode === 'auth/popup-blocked' || errCode === 'auth/popup-closed-by-user';
-      const canAttemptRedirect = sessionStorageAvailable && !useRedirect && !nativeBuild;
+      const canAttemptRedirect = redirectStorageAvailable && !useRedirect && !nativeBuild;
 
       if (popupBlocked) {
         console.warn('[Auth] Popup blocked by browser or user; redirect fallback disabled.');
@@ -330,8 +330,9 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
         try {
           const auth = getAuth(app);
           await setPersistence(auth, indexedDBLocalPersistence);
-          if (typeof window !== 'undefined') {
-            window.sessionStorage.setItem(LOGIN_REDIRECT_STORAGE_KEY, '1');
+          const flagSet = setLoginRedirectFlag(redirectStorage);
+          if (!flagSet) {
+            console.warn('[Auth] Redirect flag failed to persist before retry navigation.');
           }
           await signInWithRedirect(auth, new GoogleAuthProvider());
           return;
@@ -353,7 +354,7 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
       setLoading(false);
     }
   }, [
-    canUseSessionStorage,
+    getRedirectStorage,
     handleAuthSuccess,
     isMobileOrStandalone,
     isNativePlatform,
