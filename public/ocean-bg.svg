@@ -1,0 +1,56 @@
+<svg width="1440" height="2560" viewBox="0 0 1440 2560" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="ocean-gradient" x1="720" y1="0" x2="720" y2="2560" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0F2E57" />
+      <stop offset="45%" stop-color="#0A1C3A" />
+      <stop offset="100%" stop-color="#030916" />
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(720 220) rotate(90) scale(420 520)">
+      <stop offset="0%" stop-color="#39BDF8" stop-opacity="0.45" />
+      <stop offset="80%" stop-color="#39BDF8" stop-opacity="0.04" />
+      <stop offset="100%" stop-color="#39BDF8" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="deep-glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(480 1020) rotate(90) scale(360 520)">
+      <stop offset="0%" stop-color="#38E8FF" stop-opacity="0.25" />
+      <stop offset="80%" stop-color="#38E8FF" stop-opacity="0.02" />
+      <stop offset="100%" stop-color="#38E8FF" stop-opacity="0" />
+    </radialGradient>
+    <filter id="soft-blur" x="-200" y="-200" width="1840" height="2960" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="60" />
+    </filter>
+  </defs>
+
+  <rect width="1440" height="2560" fill="url(#ocean-gradient)" />
+  <rect width="1440" height="2560" fill="url(#glow)" />
+  <rect width="1440" height="2560" fill="url(#deep-glow)" />
+
+  <g opacity="0.24" filter="url(#soft-blur)">
+    <ellipse cx="320" cy="620" rx="180" ry="60" fill="#35C3FF" />
+    <ellipse cx="1140" cy="860" rx="120" ry="48" fill="#54E0FF" />
+    <ellipse cx="760" cy="1320" rx="220" ry="74" fill="#2FC0FF" />
+  </g>
+
+  <g opacity="0.75">
+    <path d="M256 510c34 10 64 29 84 52-32 4-76-4-104-20-16 12-32 20-56 24 10-22 36-42 76-56Z" fill="#8CF1FF" fill-opacity="0.45" />
+    <path d="M1112 720c28 9 50 24 68 43-24 3-56-4-78-16-11 9-24 16-42 19 8-18 28-35 52-46Z" fill="#7AE3FF" fill-opacity="0.42" />
+    <path d="M486 980c36 9 68 26 92 48-34 5-80-2-112-18-16 12-34 19-58 23 11-21 38-41 78-53Z" fill="#A5F7FF" fill-opacity="0.32" />
+    <path d="M862 1180c38 12 70 30 94 53-34 3-82-4-116-21-14 12-32 21-54 26 11-24 38-44 76-58Z" fill="#8EEBFF" fill-opacity="0.38" />
+    <path d="M312 1460c40 14 72 34 98 61-38 3-86-7-122-26-18 14-36 24-62 30 13-28 42-50 86-65Z" fill="#6FD8FF" fill-opacity="0.36" />
+    <path d="M1010 1624c30 12 54 28 74 48-26 4-60-2-86-15-12 10-26 17-46 21 9-20 30-38 58-54Z" fill="#8BE7FF" fill-opacity="0.34" />
+    <path d="M548 1840c34 12 62 29 84 51-32 4-74-3-104-18-16 11-32 18-54 23 10-22 36-42 74-56Z" fill="#5FD4FF" fill-opacity="0.34" />
+  </g>
+
+  <g opacity="0.38">
+    <path d="M910 560c-44 8-80 24-112 48 36 2 86-8 118-22 12 11 28 19 48 25-10-21-34-40-54-51Z" fill="#4ED0FF" fill-opacity="0.55" />
+    <path d="M420 760c-40 12-74 30-102 54 34 2 84-8 118-22 10 11 26 20 46 26-10-23-34-44-62-58Z" fill="#47C8FF" fill-opacity="0.52" />
+    <path d="M1210 980c-38 10-68 26-94 46 30 3 72-6 100-18 11 9 24 16 40 21-8-19-28-38-46-49Z" fill="#4AD2FF" fill-opacity="0.45" />
+    <path d="M664 1400c-44 10-80 28-112 52 36 2 88-8 124-24 12 11 28 20 48 26-12-24-38-46-60-54Z" fill="#3BC0FF" fill-opacity="0.48" />
+    <path d="M1176 1880c-36 11-66 28-92 48 30 3 70-4 96-15 10 8 22 14 36 18-8-20-26-37-40-51Z" fill="#42CCFF" fill-opacity="0.43" />
+  </g>
+
+  <g opacity="0.18">
+    <path d="M250 2100c48 14 86 36 114 64-42 4-96-6-134-26-20 16-40 26-68 32 14-30 46-56 88-70Z" fill="#5FD8FF" />
+    <path d="M960 2140c36 12 66 30 90 52-34 3-78-4-108-18-16 12-32 18-56 24 12-24 40-44 74-58Z" fill="#63D6FF" />
+    <path d="M520 2320c40 12 74 30 100 52-36 4-84-4-118-20-16 12-34 20-58 26 12-24 42-46 76-58Z" fill="#46C6FF" />
+  </g>
+</svg>
