@@ -580,8 +580,7 @@ export default function Page() {
           </div>
 
           <div className="relative">
-            <div className="absolute -inset-24 -z-10 bg-[radial-gradient(circle_at_50%_40%,rgba(56,189,248,0.3),transparent_45%),radial-gradient(circle_at_30%_10%,rgba(14,165,233,0.2),transparent_40%)] blur-3xl" />
-            <div className="angler-bubbles" aria-hidden />
+            <div className="absolute -inset-20 -z-10 bg-[radial-gradient(circle_at_50%_40%,rgba(56,189,248,0.2),transparent_45%),radial-gradient(circle_at_30%_10%,rgba(14,165,233,0.16),transparent_40%)] blur-2xl" />
             <div className="orb-shell mx-auto shadow-[0_0_140px_rgba(56,189,248,0.25)]">
               <div className="orb-core">
                 <span className="text-sm uppercase tracking-[0.3em] text-brand-100/80">Hook&apos;d</span>
@@ -598,7 +597,7 @@ export default function Page() {
                     aria-label={`Open ${link.label}`}
                     style={{
                       '--orbit-angle': `${link.angle}deg`,
-                      '--orbit-radius': '44%',
+                      '--orbit-radius': '62%',
                       '--orbit-bob-delay': `${link.delay}s`,
                     } as CSSProperties}
                   >

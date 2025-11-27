@@ -203,23 +203,23 @@ body {
 /* Splash orb */
 .orb-shell {
   position: relative;
-  width: min(26rem, 80vw);
+  width: min(25rem, 82vw);
   aspect-ratio: 1;
   border-radius: 9999px;
-  background: radial-gradient(circle at 50% 35%, rgba(56, 189, 248, 0.3), transparent 45%),
-    radial-gradient(circle at 50% 65%, rgba(14, 165, 233, 0.25), transparent 55%),
-    linear-gradient(145deg, rgba(6, 22, 40, 0.92), rgba(8, 25, 44, 0.96));
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.04), 0 0 80px rgba(56, 189, 248, 0.18);
+  background: radial-gradient(circle at 50% 35%, rgba(56, 189, 248, 0.28), transparent 45%),
+    radial-gradient(circle at 50% 65%, rgba(14, 165, 233, 0.22), transparent 55%),
+    linear-gradient(145deg, rgba(6, 22, 40, 0.94), rgba(8, 25, 44, 0.97));
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04), 0 0 60px rgba(56, 189, 248, 0.18);
   isolation: isolate;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .orb-track {
   position: absolute;
-  inset: 0;
+  inset: -8%;
   border-radius: 9999px;
-  animation: orbit-track 22s linear infinite;
+  animation: orbit-track 24s linear infinite;
   transform-origin: center;
   will-change: transform;
 }
@@ -267,7 +267,7 @@ body {
 }
 
 .orb-shell:hover .orb-track {
-  animation-duration: 16s;
+  animation-duration: 18s;
 }
 
 .orb-core {
@@ -313,12 +313,12 @@ body {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-radius, 40%), 0, 0)
+  transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-radius, 62%), 0, 0)
     rotate(calc(-1 * var(--orbit-angle, 0deg)));
   transform-origin: center;
   z-index: 2;
   will-change: transform;
-  animation: orb-bob var(--orbit-bob-duration, 7s) ease-in-out infinite;
+  animation: orb-bob var(--orbit-bob-duration, 9s) ease-in-out infinite;
   animation-delay: var(--orbit-bob-delay, 0s);
 }
 
@@ -334,56 +334,14 @@ body {
 @keyframes orb-bob {
   0%,
   100% {
-    transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-radius, 40%), 0, 0)
+    transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-radius, 62%), 0, 0)
       rotate(calc(-1 * var(--orbit-angle, 0deg))) translate3d(0, 0, 0);
   }
   50% {
-    transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-radius, 40%), 0, 0)
-      rotate(calc(-1 * var(--orbit-angle, 0deg))) translate3d(0, -6px, 0);
+    transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-radius, 62%), 0, 0)
+      rotate(calc(-1 * var(--orbit-angle, 0deg))) translate3d(0, -4px, 0);
   }
-}
 
-.angler-bubbles {
-  position: absolute;
-  inset: -5rem;
-  background:
-    radial-gradient(circle at 20% 30%, rgba(125, 211, 252, 0.18), transparent 35%),
-    radial-gradient(circle at 70% 10%, rgba(14, 165, 233, 0.12), transparent 40%),
-    radial-gradient(circle at 85% 70%, rgba(56, 189, 248, 0.08), transparent 45%);
-  filter: blur(18px);
-  opacity: 0.75;
-  pointer-events: none;
-  animation: bubble-drift 16s ease-in-out infinite alternate;
-  mix-blend-mode: screen;
-  z-index: 0;
-}
-
-.angler-bubbles::after {
-  content: "";
-  position: absolute;
-  inset: 12%;
-  background:
-    radial-gradient(ellipse at 40% 40%, rgba(255, 255, 255, 0.15), transparent 50%),
-    radial-gradient(circle at 70% 65%, rgba(56, 189, 248, 0.22), transparent 55%);
-  opacity: 0.75;
-  transform: rotate(-8deg);
-  animation: bubble-drift 12s ease-in-out infinite alternate-reverse;
-}
-
-@keyframes bubble-drift {
-  0% {
-    transform: translate3d(-6px, -8px, 0) scale(1);
-    opacity: 0.7;
-  }
-  50% {
-    transform: translate3d(6px, 4px, 0) scale(1.04);
-    opacity: 0.95;
-  }
-  100% {
-    transform: translate3d(10px, 12px, 0) scale(1.06);
-    opacity: 0.7;
-  }
-}
 
 .orb-node::after {
   content: "";
@@ -434,7 +392,7 @@ body {
   .orb-track,
   .orb-node {
     animation: none;
-    transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-radius, 40%), 0, 0)
+    transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-radius, 62%), 0, 0)
       rotate(calc(-1 * var(--orbit-angle, 0deg)));
   }
 }
@@ -467,14 +425,12 @@ body {
     linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
   background-size: 100% 100%, 120px 120px, 120px 120px;
   transform: perspective(800px) rotateX(50deg) scale(1.15);
-  opacity: 0.6;
+  opacity: 0.55;
   z-index: 0;
-  animation: grid-pan 22s linear infinite;
 }
 
 .launch-grid::after {
-  animation-direction: reverse;
-  opacity: 0.45;
+  opacity: 0.35;
 }
 
 @keyframes grid-pan {
@@ -492,8 +448,7 @@ body {
   background: radial-gradient(circle at 30% 20%, rgba(56, 189, 248, 0.16), transparent 55%),
     radial-gradient(circle at 80% 70%, rgba(14, 165, 233, 0.12), transparent 50%);
   filter: blur(40px);
-  opacity: 0.7;
-  animation: pulse 9s ease-in-out infinite;
+  opacity: 0.5;
 }
 
 .fishing-lines {
@@ -504,10 +459,9 @@ body {
     radial-gradient(circle at 60% 30%, rgba(56, 189, 248, 0.08), transparent 35%),
     radial-gradient(circle at 40% 70%, rgba(14, 165, 233, 0.08), transparent 40%);
   mix-blend-mode: screen;
-  opacity: 0.8;
+  opacity: 0.6;
   pointer-events: none;
-  filter: blur(8px);
-  animation: sweep 18s linear infinite;
+  filter: blur(6px);
   z-index: 0;
 }
 
