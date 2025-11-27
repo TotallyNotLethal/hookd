@@ -6,6 +6,7 @@ import {
   initializeApp,
   applicationDefault,
 } from 'firebase-admin/app';
+import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 
@@ -54,5 +55,6 @@ export function getAdminApp() {
   return initializeAdminApp();
 }
 
+export const adminAuth = getAuth(initializeAdminApp());
 export const adminDb = getFirestore(initializeAdminApp());
 export const adminStorage = getStorage(initializeAdminApp()).bucket(STORAGE_BUCKET);
