@@ -577,51 +577,84 @@ export default function Page() {
 
               <Link
                 href="/feed"
-                className="orb-node top-[10%] left-1/2 -translate-x-1/2"
+                className="orb-node"
                 aria-label="Open the community feed"
-                style={{ '--float-delay': '0s' } as CSSProperties}
+                style={{
+                  '--orbit-angle': '-90deg',
+                  '--orbit-radius': '42%',
+                  '--orbit-duration': '26s',
+                  '--orbit-delay': '0s',
+                } as CSSProperties}
               >
                 <span className="orb-chip">Feed</span>
               </Link>
               <Link
-                href="/map"
-                className="orb-node top-[30%] left-[18%]"
-                aria-label="Open the fishing map"
-                style={{ '--float-delay': '0.6s' } as CSSProperties}
-              >
-                <span className="orb-chip">Map</span>
-              </Link>
-              <Link
-                href="/logbook"
-                className="orb-node bottom-[30%] left-[18%]"
-                aria-label="Open your logbook"
-                style={{ '--float-delay': '1.2s' } as CSSProperties}
-              >
-                <span className="orb-chip">Logbook</span>
-              </Link>
-              <Link
-                href="/feed?compose=1"
-                className="orb-node bottom-[10%] left-1/2 -translate-x-1/2"
-                aria-label="Share a catch"
-                style={{ '--float-delay': '0.3s' } as CSSProperties}
-              >
-                <span className="orb-chip">Share</span>
-              </Link>
-              <Link
                 href="/groups"
-                className="orb-node top-[30%] right-[18%]"
+                className="orb-node"
                 aria-label="Open groups"
-                style={{ '--float-delay': '1s' } as CSSProperties}
+                style={{
+                  '--orbit-angle': '-30deg',
+                  '--orbit-radius': '42%',
+                  '--orbit-duration': '30s',
+                  '--orbit-delay': '-1.5s',
+                  '--orbit-direction': 'reverse',
+                } as CSSProperties}
               >
                 <span className="orb-chip">Crews</span>
               </Link>
               <Link
                 href="/tools"
-                className="orb-node bottom-[30%] right-[18%]"
+                className="orb-node"
                 aria-label="Open tools"
-                style={{ '--float-delay': '1.6s' } as CSSProperties}
+                style={{
+                  '--orbit-angle': '30deg',
+                  '--orbit-radius': '42%',
+                  '--orbit-duration': '32s',
+                  '--orbit-delay': '-0.8s',
+                } as CSSProperties}
               >
                 <span className="orb-chip">Tools</span>
+              </Link>
+              <Link
+                href="/feed?compose=1"
+                className="orb-node"
+                aria-label="Share a catch"
+                style={{
+                  '--orbit-angle': '90deg',
+                  '--orbit-radius': '42%',
+                  '--orbit-duration': '28s',
+                  '--orbit-delay': '-2s',
+                  '--orbit-direction': 'reverse',
+                } as CSSProperties}
+              >
+                <span className="orb-chip">Share</span>
+              </Link>
+              <Link
+                href="/logbook"
+                className="orb-node"
+                aria-label="Open your logbook"
+                style={{
+                  '--orbit-angle': '150deg',
+                  '--orbit-radius': '42%',
+                  '--orbit-duration': '34s',
+                  '--orbit-delay': '-1.2s',
+                } as CSSProperties}
+              >
+                <span className="orb-chip">Logbook</span>
+              </Link>
+              <Link
+                href="/map"
+                className="orb-node"
+                aria-label="Open the fishing map"
+                style={{
+                  '--orbit-angle': '210deg',
+                  '--orbit-radius': '42%',
+                  '--orbit-duration': '30s',
+                  '--orbit-delay': '-0.4s',
+                  '--orbit-direction': 'reverse',
+                } as CSSProperties}
+              >
+                <span className="orb-chip">Map</span>
               </Link>
             </div>
 

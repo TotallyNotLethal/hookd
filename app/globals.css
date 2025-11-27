@@ -298,12 +298,27 @@ body {
 
 .orb-node {
   position: absolute;
-  --tw-translate-x: -50%;
-  --tw-translate-y: -50%;
-  transform: translate(var(--tw-translate-x), var(--tw-translate-y));
+  top: 50%;
+  left: 50%;
+  transform: rotate(var(--orbit-angle, 0deg)) translateX(var(--orbit-radius, 40%))
+    rotate(calc(-1 * var(--orbit-angle, 0deg)));
+  transform-origin: center;
   z-index: 2;
-  animation: float 7.5s ease-in-out infinite;
-  animation-delay: var(--float-delay, 0s);
+  will-change: transform;
+  animation: orbit var(--orbit-duration, 28s) linear infinite;
+  animation-delay: var(--orbit-delay, 0s);
+  animation-direction: var(--orbit-direction, normal);
+}
+
+@keyframes orbit {
+  0% {
+    transform: rotate(var(--orbit-angle, 0deg)) translateX(var(--orbit-radius, 40%))
+      rotate(calc(-1 * var(--orbit-angle, 0deg)));
+  }
+  100% {
+    transform: rotate(calc(var(--orbit-angle, 0deg) + 360deg)) translateX(var(--orbit-radius, 40%))
+      rotate(calc(-1 * (var(--orbit-angle, 0deg) + 360deg)));
+  }
 }
 
 .angler-bubbles {
@@ -391,6 +406,14 @@ body {
 .orb-node:focus-visible .orb-chip {
   outline: 2px solid rgba(56, 189, 248, 0.7);
   outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orb-node {
+    animation: none;
+    transform: rotate(var(--orbit-angle, 0deg)) translateX(var(--orbit-radius, 40%))
+      rotate(calc(-1 * var(--orbit-angle, 0deg)));
+  }
 }
 
 @keyframes float {
