@@ -21,6 +21,19 @@ type ManualDocument = {
   manualslibUrl: string;
 };
 
+type ScrapedManualPart = {
+  label: string;
+  note: string;
+  page?: string;
+};
+
+type ManualslibImportResponse = {
+  title: string;
+  summary: string;
+  modelUrl?: string;
+  parts: ScrapedManualPart[];
+};
+
 const DEFAULT_MODEL_URL =
   "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf";
 
@@ -63,6 +76,42 @@ const baseManualDocuments: ManualDocument[] = [
     parts: defaultParts,
   },
 ];
+
+const slugify = (value: string, index: number) =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-") || `section-${index}`;
+
+const generateHighlightPosition = (index: number, total: number): HighlightPosition => {
+  const angle = (index / Math.max(total, 1)) * Math.PI * 2;
+  const radius = 0.22;
+  const height = 0.05 + (index % 3) * 0.08;
+  return {
+    x: radius * Math.cos(angle),
+    y: height,
+    z: radius * Math.sin(angle) * -1,
+  };
+};
+
+const mapScrapedPartsToManualParts = (parts: ScrapedManualPart[]): ManualPart[] => {
+  const normalized = parts.length
+    ? parts
+    : [
+        {
+          label: "Manual overview",
+          note: "Imported from Manualslib; use this to anchor the overlay.",
+        },
+      ];
+
+  return normalized.map((part, index) => ({
+    id: slugify(part.label || `section-${index + 1}`, index),
+    label: part.label || `Section ${index + 1}`,
+    note: part.note || "Section imported from Manualslib.",
+    highlightPosition: generateHighlightPosition(index, normalized.length),
+  }));
+};
 
 export default function Page() {
   const [manualQuery, setManualQuery] = useState("");
@@ -122,29 +171,50 @@ export default function Page() {
     return `https://www.manualslib.com/search.html?q=${encodeURIComponent(query)}`;
   }, [manualslibQuery, selectedManual]);
 
-  const handleManualslibAdd = () => {
+  const handleManualslibAdd = async () => {
     if (!manualslibUrl.trim()) {
       setStatus("Paste a Manualslib URL to add it to AR.");
       return;
     }
 
-    const newManual: ManualDocument = {
-      id: `manualslib-${Date.now()}`,
-      title: manualslibTitle.trim() || "Manualslib document",
-      summary:
-        manualslibSummary.trim() || "Linked from Manualslib. Use the AR controls to position the highlight.",
-      manualslibUrl: manualslibUrl.trim(),
-      modelUrl: DEFAULT_MODEL_URL,
-      parts: defaultParts,
-    };
+    setStatus("Fetching Manualslib content…");
 
-    setManuals((prev) => [...prev, newManual]);
-    setSelectedManualId(newManual.id);
-    setSelectedPartId(newManual.parts[0].id);
-    setManualslibUrl("");
-    setManualslibTitle("");
-    setManualslibSummary("");
-    setStatus("Manualslib link added. Start AR to view the overlay.");
+    try {
+      const response = await fetch("/api/manualslib", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: manualslibUrl.trim() }),
+      });
+
+      const parsed: ManualslibImportResponse | { error?: string } = await response.json();
+
+      if (!response.ok || !("parts" in parsed)) {
+        const message = (parsed as { error?: string }).error || "Could not read the Manualslib page.";
+        throw new Error(message);
+      }
+
+      const parsedParts = mapScrapedPartsToManualParts(parsed.parts);
+      const newManual: ManualDocument = {
+        id: `manualslib-${Date.now()}`,
+        title: manualslibTitle.trim() || parsed.title,
+        summary:
+          manualslibSummary.trim() || parsed.summary || "Linked from Manualslib. Use the AR controls to position the highlight.",
+        manualslibUrl: manualslibUrl.trim(),
+        modelUrl: parsed.modelUrl || DEFAULT_MODEL_URL,
+        parts: parsedParts,
+      };
+
+      setManuals((prev) => [...prev, newManual]);
+      setSelectedManualId(newManual.id);
+      setSelectedPartId(newManual.parts[0]?.id ?? "");
+      setManualslibUrl("");
+      setManualslibTitle("");
+      setManualslibSummary("");
+      setStatus("Manualslib link added with parsed sections. Start AR to view the overlay.");
+    } catch (error: any) {
+      console.error("Manualslib import failed", error);
+      setStatus(error?.message || "Could not import Manualslib content.");
+    }
   };
 
   useEffect(() => {
@@ -212,10 +282,13 @@ export default function Page() {
         sceneRef.current.add(modelRef.current);
         setStatus("AR model placed. Move your phone to inspect the highlight.");
 
-        createHighlightSphere(THREE, selectedManual.parts[0]);
-        rendererRef.current.setAnimationLoop(() => {
-          rendererRef.current.render(sceneRef.current, cameraRef.current);
-        });
+        const firstPart = selectedManual.parts[0];
+        if (firstPart) {
+          createHighlightSphere(THREE, firstPart);
+          rendererRef.current.setAnimationLoop(() => {
+            rendererRef.current.render(sceneRef.current, cameraRef.current);
+          });
+        }
       },
       undefined,
       (error) => {
