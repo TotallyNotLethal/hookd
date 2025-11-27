@@ -200,6 +200,93 @@ body {
   list-style-type: disc;
 }
 
+/* Splash orb */
+.orb-shell {
+  position: relative;
+  width: min(22rem, 80vw);
+  aspect-ratio: 1;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 50% 35%, rgba(56, 189, 248, 0.25), transparent 45%),
+    radial-gradient(circle at 50% 65%, rgba(14, 165, 233, 0.2), transparent 50%),
+    linear-gradient(145deg, rgba(6, 22, 40, 0.9), rgba(8, 25, 44, 0.9));
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04), 0 0 80px rgba(56, 189, 248, 0.18);
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.orb-shell::before,
+.orb-shell::after {
+  content: "";
+  position: absolute;
+  inset: 8%;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  animation: spin-slow 28s linear infinite;
+}
+
+.orb-shell::after {
+  inset: 3%;
+  border-color: rgba(56, 189, 248, 0.35);
+  filter: drop-shadow(0 0 16px rgba(56, 189, 248, 0.25));
+  animation-duration: 18s;
+  animation-direction: reverse;
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.orb-core {
+  position: absolute;
+  inset: 22%;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 40% 35%, rgba(255, 255, 255, 0.14), transparent 45%),
+    radial-gradient(circle at 70% 65%, rgba(56, 189, 248, 0.35), transparent 60%),
+    linear-gradient(145deg, rgba(10, 26, 46, 0.8), rgba(11, 20, 34, 0.95));
+  display: grid;
+  place-items: center;
+  text-align: center;
+  color: white;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), inset 0 -1px 0 rgba(255, 255, 255, 0.04);
+  z-index: 1;
+}
+
+.orb-node {
+  position: absolute;
+  --tw-translate-x: -50%;
+  --tw-translate-y: -50%;
+  transform: translate(var(--tw-translate-x), var(--tw-translate-y));
+  z-index: 2;
+}
+
+.orb-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.65rem 1rem;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(14, 165, 233, 0.18));
+  color: white;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25), 0 0 20px rgba(56, 189, 248, 0.4);
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.orb-chip:hover {
+  transform: scale(1.06) translateZ(0);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3), 0 0 32px rgba(56, 189, 248, 0.5);
+  border-color: rgba(125, 211, 252, 0.8);
+}
+
 .profile-theme .markdown ol {
   list-style-type: decimal;
 }
