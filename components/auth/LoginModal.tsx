@@ -275,7 +275,7 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
 
     const nativeBuild = isNativePlatform();
     const sessionStorageAvailable = canUseSessionStorage();
-    const useRedirect = isMobileOrStandalone() && !nativeBuild && sessionStorageAvailable;
+    const useRedirect = !nativeBuild && isMobileOrStandalone() && sessionStorageAvailable;
 
     try {
       const auth = getAuth(app);
@@ -295,7 +295,9 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
       if (!sessionStorageAvailable) {
         console.log('[Auth] Session storage unavailable — using popup flow.');
       } else if (nativeBuild) {
-        console.log('[Auth] Native platform detected — using in-app browser/popup flow.');
+        console.log(
+          '[Auth] Native platform detected — forcing popup with browserPopupRedirectResolver (no redirect fallback).',
+        );
       } else {
         console.log('[Auth] Desktop flow — using popup.');
       }
@@ -313,10 +315,18 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
       const errCode: string | undefined = err?.code;
       const popupUnsupported = errCode === 'auth/operation-not-supported-in-this-environment';
       const popupBlocked = errCode === 'auth/popup-blocked' || errCode === 'auth/popup-closed-by-user';
-      const canAttemptRedirect = sessionStorageAvailable && !useRedirect;
+      const canAttemptRedirect = sessionStorageAvailable && !useRedirect && !nativeBuild;
 
-      if ((popupUnsupported || popupBlocked || nativeBuild) && canAttemptRedirect) {
-        console.warn('[Auth] Popup failed, retrying with redirect flow:', errCode || err);
+      if (popupBlocked) {
+        console.warn('[Auth] Popup blocked by browser or user; redirect fallback disabled.');
+        setError('Popup was blocked. Please allow popups or try again.');
+        resetAuthHandling();
+        setLoading(false);
+        return;
+      }
+
+      if (popupUnsupported && canAttemptRedirect) {
+        console.warn('[Auth] Popup unsupported, retrying with redirect flow:', errCode || err);
         try {
           const auth = getAuth(app);
           await setPersistence(auth, indexedDBLocalPersistence);
