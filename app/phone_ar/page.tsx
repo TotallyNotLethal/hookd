@@ -438,19 +438,71 @@ export default function Page() {
 
   const ensureCameraPreview = async (showContainer = false) => {
     if (!cameraFallbackRef.current || !cameraPreviewRef.current) return false;
+    const buildConstraints = (facingMode: "environment" | "user") => {
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent
+      );
+
+      return {
+        width: { ideal: isMobile ? 1920 : 1280 },
+        height: { ideal: isMobile ? 1080 : 720 },
+        aspectRatio: { ideal: 16 / 9 },
+        facingMode: { ideal: facingMode },
+      } satisfies MediaTrackConstraints;
+    };
+
+    const revealCameraFallback = () => {
+      cameraFallbackRef.current?.classList.remove("hidden");
+    };
+
+    const applyStreamToPreview = (stream: MediaStream) => {
+      if (!cameraPreviewRef.current || !cameraFallbackRef.current) return;
+
+      const [videoTrack] = stream.getVideoTracks();
+      const settings = videoTrack?.getSettings?.();
+      const aspectFromSettings = settings?.aspectRatio as number | undefined;
+      const derivedAspect =
+        typeof aspectFromSettings === "number"
+          ? aspectFromSettings
+          : settings?.width && settings?.height
+            ? settings.width / settings.height
+            : undefined;
+
+      if (derivedAspect) {
+        cameraFallbackRef.current.style.setProperty("--camera-aspect", derivedAspect.toString());
+      }
+
+      cameraPreviewRef.current.style.objectFit = "contain";
+    };
+
+    const requestCameraStream = async () => {
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          video: buildConstraints("environment"),
+          audio: false,
+        });
+      } catch (error) {
+        console.warn("Environment camera unavailable, falling back to user-facing camera", error);
+        return navigator.mediaDevices.getUserMedia({
+          video: buildConstraints("user"),
+          audio: false,
+        });
+      }
+    };
+
     if (showContainer) {
-      cameraFallbackRef.current.classList.remove("hidden");
+      revealCameraFallback();
     }
     if (streamRef.current) {
+      applyStreamToPreview(streamRef.current);
       return true;
     }
     try {
-      streamRef.current = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-        audio: false,
-      });
+      streamRef.current = await requestCameraStream();
       cameraPreviewRef.current.srcObject = streamRef.current;
       await cameraPreviewRef.current.play();
+      applyStreamToPreview(streamRef.current);
+      revealCameraFallback();
       setStatus("Camera preview active. Move the phone to align with the highlighted part label.");
       return true;
     } catch (error) {
