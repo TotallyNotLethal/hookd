@@ -7,7 +7,7 @@ import {
   doc, setDoc, getDoc, updateDoc, serverTimestamp,
   addDoc, collection, onSnapshot, orderBy, query, where,
   deleteDoc, increment, runTransaction, getDocs, limit,
-  GeoPoint, Timestamp, writeBatch, DocumentReference, Transaction, Query, DocumentData,
+  GeoPoint, Timestamp, writeBatch, DocumentReference, Transaction, Query, DocumentData, QueryConstraint,
 } from "firebase/firestore";
 import { getStorage, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import {
@@ -3059,7 +3059,10 @@ export async function createCatch(input: CatchInput) {
   return cRef.id;
 }
 
-export function subscribeToFeedCatches(cb: (arr: any[]) => void) {
+export function subscribeToFeedCatches(
+  cb: (arr: any[]) => void,
+  options?: { limit?: number },
+) {
   const cacheKey = 'feed:all';
   const cached = getCachedValue<any[]>(cacheKey, { maxAgeMs: FEED_CACHE_TTL_MS });
   if (Array.isArray(cached)) {
@@ -3070,7 +3073,12 @@ export function subscribeToFeedCatches(cb: (arr: any[]) => void) {
     }
   }
 
-  const q = query(collection(db, 'catches'), orderBy('createdAt', 'desc'));
+  const constraints: QueryConstraint[] = [orderBy('createdAt', 'desc')];
+  if (typeof options?.limit === 'number' && Number.isFinite(options.limit)) {
+    constraints.push(limit(options.limit));
+  }
+
+  const q = query(collection(db, 'catches'), ...constraints);
   return onSnapshot(q, (snap) => {
     const arr: any[] = [];
     snap.forEach(d => arr.push({ id: d.id, ...d.data() }));
@@ -3736,14 +3744,25 @@ async function fetchChallengeCatchDocs(challengeQuery: Query<DocumentData>) {
 }
 
 export function subscribeToChallengeCatches(cb: (arr: any[]) => void) {
-  const q = query(
+  const baseQuery = query(
     collection(db, "catches"),
-    where("hashtags", "array-contains", CHALLENGE_HASHTAG)
+    where("hashtags", "array-contains", CHALLENGE_HASHTAG),
   );
-  return onSnapshot(q, (snap) => {
-    const catches = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
-    cb(sortChallengeCatches(catches));
-  });
+
+  const sortedQuery = query(baseQuery, orderBy("createdAt", "desc"), limit(CHALLENGE_LIMIT));
+
+  try {
+    return onSnapshot(sortedQuery, (snap) => {
+      const catches = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+      cb(sortChallengeCatches(catches));
+    });
+  } catch (error) {
+    console.warn("Falling back to unsorted challenge subscription", error);
+    return onSnapshot(baseQuery, (snap) => {
+      const catches = snap.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+      cb(sortChallengeCatches(catches));
+    });
+  }
 }
 
 /** ---------- Chat Board ---------- */

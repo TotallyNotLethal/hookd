@@ -43,7 +43,8 @@ const PostDetailModal = dynamic(() => import("@/app/feed/PostDetailModal"), {
 
 export default function Page() {
   const [challengePosts, setChallengePosts] = useState<any[]>([]);
-  const [recentCatches, setRecentCatches] = useState<any[]>([]);
+  const [feedItems, setFeedItems] = useState<any[]>([]);
+  const [feedPageSize, setFeedPageSize] = useState(3);
   const [active, setActive] = useState<any | null>(null);
   const [activeCollection, setActiveCollection] = useState<'recent' | 'challenge' | null>(null);
   const [weightLeaders, setWeightLeaders] = useState<TournamentLeaderboardEntry[]>([]);
@@ -57,6 +58,18 @@ export default function Page() {
   const [hasViewedChallenges, setHasViewedChallenges] = useState(false);
   const [hasViewedLeaderboards, setHasViewedLeaderboards] = useState(false);
   const [hasViewedTrending, setHasViewedTrending] = useState(false);
+  const [hasUserInteracted, setHasUserInteracted] = useState(false);
+  const [isDocumentVisible, setIsDocumentVisible] = useState(true);
+
+  const visibleFeed = useMemo(
+    () => feedItems.slice(0, Math.max(1, feedPageSize)),
+    [feedItems, feedPageSize],
+  );
+  const hasMoreFeed = feedItems.length > visibleFeed.length;
+
+  const handleLoadMoreFeed = useCallback(() => {
+    setFeedPageSize((size) => size + 3);
+  }, []);
 
   const feedSectionRef = useRef<HTMLElement | null>(null);
   const challengeSectionRef = useRef<HTMLElement | null>(null);
@@ -87,10 +100,10 @@ export default function Page() {
   }, []);
 
   const activeCollectionItems = useMemo(() => {
-    if (activeCollection === 'recent') return recentCatches;
+    if (activeCollection === 'recent') return visibleFeed;
     if (activeCollection === 'challenge') return challengePosts;
     return [];
-  }, [activeCollection, challengePosts, recentCatches]);
+  }, [activeCollection, challengePosts, visibleFeed]);
 
   const activeIndex = useMemo(() => {
     if (!active) return -1;
@@ -190,6 +203,35 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+
+    const updateVisibility = () => setIsDocumentVisible(!document.hidden);
+    updateVisibility();
+
+    document.addEventListener("visibilitychange", updateVisibility);
+    return () => document.removeEventListener("visibilitychange", updateVisibility);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || hasUserInteracted) return undefined;
+
+    const markInteracted = () => setHasUserInteracted(true);
+    const opts: AddEventListenerOptions = { once: true, passive: true };
+
+    window.addEventListener("pointerdown", markInteracted, opts);
+    window.addEventListener("touchstart", markInteracted, opts);
+    window.addEventListener("keydown", markInteracted, { once: true });
+    window.addEventListener("wheel", markInteracted, { once: true, passive: true });
+
+    return () => {
+      window.removeEventListener("pointerdown", markInteracted, opts);
+      window.removeEventListener("touchstart", markInteracted, opts);
+      window.removeEventListener("keydown", markInteracted);
+      window.removeEventListener("wheel", markInteracted);
+    };
+  }, [hasUserInteracted]);
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -273,7 +315,7 @@ export default function Page() {
 
 
   useEffect(() => {
-    if (!hasViewedChallenges) return undefined;
+    if (!hasViewedChallenges || !isDocumentVisible || !hasUserInteracted) return undefined;
 
     let isMounted = true;
 
@@ -297,27 +339,32 @@ export default function Page() {
       isMounted = false;
       if (unsubscribe) unsubscribe();
     };
-  }, [filterPosts, hasViewedChallenges]);
+  }, [filterPosts, hasUserInteracted, hasViewedChallenges, isDocumentVisible]);
 
   useEffect(() => {
-    if (!hasViewedFeed) return undefined;
+    if (!hasViewedFeed || !isDocumentVisible) return undefined;
 
-    const unsubscribe = subscribeToFeedCatches((posts) => {
-      setRecentCatches(filterPosts(posts).slice(0, 4));
-    });
+    const unsubscribe = subscribeToFeedCatches(
+      (posts) => {
+        const filtered = filterPosts(posts);
+        setFeedItems(filtered);
+        setFeedPageSize((size) => Math.max(3, Math.min(size, Math.max(filtered.length, 3))));
+      },
+      { limit: 15 },
+    );
 
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [filterPosts, hasViewedFeed]);
+  }, [filterPosts, hasViewedFeed, isDocumentVisible]);
 
   useEffect(() => {
-    if (!hasViewedLeaderboards) return undefined;
+    if (!hasViewedLeaderboards || !hasUserInteracted || !isDocumentVisible) return undefined;
 
-    const unsubscribeWeight = subscribeToTournamentLeaderboardByWeight(10, (entries) => {
+    const unsubscribeWeight = subscribeToTournamentLeaderboardByWeight(7, (entries) => {
       setWeightLeaders(entries);
     });
-    const unsubscribeLength = subscribeToTournamentLeaderboardByLength(10, (entries) => {
+    const unsubscribeLength = subscribeToTournamentLeaderboardByLength(7, (entries) => {
       setLengthLeaders(entries);
     });
 
@@ -325,10 +372,10 @@ export default function Page() {
       if (typeof unsubscribeWeight === 'function') unsubscribeWeight();
       if (typeof unsubscribeLength === 'function') unsubscribeLength();
     };
-  }, [hasViewedLeaderboards]);
+  }, [hasUserInteracted, hasViewedLeaderboards, isDocumentVisible]);
 
   useEffect(() => {
-    if (!hasViewedLeaderboards) return undefined;
+    if (!hasViewedLeaderboards || !hasUserInteracted || !isDocumentVisible) return undefined;
 
     const unsubscribe = subscribeToActiveTournaments((events) => {
       setActiveTournaments(events);
@@ -337,24 +384,24 @@ export default function Page() {
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [hasViewedLeaderboards]);
+  }, [hasUserInteracted, hasViewedLeaderboards, isDocumentVisible]);
 
   useEffect(() => {
-    if (!hasViewedTrending) return undefined;
+    if (!hasViewedTrending || !hasUserInteracted || !isDocumentVisible) return undefined;
 
     const unsubscribe = subscribeToSpeciesTrendingInsights((insights) => {
       setSpeciesInsights(insights);
     }, {
       weeks: 6,
-      maxSamples: 600,
-      speciesLimit: 6,
-      minBaitSamples: 2,
+      maxSamples: 300,
+      speciesLimit: 5,
+      minBaitSamples: 3,
     });
 
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, [hasViewedTrending]);
+  }, [hasUserInteracted, hasViewedTrending, isDocumentVisible]);
 
   useEffect(() => {
     const unsubscribe = subscribeToNewestUser((user) => {
@@ -503,9 +550,9 @@ export default function Page() {
           </Link>
         </div>
 
-        {recentCatches.length > 0 ? (
+        {visibleFeed.length > 0 ? (
           <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {recentCatches.map((post) => (
+            {visibleFeed.map((post) => (
               <PostCard key={post.id} post={post} onOpen={handleOpenRecent} />
             ))}
           </div>
@@ -517,6 +564,17 @@ export default function Page() {
             </Link>
           </div>
         )}
+        {hasMoreFeed ? (
+          <div className="mt-8 flex justify-center">
+            <button
+              type="button"
+              className="btn-primary px-6"
+              onClick={handleLoadMoreFeed}
+            >
+              Load more catches
+            </button>
+          </div>
+        ) : null}
       </section>
 
       <section ref={trendingSectionRef}>
