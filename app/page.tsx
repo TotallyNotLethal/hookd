@@ -60,6 +60,7 @@ export default function Page() {
   const [hasViewedTrending, setHasViewedTrending] = useState(false);
   const [hasUserInteracted, setHasUserInteracted] = useState(false);
   const [isDocumentVisible, setIsDocumentVisible] = useState(true);
+  const [conditionsReady, setConditionsReady] = useState(false);
 
   const visibleFeed = useMemo(
     () => feedItems.slice(0, Math.max(1, feedPageSize)),
@@ -232,7 +233,26 @@ export default function Page() {
   }, [hasUserInteracted]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (typeof window === "undefined" || conditionsReady) {
+      return undefined;
+    }
+
+    const idleCallback = (window as typeof window & { requestIdleCallback?: any }).requestIdleCallback;
+    const idleHandle: number = idleCallback
+      ? idleCallback(() => setConditionsReady(true), { timeout: 3500 })
+      : window.setTimeout(() => setConditionsReady(true), 3500);
+
+    return () => {
+      if (idleCallback && typeof (window as any).cancelIdleCallback === "function") {
+        (window as any).cancelIdleCallback(idleHandle);
+      } else {
+        clearTimeout(idleHandle);
+      }
+    };
+  }, [conditionsReady]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !conditionsReady) {
       return;
     }
 
@@ -260,7 +280,11 @@ export default function Page() {
     } catch (error) {
       console.warn("Unable to load cached location", error);
     }
-  }, [defer]);
+  }, [conditionsReady, defer]);
+
+  const handleEnableConditions = useCallback(() => {
+    setConditionsReady(true);
+  }, []);
 
   const handleConditionsLocationResolved = useCallback(
     (payload: { name: string; latitude: number; longitude: number; timezone?: string }) => {
@@ -505,12 +529,38 @@ export default function Page() {
                   {locationPermissionError}
                 </div>
               ) : null}
-              <ConditionsWidget
-                className="sm:col-span-2"
-                fallbackLocation={fallbackConditionsLocation ?? undefined}
-                onLocationResolved={handleConditionsLocationResolved}
-                onLocationPermissionDenied={handleConditionsPermissionDenied}
-              />
+              {conditionsReady ? (
+                <ConditionsWidget
+                  className="sm:col-span-2"
+                  fallbackLocation={fallbackConditionsLocation ?? undefined}
+                  onLocationResolved={handleConditionsLocationResolved}
+                  onLocationPermissionDenied={handleConditionsPermissionDenied}
+                />
+              ) : (
+                <div className="sm:col-span-2 card p-4 flex flex-col gap-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-brand-200/80">Local conditions</p>
+                      <h3 className="text-lg font-semibold text-white">Check what&apos;s biting</h3>
+                    </div>
+                    <span className="rounded-full bg-white/5 px-3 py-1 text-xs text-white/80">Lightweight preview</span>
+                  </div>
+                  <p className="text-sm text-white/70">
+                    Tap below to load nearby bite forecasts when you&apos;re ready, or we&apos;ll grab them once
+                    things are idle.
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      className="btn-primary px-4 py-2 text-sm"
+                      onClick={handleEnableConditions}
+                    >
+                      Check local conditions
+                    </button>
+                    <span className="text-xs text-white/50">Keeps the hero snappy in the app container.</span>
+                  </div>
+                </div>
+              )}
               <div className="card p-4">
                 <h3 className="font-medium mb-2">Trending Lakes</h3>
                 <ul className="text-sm text-white/70 space-y-2">
