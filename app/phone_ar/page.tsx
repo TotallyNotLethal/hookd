@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import "../styles.css";
+//import "../styles.css";
 
 type HighlightPosition = { x: number; y: number; z: number };
 
