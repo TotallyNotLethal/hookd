@@ -24,7 +24,15 @@ import type {
   Tournament,
   TournamentLeaderboardEntry,
 } from "@/lib/firestore";
-import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useAuthState } from "react-firebase-hooks/auth";
 
 const TrendingExplorer = dynamic(() => import("@/components/TrendingExplorer"), {
@@ -475,33 +483,34 @@ export default function Page() {
       ) : null}
 
       {/* --- HERO SECTION --- */}
-      <section className="relative overflow-hidden pt-nav">
+      <section className="launch-stage relative overflow-hidden pt-nav pb-12">
         <div className="absolute inset-0 -z-10">
           <Image
             src="/sample/catches/bass1.jpg"
             alt="Angler proudly holding a largemouth bass at sunset"
             fill
-            className="object-cover opacity-20 brightness-110"
+            className="object-cover opacity-25 brightness-110"
           />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(56,189,248,0.18),transparent_40%),radial-gradient(circle_at_75%_25%,rgba(14,165,233,0.14),transparent_45%),linear-gradient(180deg,rgba(6,18,40,0.95)_0%,rgba(5,20,36,0.96)_40%,rgba(7,23,40,0.98)_100%)]" />
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#0a162a]/40 to-[#050d1b]" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#061429]/60 via-[#040d1b]/90 to-[#030914]" />
         </div>
+        <div className="launch-grid absolute inset-0 -z-[5]" />
+        <div className="launch-beams" />
 
-        <div className="container grid items-center gap-10 py-16 lg:grid-cols-[1.05fr_0.95fr] lg:py-20">
+        <div className="container relative z-10 grid min-h-[calc(100vh-var(--nav-height)-1rem)] items-center gap-10 py-10 lg:grid-cols-[1.05fr_0.95fr] lg:py-16">
           <div className="relative space-y-8">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-brand-100 shadow-soft">
-              <span className="inline-block h-2 w-2 rounded-full bg-brand-300 shadow-[0_0_0_6px_rgba(56,189,248,0.25)]" />
-              Hook&apos;d splash console
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-brand-100 shadow-soft shadow-brand-500/20">
+              <span className="inline-block h-2 w-2 rounded-full bg-brand-300 shadow-[0_0_0_10px_rgba(56,189,248,0.25)]" />
+              Hook&apos;d launch console
             </div>
             <div className="space-y-4">
               <h1 className="text-4xl font-semibold leading-tight sm:text-5xl md:text-6xl">
-                The <span className="text-brand-200">Hook&apos;d</span> universe, wrapped into a single launch orb.
+                One glowing launchpad to rule every Hook&apos;d adventure.
               </h1>
               <p className="max-w-2xl text-lg text-white/85">
-                Dive into the feed, scout the map, or jump into tournaments from a cinematic splash screen built for the app experience.
+                Ride the orb, feel the glow, and jump straight into the feed, map, or logbook from a single immersive view built for the app.
               </p>
             </div>
-            <div className="flex flex-wrap items-center gap-4">
+            <div className="flex flex-wrap items-center gap-3 md:gap-4">
               <Link
                 href="/feed"
                 className="btn-primary px-6 py-3 text-base md:text-lg shadow-glow focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
@@ -510,7 +519,7 @@ export default function Page() {
               </Link>
               <Link
                 href="/map"
-                className="rounded-xl border border-white/20 bg-white/10 px-6 py-3 text-base md:text-lg transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                className="rounded-xl border border-white/20 bg-white/10 px-6 py-3 text-base md:text-lg transition hover:border-brand-300/40 hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
               >
                 Scout the Map
               </Link>
@@ -522,14 +531,14 @@ export default function Page() {
                   Drop a Catch
                 </Link>
               ) : (
-                <LoginButton className="rounded-xl border border-white/20 px-6 py-3 text-base md:text-lg transition hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">
+                <LoginButton className="rounded-xl border border-white/20 px-6 py-3 text-base md:text-lg transition hover:border-brand-300/40 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">
                   Sign In
                 </LoginButton>
               )}
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
-              <div className="glass relative overflow-hidden rounded-2xl border border-white/10 p-4">
+              <div className="launch-cta-card relative overflow-hidden rounded-2xl p-4">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(56,189,248,0.12),transparent_35%),radial-gradient(circle_at_70%_80%,rgba(14,165,233,0.08),transparent_40%)]" />
                 <div className="relative flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-300/10 text-brand-100 ring-1 ring-brand-300/40">
@@ -541,7 +550,7 @@ export default function Page() {
                   </div>
                 </div>
               </div>
-              <div className="glass relative overflow-hidden rounded-2xl border border-white/10 p-4">
+              <div className="launch-cta-card relative overflow-hidden rounded-2xl p-4">
                 <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_40%,rgba(56,189,248,0.1),transparent_35%),radial-gradient(circle_at_80%_20%,rgba(14,165,233,0.07),transparent_40%)]" />
                 <div className="relative flex items-center gap-3">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-400/15 text-brand-100 ring-1 ring-brand-300/40">
@@ -557,30 +566,60 @@ export default function Page() {
           </div>
 
           <div className="relative">
-            <div className="absolute -inset-16 -z-10 bg-[radial-gradient(circle_at_50%_40%,rgba(56,189,248,0.2),transparent_45%),radial-gradient(circle_at_30%_10%,rgba(14,165,233,0.16),transparent_40%)] blur-3xl" />
-            <div className="orb-shell mx-auto">{/* see globals.css for orb visuals */}
+            <div className="absolute -inset-24 -z-10 bg-[radial-gradient(circle_at_50%_40%,rgba(56,189,248,0.3),transparent_45%),radial-gradient(circle_at_30%_10%,rgba(14,165,233,0.2),transparent_40%)] blur-3xl" />
+            <div className="orb-shell mx-auto shadow-[0_0_140px_rgba(56,189,248,0.25)]">
               <div className="orb-core">
                 <span className="text-sm uppercase tracking-[0.3em] text-brand-100/80">Hook&apos;d</span>
                 <p className="text-2xl font-semibold">Launchpad</p>
                 <p className="text-sm text-white/70">Tap a sector to dive in.</p>
               </div>
 
-              <Link href="/feed" className="orb-node top-[12%] left-1/2 -translate-x-1/2" aria-label="Open the community feed">
+              <Link
+                href="/feed"
+                className="orb-node top-[10%] left-1/2 -translate-x-1/2"
+                aria-label="Open the community feed"
+                style={{ '--float-delay': '0s' } as CSSProperties}
+              >
                 <span className="orb-chip">Feed</span>
               </Link>
-              <Link href="/map" className="orb-node top-[35%] -left-6" aria-label="Open the fishing map">
+              <Link
+                href="/map"
+                className="orb-node top-[33%] -left-7"
+                aria-label="Open the fishing map"
+                style={{ '--float-delay': '0.6s' } as CSSProperties}
+              >
                 <span className="orb-chip">Map</span>
               </Link>
-              <Link href="/logbook" className="orb-node bottom-[32%] -left-4" aria-label="Open your logbook">
+              <Link
+                href="/logbook"
+                className="orb-node bottom-[34%] -left-6"
+                aria-label="Open your logbook"
+                style={{ '--float-delay': '1.2s' } as CSSProperties}
+              >
                 <span className="orb-chip">Logbook</span>
               </Link>
-              <Link href="/feed?compose=1" className="orb-node bottom-[8%] left-1/2 -translate-x-1/2" aria-label="Share a catch">
+              <Link
+                href="/feed?compose=1"
+                className="orb-node bottom-[10%] left-1/2 -translate-x-1/2"
+                aria-label="Share a catch"
+                style={{ '--float-delay': '0.3s' } as CSSProperties}
+              >
                 <span className="orb-chip">Share</span>
               </Link>
-              <Link href="/groups" className="orb-node top-[35%] -right-6" aria-label="Open groups">
+              <Link
+                href="/groups"
+                className="orb-node top-[33%] -right-7"
+                aria-label="Open groups"
+                style={{ '--float-delay': '1s' } as CSSProperties}
+              >
                 <span className="orb-chip">Crews</span>
               </Link>
-              <Link href="/tools" className="orb-node bottom-[30%] -right-5" aria-label="Open tools">
+              <Link
+                href="/tools"
+                className="orb-node bottom-[32%] -right-6"
+                aria-label="Open tools"
+                style={{ '--float-delay': '1.6s' } as CSSProperties}
+              >
                 <span className="orb-chip">Tools</span>
               </Link>
             </div>
