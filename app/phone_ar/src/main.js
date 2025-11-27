@@ -5,7 +5,7 @@ import { GLTFLoader } from 'https://unpkg.com/three@0.161.0/examples/jsm/loaders
 const manualDocuments = [
   {
     id: 'compressor',
-    title: 'ManualLabs: Smart Compressor (ML-402)',
+    title: 'Manualslib: Smart Compressor (ML-402)',
     summary: 'Shows airflow and electronics board for the ML-402 compressor.',
     modelUrl: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf',
     parts: [
@@ -31,7 +31,7 @@ const manualDocuments = [
   },
   {
     id: 'switchgear',
-    title: 'ManualLabs: LV Switchgear Cabinet',
+    title: 'Manualslib: LV Switchgear Cabinet',
     summary: '3D overlay of a low-voltage cabinet with key breakers labeled.',
     modelUrl: 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/VC/glTF/VC.gltf',
     parts: [
@@ -50,7 +50,7 @@ const manualDocuments = [
       {
         id: 'relay',
         label: 'Protection relay IO block',
-        note: 'Verify CT polarity marks match ManualLabs wiring table.',
+        note: 'Verify CT polarity marks match the Manualslib wiring table.',
         highlightPosition: { x: -0.2, y: 0.25, z: 0.05 }
       }
     ]

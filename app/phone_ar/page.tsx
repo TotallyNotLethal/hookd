@@ -18,70 +18,62 @@ type ManualDocument = {
   summary: string;
   modelUrl: string;
   parts: ManualPart[];
+  manualslibUrl: string;
 };
 
-const manualDocuments: ManualDocument[] = [
+const DEFAULT_MODEL_URL =
+  "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf";
+
+const defaultParts: ManualPart[] = [
   {
-    id: "compressor",
-    title: "ManualLabs: Smart Compressor (ML-402)",
-    summary: "Shows airflow and electronics board for the ML-402 compressor.",
-    modelUrl:
-      "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf",
-    parts: [
-      {
-        id: "intake",
-        label: "Air intake filter",
-        note: "Inspect for clogging and replace if pressure drops >10%.",
-        highlightPosition: { x: 0, y: 0.25, z: -0.15 },
-      },
-      {
-        id: "pcb",
-        label: "Main PCB",
-        note: "Check for loose connectors before powering up.",
-        highlightPosition: { x: 0.12, y: 0.04, z: -0.08 },
-      },
-      {
-        id: "valve",
-        label: "Pressure relief valve",
-        note: "Verify safety seal orientation; do not overtighten.",
-        highlightPosition: { x: -0.15, y: 0.15, z: 0.05 },
-      },
-    ],
+    id: "intake",
+    label: "Air intake filter",
+    note: "Inspect for clogging and replace if pressure drops >10%.",
+    highlightPosition: { x: 0, y: 0.25, z: -0.15 },
   },
   {
-    id: "switchgear",
-    title: "ManualLabs: LV Switchgear Cabinet",
-    summary: "3D overlay of a low-voltage cabinet with key breakers labeled.",
-    modelUrl:
-      "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/VC/glTF/VC.gltf",
-    parts: [
-      {
-        id: "bus",
-        label: "A-B busbar joint",
-        note: "Thermal scan target. Torque to 35 Nm after maintenance.",
-        highlightPosition: { x: 0.18, y: 0.35, z: -0.1 },
-      },
-      {
-        id: "breaker",
-        label: "Main breaker",
-        note: "Lockout-tagout here before servicing downstream feeders.",
-        highlightPosition: { x: 0, y: 0.45, z: 0 },
-      },
-      {
-        id: "relay",
-        label: "Protection relay IO block",
-        note: "Verify CT polarity marks match ManualLabs wiring table.",
-        highlightPosition: { x: -0.2, y: 0.25, z: 0.05 },
-      },
-    ],
+    id: "pcb",
+    label: "Main PCB",
+    note: "Check for loose connectors before powering up.",
+    highlightPosition: { x: 0.12, y: 0.04, z: -0.08 },
+  },
+  {
+    id: "valve",
+    label: "Pressure relief valve",
+    note: "Verify safety seal orientation; do not overtighten.",
+    highlightPosition: { x: -0.15, y: 0.15, z: 0.05 },
+  },
+];
+
+const baseManualDocuments: ManualDocument[] = [
+  {
+    id: "bosch-dishwasher",
+    title: "Bosch SilencePlus Dishwasher",
+    summary: "Original Bosch SilencePlus installation and safety guide from Manualslib.",
+    manualslibUrl: "https://www.manualslib.com/manual/827171/Bosch-Silenceplus.html",
+    modelUrl: DEFAULT_MODEL_URL,
+    parts: defaultParts,
+  },
+  {
+    id: "iphone-13",
+    title: "Apple iPhone 13 User Guide",
+    summary: "Manualslib reference for the iPhone 13 quick start and safety sections.",
+    manualslibUrl: "https://www.manualslib.com/manual/2151148/Apple-Iphone-13.html",
+    modelUrl: "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/VC/glTF/VC.gltf",
+    parts: defaultParts,
   },
 ];
 
 export default function Page() {
   const [manualQuery, setManualQuery] = useState("");
   const [partQuery, setPartQuery] = useState("");
-  const [selectedManualId, setSelectedManualId] = useState(manualDocuments[0].id);
-  const [selectedPartId, setSelectedPartId] = useState(manualDocuments[0].parts[0].id);
+  const [manualslibQuery, setManualslibQuery] = useState("");
+  const [manualslibUrl, setManualslibUrl] = useState("");
+  const [manualslibTitle, setManualslibTitle] = useState("");
+  const [manualslibSummary, setManualslibSummary] = useState("");
+  const [manuals, setManuals] = useState<ManualDocument[]>(baseManualDocuments);
+  const [selectedManualId, setSelectedManualId] = useState(baseManualDocuments[0].id);
+  const [selectedPartId, setSelectedPartId] = useState(baseManualDocuments[0].parts[0].id);
   const [status, setStatus] = useState("Waiting to start AR…");
 
   const arContainerRef = useRef<HTMLDivElement | null>(null);
@@ -99,18 +91,21 @@ export default function Page() {
   const arSessionStartedRef = useRef(false);
 
   const selectedManual = useMemo(
-    () => manualDocuments.find((manual) => manual.id === selectedManualId) ?? manualDocuments[0],
-    [selectedManualId]
+    () => manuals.find((manual) => manual.id === selectedManualId) ?? manuals[0],
+    [manuals, selectedManualId]
   );
 
   const filteredManuals = useMemo(() => {
-    if (!manualQuery.trim()) return manualDocuments;
+    if (!manualQuery.trim()) return manuals;
     const query = manualQuery.toLowerCase();
-    const results = manualDocuments.filter(
-      (manual) => manual.title.toLowerCase().includes(query) || manual.summary.toLowerCase().includes(query)
+    const results = manuals.filter(
+      (manual) =>
+        manual.title.toLowerCase().includes(query) ||
+        manual.summary.toLowerCase().includes(query) ||
+        manual.manualslibUrl.toLowerCase().includes(query)
     );
-    return results.length ? results : manualDocuments;
-  }, [manualQuery]);
+    return results.length ? results : manuals;
+  }, [manualQuery, manuals]);
 
   const filteredParts = useMemo(() => {
     if (!selectedManual) return [] as ManualPart[];
@@ -122,13 +117,43 @@ export default function Page() {
     return results.length ? results : selectedManual.parts;
   }, [selectedManual, partQuery]);
 
+  const manualslibSearchLink = useMemo(() => {
+    const query = manualslibQuery.trim() || selectedManual?.title || "manual";
+    return `https://www.manualslib.com/search.html?q=${encodeURIComponent(query)}`;
+  }, [manualslibQuery, selectedManual]);
+
+  const handleManualslibAdd = () => {
+    if (!manualslibUrl.trim()) {
+      setStatus("Paste a Manualslib URL to add it to AR.");
+      return;
+    }
+
+    const newManual: ManualDocument = {
+      id: `manualslib-${Date.now()}`,
+      title: manualslibTitle.trim() || "Manualslib document",
+      summary:
+        manualslibSummary.trim() || "Linked from Manualslib. Use the AR controls to position the highlight.",
+      manualslibUrl: manualslibUrl.trim(),
+      modelUrl: DEFAULT_MODEL_URL,
+      parts: defaultParts,
+    };
+
+    setManuals((prev) => [...prev, newManual]);
+    setSelectedManualId(newManual.id);
+    setSelectedPartId(newManual.parts[0].id);
+    setManualslibUrl("");
+    setManualslibTitle("");
+    setManualslibSummary("");
+    setStatus("Manualslib link added. Start AR to view the overlay.");
+  };
+
   useEffect(() => {
     if (!filteredManuals.find((manual) => manual.id === selectedManualId)) {
-      const fallbackManual = filteredManuals[0] ?? manualDocuments[0];
+      const fallbackManual = filteredManuals[0] ?? manuals[0];
       setSelectedManualId(fallbackManual.id);
       setSelectedPartId(fallbackManual.parts[0].id);
     }
-  }, [filteredManuals, selectedManualId]);
+  }, [filteredManuals, manuals, selectedManualId]);
 
   useEffect(() => {
     const manualPartIds = selectedManual.parts.map((part) => part.id);
@@ -230,10 +255,14 @@ export default function Page() {
     sceneRef.current.add(light);
   };
 
-  const startCameraFallback = async () => {
-    if (!cameraFallbackRef.current || !cameraPreviewRef.current) return;
-    cameraFallbackRef.current.classList.remove("hidden");
-    if (streamRef.current) return;
+  const ensureCameraPreview = async (showContainer = false) => {
+    if (!cameraFallbackRef.current || !cameraPreviewRef.current) return false;
+    if (showContainer) {
+      cameraFallbackRef.current.classList.remove("hidden");
+    }
+    if (streamRef.current) {
+      return true;
+    }
     try {
       streamRef.current = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
@@ -242,13 +271,22 @@ export default function Page() {
       cameraPreviewRef.current.srcObject = streamRef.current;
       await cameraPreviewRef.current.play();
       setStatus("Camera preview active. Move the phone to align with the highlighted part label.");
+      return true;
     } catch (error) {
-      console.error(error);
+      console.error("Camera access failed", error);
       setStatus("Camera permissions needed to show preview.");
+      return false;
     }
   };
 
+  const startCameraFallback = async () => {
+    await ensureCameraPreview(true);
+  };
+
   const startWebXR = async () => {
+    const cameraReady = await ensureCameraPreview(true);
+    if (!cameraReady) return;
+
     if (arSessionStartedRef.current) {
       const part = selectedManual.parts.find((p) => p.id === selectedPartId);
       if (part && highlightRef.current) {
@@ -263,31 +301,38 @@ export default function Page() {
       return;
     }
 
-    await initThree();
-    const [{ ARButton }] = await Promise.all([import("three/examples/jsm/webxr/ARButton.js")]);
+    try {
+      await initThree();
+      const [{ ARButton }] = await Promise.all([import("three/examples/jsm/webxr/ARButton.js")]);
 
-    const arButton = ARButton.createButton(rendererRef.current, {
-      requiredFeatures: ["hit-test"],
-      optionalFeatures: ["dom-overlay"],
-      domOverlay: { root: document.body },
-    });
-    arButton.classList.add("hidden");
-    document.body.appendChild(arButton);
+      const arButton = ARButton.createButton(rendererRef.current, {
+        requiredFeatures: ["hit-test"],
+        optionalFeatures: ["dom-overlay"],
+        domOverlay: { root: document.body },
+      });
+      arButton.classList.add("hidden");
+      document.body.appendChild(arButton);
 
-    rendererRef.current.xr.addEventListener("sessionstart", () => {
-      arSessionStartedRef.current = true;
-      setStatus("AR session started. Anchoring model…");
-      cameraFallbackRef.current?.classList.add("hidden");
-      loadManualModel();
-    });
+      rendererRef.current.xr.addEventListener("sessionstart", () => {
+        arSessionStartedRef.current = true;
+        setStatus("AR session started. Anchoring model…");
+        cameraFallbackRef.current?.classList.add("hidden");
+        loadManualModel();
+      });
 
-    rendererRef.current.xr.addEventListener("sessionend", () => {
-      arSessionStartedRef.current = false;
-      setStatus("AR session ended. Tap start to re-enter.");
-    });
+      rendererRef.current.xr.addEventListener("sessionend", () => {
+        arSessionStartedRef.current = false;
+        setStatus("AR session ended. Tap start to re-enter.");
+        startCameraFallback();
+      });
 
-    rendererRef.current.xr.setSession(null);
-    arButton.click();
+      rendererRef.current.xr.setSession(null);
+      arButton.click();
+    } catch (error) {
+      console.error("WebXR start failed", error);
+      setStatus("Could not start WebXR; staying on camera preview.");
+      startCameraFallback();
+    }
   };
 
   useEffect(() => {
@@ -305,10 +350,8 @@ export default function Page() {
         <div className="branding">
           <div className="logo">📱🔧</div>
           <div>
-            <h1>ManualLabs Phone AR</h1>
-            <p className="tagline">
-              Point your phone, load a ManualLabs doc, highlight the exact part.
-            </p>
+            <h1>Manualslib Phone AR</h1>
+            <p className="tagline">Point your phone, load a Manualslib manual, highlight the exact part.</p>
           </div>
         </div>
         <p id="status" className="status" aria-live="polite">
@@ -320,16 +363,34 @@ export default function Page() {
         <section className="controls">
           <h2>Choose a Manual</h2>
 
-          <label htmlFor="manualSearch">Search ManualLabs</label>
+          <label htmlFor="manualSearch">Search Manualslib manuals</label>
           <input
             id="manualSearch"
             type="search"
-            placeholder="Type to search manuals by title or summary"
+            placeholder="Type to search manuals by title, summary, or URL"
             value={manualQuery}
             onChange={(event) => setManualQuery(event.target.value)}
           />
 
-          <label htmlFor="manualSelect">ManualLabs document</label>
+          <label htmlFor="manualslibSearch">Search on Manualslib.com</label>
+          <div className="manualslib-row">
+            <input
+              id="manualslibSearch"
+              type="search"
+              placeholder="Example: Bosch SilencePlus or iPhone 13"
+              value={manualslibQuery}
+              onChange={(event) => setManualslibQuery(event.target.value)}
+            />
+            <a className="secondary" href={manualslibSearchLink} target="_blank" rel="noreferrer">
+              Open search
+            </a>
+          </div>
+          <p className="note">
+            We open Manualslib in a new tab so you can find the exact guide, then paste the link below to add it to
+            augmented reality.
+          </p>
+
+          <label htmlFor="manualSelect">Manualslib document</label>
           <select
             id="manualSelect"
             value={selectedManualId}
@@ -344,7 +405,42 @@ export default function Page() {
 
           <p className="note">
             <strong>Summary:</strong> {selectedManual.summary}
+            <br />
+            <a className="inline-link" href={selectedManual.manualslibUrl} target="_blank" rel="noreferrer">
+              View on Manualslib
+            </a>
           </p>
+
+          <label htmlFor="manualslibUrl">Add a Manualslib link to AR</label>
+          <input
+            id="manualslibUrl"
+            type="url"
+            placeholder="https://www.manualslib.com/manual/..."
+            value={manualslibUrl}
+            onChange={(event) => setManualslibUrl(event.target.value)}
+          />
+
+          <label htmlFor="manualslibTitle">Display name (optional)</label>
+          <input
+            id="manualslibTitle"
+            type="text"
+            placeholder="How this manual should appear in AR"
+            value={manualslibTitle}
+            onChange={(event) => setManualslibTitle(event.target.value)}
+          />
+
+          <label htmlFor="manualslibSummary">Quick note (optional)</label>
+          <textarea
+            id="manualslibSummary"
+            rows={2}
+            placeholder="Add a note about the manual or the part you plan to highlight"
+            value={manualslibSummary}
+            onChange={(event) => setManualslibSummary(event.target.value)}
+          />
+
+          <button className="secondary" type="button" onClick={handleManualslibAdd}>
+            Add Manualslib manual to AR list
+          </button>
 
           <label htmlFor="partSearch">Search a part to highlight</label>
           <input
@@ -393,9 +489,10 @@ export default function Page() {
       <section className="instructions">
         <h2>How it works</h2>
         <ol>
-          <li>Select a ManualLabs document and a part you want to inspect.</li>
-          <li>Press <strong>Start AR session</strong> and point your phone at a clear surface.</li>
-          <li>We place the 3D model in front of you and highlight the chosen part in orange.</li>
+          <li>Search on Manualslib.com, add the URL, then pick the manual and part you want to inspect.</li>
+          <li>Press <strong>Start AR session</strong> and grant camera permission when asked.</li>
+          <li>We place the 3D model in front of you, highlight the chosen part in orange, and keep the camera preview on.
+          </li>
           <li>Move around to inspect the highlighted area; tap the dropdowns to switch parts.</li>
         </ol>
       </section>
