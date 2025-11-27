@@ -156,6 +156,7 @@ export default function Page() {
     () => lengthLeaders.filter((entry) => (entry.lengthScore ?? 0) > 0).slice(0, 3),
     [lengthLeaders],
   );
+  const orbitDurationSeconds = 26;
   const orbitLinks = useMemo(
     () => (
       [
@@ -597,11 +598,14 @@ export default function Page() {
                     aria-label={`Open ${link.label}`}
                     style={{
                       '--orbit-angle': `${link.angle}deg`,
-                      '--orbit-distance': 'clamp(9.5rem, 40vw, 15rem)',
+                      '--orbit-distance': 'clamp(11rem, 48vw, 18rem)',
                       '--orbit-bob-delay': `${link.delay}s`,
+                      '--orbit-duration': `${orbitDurationSeconds}s`,
                     } as CSSProperties}
                   >
-                    <span className="orb-chip">{link.label}</span>
+                    <span className="orb-chip-shell">
+                      <span className="orb-chip">{link.label}</span>
+                    </span>
                   </Link>
                 ))}
               </div>
