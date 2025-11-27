@@ -1215,6 +1215,8 @@ export type CatchInput = {
   environmentBands?: EnvironmentBands | null;
   locationKey?: string | null;
   tackle?: CatchTackleInput | null;
+  originalFile?: File | null;
+  originalExif?: Record<string, unknown> | null;
 };
 
 export type CatchWithCoordinates = {
@@ -2845,11 +2847,12 @@ export async function createCatch(input: CatchInput) {
     throw new Error('No photos provided for catch upload.');
   }
 
-  const baseId = crypto.randomUUID();
+  const cRef = doc(collection(db, 'catches'));
+  const catchId = cRef.id;
   const imageUrls: string[] = [];
 
   for (let index = 0; index < uploadFiles.length; index += 1) {
-    const fileRef = ref(storage, `catches/${input.uid}/${baseId}-${index}`);
+    const fileRef = ref(storage, `catches/${input.uid}/${catchId}-${index}`);
     const file = uploadFiles[index]!;
     const metadata = file.type ? { contentType: file.type } : undefined;
     await uploadBytes(fileRef, file, metadata);
@@ -2858,6 +2861,18 @@ export async function createCatch(input: CatchInput) {
   }
 
   const imageUrl = imageUrls[0] ?? '';
+
+  let originalImagePath: string | null = null;
+  let originalImageUrl: string | null = null;
+  const originalExif = input.originalExif ? { ...input.originalExif } : null;
+
+  if (input.originalFile) {
+    const originalRef = ref(storage, `catches/${input.uid}/${catchId}-original`);
+    const metadata = input.originalFile.type ? { contentType: input.originalFile.type } : undefined;
+    await uploadBytes(originalRef, input.originalFile, metadata);
+    originalImagePath = originalRef.fullPath;
+    originalImageUrl = await getDownloadURL(originalRef);
+  }
 
   // Extract hashtags from the caption
   const hashtags = input.caption
@@ -2912,7 +2927,7 @@ export async function createCatch(input: CatchInput) {
   const tackle = sanitizeTackle(input.tackle ?? null);
 
   // ✅ Save Firestore document with image URL
-  const cRef = await addDoc(collection(db, 'catches'), {
+  await setDoc(cRef, {
     uid: input.uid,
     userId: input.uid,
     displayName: input.displayName,
@@ -2938,6 +2953,9 @@ export async function createCatch(input: CatchInput) {
     environmentSnapshot,
     environmentBands: environmentBands || null,
     tackle: tackle || null,
+    originalImagePath: originalImagePath || null,
+    originalImageUrl: originalImageUrl || null,
+    originalExif: originalExif || null,
     coordinates:
       input.coordinates &&
       Number.isFinite(input.coordinates.lat) &&

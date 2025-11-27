@@ -309,6 +309,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
   const [verifiedWeight, setVerifiedWeight] = useState<WeightValue | null>(null);
   const [verifiedLength, setVerifiedLength] = useState('');
   const [originalFile, setOriginalFile] = useState<File | null>(null);
+  const [extractedExif, setExtractedExif] = useState<Record<string, unknown> | null>(null);
   const [location, setLocation] = useState('');
   const [isLocationPrivate, setIsLocationPrivate] = useState(false);
   const [caption, setCaption] = useState('');
@@ -647,6 +648,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
     setVerifiedWeight(null);
     setVerifiedLength('');
     setOriginalFile(null);
+    setExtractedExif(null);
     setLocation('');
     setIsLocationPrivate(false);
     setCaption('');
@@ -832,6 +834,7 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
       setLocation('');
       setLocationDirty(false);
       setLocationError(null);
+      setExtractedExif(null);
 
       try {
         const metadata = (await parse(primaryOriginalFile, {
@@ -857,6 +860,21 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
               gps_position?: unknown;
             }
           | undefined;
+
+        const exifPayload = metadata
+          ? {
+              dateTimeOriginal:
+                metadata.DateTimeOriginal instanceof Date
+                  ? metadata.DateTimeOriginal.toISOString()
+                  : metadata.DateTimeOriginal ?? null,
+              gpsLatitude: metadata.GPSLatitude ?? null,
+              gpsLongitude: metadata.GPSLongitude ?? null,
+              gpsLatitudeRef: metadata.GPSLatitudeRef ?? null,
+              gpsLongitudeRef: metadata.GPSLongitudeRef ?? null,
+              gpsPosition: metadata.gpsPosition ?? metadata.GPSPosition ?? metadata.gps_position ?? null,
+            }
+          : null;
+        setExtractedExif(exifPayload);
 
         const capturedAtMetadata = parseExifDateTime(metadata?.DateTimeOriginal);
         if (capturedAtMetadata) {
@@ -1620,6 +1638,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         tackle: tacklePayload,
         locationKey: deriveLocationKey({ coordinates, locationName: finalLocation }),
         coordinates,
+        originalFile: originalFile ?? primaryFile,
+        originalExif: extractedExif,
       });
 
       if (tournament) {
