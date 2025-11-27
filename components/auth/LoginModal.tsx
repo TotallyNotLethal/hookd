@@ -46,6 +46,19 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
     setLoading(false);
   }, []);
 
+  const canUseSessionStorage = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    const testKey = `${LOGIN_REDIRECT_STORAGE_KEY}:test`;
+    try {
+      window.sessionStorage.setItem(testKey, '1');
+      window.sessionStorage.removeItem(testKey);
+      return true;
+    } catch (err) {
+      console.warn('[Auth] Session storage unavailable for redirect flow:', err);
+      return false;
+    }
+  }, []);
+
   useEffect(() => {
     if (!open) {
       setError(null);
@@ -237,19 +250,6 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
   }, []);
 
   const isProcessingAuth = loading || !!authUser;
-
-  const canUseSessionStorage = useCallback(() => {
-    if (typeof window === 'undefined') return false;
-    const testKey = `${LOGIN_REDIRECT_STORAGE_KEY}:test`;
-    try {
-      window.sessionStorage.setItem(testKey, '1');
-      window.sessionStorage.removeItem(testKey);
-      return true;
-    } catch (err) {
-      console.warn('[Auth] Session storage unavailable for redirect flow:', err);
-      return false;
-    }
-  }, []);
 
   const isNativePlatform = useCallback(() => {
     try {
