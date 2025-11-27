@@ -46,6 +46,19 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
     setLoading(false);
   }, []);
 
+  const canUseSessionStorage = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    const testKey = `${LOGIN_REDIRECT_STORAGE_KEY}:test`;
+    try {
+      window.sessionStorage.setItem(testKey, '1');
+      window.sessionStorage.removeItem(testKey);
+      return true;
+    } catch (err) {
+      console.warn('[Auth] Session storage unavailable for redirect flow:', err);
+      return false;
+    }
+  }, []);
+
   useEffect(() => {
     if (!open) {
       setError(null);
@@ -163,13 +176,28 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
         console.log('[Auth] Persistence fallback to indexedDBLocalPersistence.');
       }
 
-      console.log('[Auth] Attempting getRedirectResult...');
-      const result: UserCredential | null = await getRedirectResult(auth).catch((err) => {
-        console.error('[Auth] ❌ getRedirectResult error:', err);
-        setError('Google sign-in failed during redirect. Please try again.');
-        resetAuthHandling();
-        return null;
-      });
+      const shouldHandleRedirect = (() => {
+        if (typeof window === 'undefined') return false;
+        if (!canUseSessionStorage()) return false;
+        try {
+          return window.sessionStorage.getItem(LOGIN_REDIRECT_STORAGE_KEY) === '1';
+        } catch (err) {
+          console.warn('[Auth] Unable to read redirect flag:', err);
+          return false;
+        }
+      })();
+
+      if (shouldHandleRedirect) {
+        console.log('[Auth] Attempting getRedirectResult...');
+      }
+      const result: UserCredential | null = shouldHandleRedirect
+        ? await getRedirectResult(auth).catch((err) => {
+            console.error('[Auth] ❌ getRedirectResult error:', err);
+            setError('Google sign-in failed during redirect. Please try again.');
+            resetAuthHandling();
+            return null;
+          })
+        : null;
 
       if (cancelled) {
         return;
@@ -181,7 +209,9 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
         await handleAuthSuccess(result.user);
         return;
       } else {
-        console.log('[Auth] No user from redirect result.');
+        if (shouldHandleRedirect) {
+          console.log('[Auth] No user from redirect result.');
+        }
       }
 
       console.log('[Auth] Setting up onAuthStateChanged listener...');
@@ -206,7 +236,7 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
         unsubscribeAuth();
       }
     };
-  }, [handleAuthSuccess, open, resetAuthHandling]);
+  }, [canUseSessionStorage, handleAuthSuccess, open, resetAuthHandling]);
 
   const isMobileOrStandalone = useCallback(() => {
     if (typeof window === 'undefined') return false;
@@ -221,22 +251,11 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
 
   const isProcessingAuth = loading || !!authUser;
 
-  const canUseSessionStorage = useCallback(() => {
-    if (typeof window === 'undefined') return false;
-    const testKey = `${LOGIN_REDIRECT_STORAGE_KEY}:test`;
-    try {
-      window.sessionStorage.setItem(testKey, '1');
-      window.sessionStorage.removeItem(testKey);
-      return true;
-    } catch (err) {
-      console.warn('[Auth] Session storage unavailable for redirect flow:', err);
-      return false;
-    }
-  }, []);
-
   const isNativePlatform = useCallback(() => {
     try {
-      return Capacitor?.isNativePlatform?.() ?? false;
+      const ua = navigator.userAgent || '';
+      const capacitorUAHint = /Capacitor|Cordova|PhoneGap|wv\)/i.test(ua);
+      return (Capacitor?.isNativePlatform?.() ?? false) || capacitorUAHint;
     } catch (err) {
       console.warn('[Auth] Unable to detect native platform:', err);
       return false;
@@ -289,7 +308,28 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
       )) as UserCredential;
       console.log('[Auth] Popup result returned, user:', res.user?.uid);
       await handleAuthSuccess(res.user);
-    } catch (err) {
+      return;
+    } catch (err: any) {
+      const errCode: string | undefined = err?.code;
+      const popupUnsupported = errCode === 'auth/operation-not-supported-in-this-environment';
+      const popupBlocked = errCode === 'auth/popup-blocked' || errCode === 'auth/popup-closed-by-user';
+      const canAttemptRedirect = sessionStorageAvailable && !useRedirect;
+
+      if ((popupUnsupported || popupBlocked || nativeBuild) && canAttemptRedirect) {
+        console.warn('[Auth] Popup failed, retrying with redirect flow:', errCode || err);
+        try {
+          const auth = getAuth(app);
+          await setPersistence(auth, indexedDBLocalPersistence);
+          if (typeof window !== 'undefined') {
+            window.sessionStorage.setItem(LOGIN_REDIRECT_STORAGE_KEY, '1');
+          }
+          await signInWithRedirect(auth, new GoogleAuthProvider());
+          return;
+        } catch (redirectErr) {
+          console.error('[Auth] Redirect retry failed:', redirectErr);
+        }
+      }
+
       console.error('[Auth] ❌ Google login failed:', err);
       setError('Google sign-in failed. Please try again.');
       resetAuthHandling();
