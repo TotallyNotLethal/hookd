@@ -597,7 +597,7 @@ export default function Page() {
                     aria-label={`Open ${link.label}`}
                     style={{
                       '--orbit-angle': `${link.angle}deg`,
-                      '--orbit-radius': '96%',
+                      '--orbit-distance': 'clamp(9.5rem, 40vw, 15rem)',
                       '--orbit-bob-delay': `${link.delay}s`,
                     } as CSSProperties}
                   >

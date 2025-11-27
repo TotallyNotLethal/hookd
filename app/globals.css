@@ -206,6 +206,7 @@ body {
   width: min(25rem, 82vw);
   aspect-ratio: 1;
   border-radius: 9999px;
+  --orbit-distance: clamp(9.5rem, 40vw, 15rem);
   background: radial-gradient(circle at 50% 35%, rgba(56, 189, 248, 0.28), transparent 45%),
     radial-gradient(circle at 50% 65%, rgba(14, 165, 233, 0.22), transparent 55%),
     linear-gradient(145deg, rgba(6, 22, 40, 0.94), rgba(8, 25, 44, 0.97));
@@ -313,7 +314,7 @@ body {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-radius, 88%), 0, 0)
+  transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-distance), 0, 0)
     rotate(calc(-1 * var(--orbit-angle, 0deg)));
   transform-origin: center;
   z-index: 2;
@@ -334,11 +335,11 @@ body {
 @keyframes orb-bob {
   0%,
   100% {
-    transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-radius, 88%), 0, 0)
+    transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-distance), 0, 0)
       rotate(calc(-1 * var(--orbit-angle, 0deg))) translate3d(0, 0, 0);
   }
   50% {
-    transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-radius, 88%), 0, 0)
+    transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-distance), 0, 0)
       rotate(calc(-1 * var(--orbit-angle, 0deg))) translate3d(0, -3px, 0);
   }
 }
@@ -393,7 +394,7 @@ body {
   .orb-track,
   .orb-node {
     animation: none;
-    transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-radius, 62%), 0, 0)
+    transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-distance), 0, 0)
       rotate(calc(-1 * var(--orbit-angle, 0deg)));
   }
 }
