@@ -124,6 +124,27 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
     [getRedirectStorage, onClose, resetAuthHandling, router],
   );
 
+  const isNativePlatform = useCallback(() => {
+    try {
+      const ua = navigator.userAgent || '';
+      const capacitorUAHint = /Capacitor|Cordova|PhoneGap|wv\)/i.test(ua);
+      return (Capacitor?.isNativePlatform?.() ?? false) || capacitorUAHint;
+    } catch (err) {
+      console.warn('[Auth] Unable to detect native platform:', err);
+      return false;
+    }
+  }, []);
+
+  const isAndroidWebView = useCallback(() => {
+    try {
+      const ua = navigator.userAgent || '';
+      return /; wv|\bVersion\/\d+\.\d+ Chrome\/\d+ Mobile Safari\/\d+$/i.test(ua);
+    } catch (err) {
+      console.warn('[Auth] Unable to detect Android WebView:', err);
+      return false;
+    }
+  }, []);
+
   useEffect(() => {
     if (!open) {
       return;
@@ -246,27 +267,6 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
   }, []);
 
   const isProcessingAuth = loading || !!authUser;
-
-  const isNativePlatform = useCallback(() => {
-    try {
-      const ua = navigator.userAgent || '';
-      const capacitorUAHint = /Capacitor|Cordova|PhoneGap|wv\)/i.test(ua);
-      return (Capacitor?.isNativePlatform?.() ?? false) || capacitorUAHint;
-    } catch (err) {
-      console.warn('[Auth] Unable to detect native platform:', err);
-      return false;
-    }
-  }, []);
-
-  const isAndroidWebView = useCallback(() => {
-    try {
-      const ua = navigator.userAgent || '';
-      return /; wv|\bVersion\/\d+\.\d+ Chrome\/\d+ Mobile Safari\/\d+$/i.test(ua);
-    } catch (err) {
-      console.warn('[Auth] Unable to detect Android WebView:', err);
-      return false;
-    }
-  }, []);
 
   const handleClose = useCallback(() => {
     if (!isProcessingAuth) {
