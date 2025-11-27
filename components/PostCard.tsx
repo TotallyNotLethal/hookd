@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type {
   MouseEvent,
@@ -19,6 +20,9 @@ import {
 import { Heart, MessageSquare, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import ProBadge from './ProBadge';
+
+const BLUR_DATA_URL =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQsB9y6b0e0AAAAASUVORK5CYII=';
 
 
 export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any) => void }) {
@@ -290,7 +294,19 @@ export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any
     >
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
-          {post.userPhoto && <img src={post.userPhoto} className="w-8 h-8 rounded-full" alt="" />}
+          {post.userPhoto && (
+            <Image
+              src={post.userPhoto}
+              alt={post.displayName || 'Angler avatar'}
+              width={32}
+              height={32}
+              className="h-8 w-8 rounded-full object-cover"
+              placeholder="blur"
+              blurDataURL={BLUR_DATA_URL}
+              loading="lazy"
+              sizes="32px"
+            />
+          )}
           <div>
             <div className="flex items-center gap-2">
               <p className="font-semibold">{post.displayName}</p>
@@ -345,11 +361,17 @@ export default function PostCard({ post, onOpen }: { post: any; onOpen?: (p: any
           onTouchEnd={!supportsPointerEvents && images.length > 1 ? endImageTouchGesture : undefined}
           onTouchCancel={!supportsPointerEvents && images.length > 1 ? endImageTouchGesture : undefined}
         >
-          <img
+          <Image
             src={images[currentImageIndex]}
             alt={post.species}
-            className="absolute inset-0 h-full w-full object-cover"
+            fill
+            className="object-cover"
             draggable={false}
+            placeholder="blur"
+            blurDataURL={BLUR_DATA_URL}
+            loading="lazy"
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 80vw, 520px"
+            priority={false}
           />
           {images.length > 1 && (
             <>

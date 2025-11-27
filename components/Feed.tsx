@@ -1,9 +1,13 @@
 'use client';
+import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { db, auth } from '@/lib/firebaseClient';
 import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { Heart, MessageSquare, Trash2 } from 'lucide-react';
 import { useAuthState } from 'react-firebase-hooks/auth';
+
+const BLUR_DATA_URL =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQsB9y6b0e0AAAAASUVORK5CYII=';
 
 export default function Feed() {
   const [posts, setPosts] = useState([]);
@@ -48,8 +52,17 @@ export default function Feed() {
         return (
           <div key={post.id} className="glass rounded-2xl p-4">
             {primaryImage ? (
-              <div className="relative mb-3 overflow-hidden rounded-xl">
-                <img src={primaryImage} alt={post.species} className="w-full" />
+              <div className="relative mb-3 overflow-hidden rounded-xl aspect-[4/5]">
+                <Image
+                  src={primaryImage}
+                  alt={post.species}
+                  fill
+                  className="object-cover"
+                  placeholder="blur"
+                  blurDataURL={BLUR_DATA_URL}
+                  loading="lazy"
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 80vw, 480px"
+                />
                 {imageList.length > 1 && (
                   <span className="absolute top-2 right-2 rounded-full bg-black/70 px-2 py-1 text-xs font-medium text-white">
                     +{imageList.length - 1}
