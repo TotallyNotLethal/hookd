@@ -6,7 +6,7 @@ import Link from "next/link";
 import LoginButton from "@/components/auth/LoginButton";
 import PostCard from "@/components/PostCard";
 import ConditionsWidget from "@/components/ConditionsWidget";
-import TrendingExplorer from "@/components/TrendingExplorer";
+import dynamic from "next/dynamic";
 import {
   getChallengeCatches,
   subscribeToActiveTournaments,
@@ -24,9 +24,20 @@ import type {
   Tournament,
   TournamentLeaderboardEntry,
 } from "@/lib/firestore";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuthState } from "react-firebase-hooks/auth";
-import PostDetailModal from "@/app/feed/PostDetailModal";
+
+const TrendingExplorer = dynamic(() => import("@/components/TrendingExplorer"), {
+  loading: () => (
+    <section className="container py-16">
+      <div className="card p-6 text-white/60">Loading trends…</div>
+    </section>
+  ),
+});
+
+const PostDetailModal = dynamic(() => import("@/app/feed/PostDetailModal"), {
+  ssr: false,
+});
 
 
 
@@ -42,6 +53,15 @@ export default function Page() {
   const [profile, setProfile] = useState<HookdUser | null>(null);
   const [newestAngler, setNewestAngler] = useState<HookdUser | null>(null);
   const [user] = useAuthState(auth);
+  const [hasViewedFeed, setHasViewedFeed] = useState(false);
+  const [hasViewedChallenges, setHasViewedChallenges] = useState(false);
+  const [hasViewedLeaderboards, setHasViewedLeaderboards] = useState(false);
+  const [hasViewedTrending, setHasViewedTrending] = useState(false);
+
+  const feedSectionRef = useRef<HTMLElement | null>(null);
+  const challengeSectionRef = useRef<HTMLElement | null>(null);
+  const leaderboardSectionRef = useRef<HTMLElement | null>(null);
+  const trendingSectionRef = useRef<HTMLElement | null>(null);
 
   const openFromCollection = useCallback(
     (post: any, source: 'recent' | 'challenge') => {
@@ -138,6 +158,38 @@ export default function Page() {
   }, [profile]);
 
   useEffect(() => {
+    const targets: Array<{ ref: RefObject<HTMLElement | null>; setter: (value: boolean) => void }>
+      = [
+        { ref: feedSectionRef, setter: setHasViewedFeed },
+        { ref: challengeSectionRef, setter: setHasViewedChallenges },
+        { ref: leaderboardSectionRef, setter: setHasViewedLeaderboards },
+        { ref: trendingSectionRef, setter: setHasViewedTrending },
+      ];
+
+    const observers = targets.map(({ ref, setter }) => {
+      const element = ref.current;
+      if (!element) return null;
+
+      const observer = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) {
+            setter(true);
+            observer.disconnect();
+          }
+        },
+        { rootMargin: "200px 0px" },
+      );
+
+      observer.observe(element);
+      return observer;
+    });
+
+    return () => {
+      observers.forEach((observer) => observer?.disconnect());
+    };
+  }, []);
+
+  useEffect(() => {
     if (typeof window === "undefined") {
       return;
     }
@@ -221,6 +273,8 @@ export default function Page() {
 
 
   useEffect(() => {
+    if (!hasViewedChallenges) return undefined;
+
     let isMounted = true;
 
     (async () => {
@@ -243,9 +297,11 @@ export default function Page() {
       isMounted = false;
       if (unsubscribe) unsubscribe();
     };
-  }, [filterPosts]);
+  }, [filterPosts, hasViewedChallenges]);
 
   useEffect(() => {
+    if (!hasViewedFeed) return undefined;
+
     const unsubscribe = subscribeToFeedCatches((posts) => {
       setRecentCatches(filterPosts(posts).slice(0, 4));
     });
@@ -253,9 +309,11 @@ export default function Page() {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [filterPosts]);
+  }, [filterPosts, hasViewedFeed]);
 
   useEffect(() => {
+    if (!hasViewedLeaderboards) return undefined;
+
     const unsubscribeWeight = subscribeToTournamentLeaderboardByWeight(10, (entries) => {
       setWeightLeaders(entries);
     });
@@ -267,9 +325,11 @@ export default function Page() {
       if (typeof unsubscribeWeight === 'function') unsubscribeWeight();
       if (typeof unsubscribeLength === 'function') unsubscribeLength();
     };
-  }, []);
+  }, [hasViewedLeaderboards]);
 
   useEffect(() => {
+    if (!hasViewedLeaderboards) return undefined;
+
     const unsubscribe = subscribeToActiveTournaments((events) => {
       setActiveTournaments(events);
     });
@@ -277,9 +337,11 @@ export default function Page() {
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, []);
+  }, [hasViewedLeaderboards]);
 
   useEffect(() => {
+    if (!hasViewedTrending) return undefined;
+
     const unsubscribe = subscribeToSpeciesTrendingInsights((insights) => {
       setSpeciesInsights(insights);
     }, {
@@ -292,7 +354,7 @@ export default function Page() {
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
-  }, []);
+  }, [hasViewedTrending]);
 
   useEffect(() => {
     const unsubscribe = subscribeToNewestUser((user) => {
@@ -430,7 +492,7 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="container py-16">
+      <section ref={feedSectionRef} className="container py-16">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between mb-6">
           <div>
             <p className="text-sm uppercase tracking-[0.3em] text-white/60">Best of the feed</p>
@@ -457,16 +519,24 @@ export default function Page() {
         )}
       </section>
 
-      <TrendingExplorer
-        activeTournaments={activeTournaments}
-        weightLeaders={weightLeaders}
-        lengthLeaders={lengthLeaders}
-        speciesInsights={speciesInsights}
-        isProModerator={isProModerator}
-      />
+      <section ref={trendingSectionRef}>
+        {hasViewedTrending ? (
+          <TrendingExplorer
+            activeTournaments={activeTournaments}
+            weightLeaders={weightLeaders}
+            lengthLeaders={lengthLeaders}
+            speciesInsights={speciesInsights}
+            isProModerator={isProModerator}
+          />
+        ) : (
+          <div className="container py-16">
+            <div className="card p-6 text-white/60">Scroll to load trends</div>
+          </div>
+        )}
+      </section>
 
       {/* --- WEEKLY CHALLENGE GALLERY --- */}
-      <section className="container py-16">
+      <section ref={challengeSectionRef} className="container py-16">
         <div className="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <div>
             <h2 className="text-2xl font-semibold mb-6 text-brand-300">
@@ -485,7 +555,10 @@ export default function Page() {
               )}
             </div>
           </div>
-          <aside className="glass rounded-3xl border border-white/10 p-6 self-start">
+          <aside
+            ref={leaderboardSectionRef}
+            className="glass rounded-3xl border border-white/10 p-6 self-start"
+          >
             <div className="flex items-center justify-between gap-3 mb-4">
               <h3 className="text-lg font-semibold text-brand-200">
                 Live Tournament Leaderboards
