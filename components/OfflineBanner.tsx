@@ -18,11 +18,19 @@ export default function OfflineBanner({ className }: OfflineBannerProps) {
   }, [online]);
 
   useEffect(() => {
-    if ("serviceWorker" in navigator) {
-      void navigator.serviceWorker
-        .register("/service-worker.js")
-        .catch((error) => console.error("Service worker registration failed", error));
-    }
+    if (!("serviceWorker" in navigator)) return;
+
+    const registerServiceWorker = async () => {
+      try {
+        const registration = await navigator.serviceWorker.register("/service-worker.js");
+        await registration.update();
+        await navigator.serviceWorker.ready;
+      } catch (error) {
+        console.error("Service worker registration failed", error);
+      }
+    };
+
+    void registerServiceWorker();
   }, []);
 
   if (online && catchQueue === 0 && forecastQueue === 0) {
