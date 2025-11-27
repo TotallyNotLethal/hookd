@@ -7,7 +7,7 @@ import {
   doc, setDoc, getDoc, updateDoc, serverTimestamp,
   addDoc, collection, onSnapshot, orderBy, query, where,
   deleteDoc, increment, runTransaction, getDocs, limit,
-  GeoPoint, Timestamp, writeBatch, DocumentReference, Transaction, Query, DocumentData,
+  GeoPoint, Timestamp, writeBatch, DocumentReference, Transaction, Query, DocumentData, QueryConstraint,
 } from "firebase/firestore";
 import { getStorage, getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import {
@@ -3073,7 +3073,7 @@ export function subscribeToFeedCatches(
     }
   }
 
-  const constraints = [orderBy('createdAt', 'desc')];
+  const constraints: QueryConstraint[] = [orderBy('createdAt', 'desc')];
   if (typeof options?.limit === 'number' && Number.isFinite(options.limit)) {
     constraints.push(limit(options.limit));
   }
