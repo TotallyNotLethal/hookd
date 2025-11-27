@@ -97,7 +97,9 @@
 }
 
 .phoneArPage select,
-.phoneArPage button {
+.phoneArPage button,
+.phoneArPage input,
+.phoneArPage textarea {
   width: 100%;
   padding: 12px;
   border-radius: 10px;
@@ -105,6 +107,11 @@
   background: rgba(11, 16, 33, 0.8);
   color: var(--text);
   font-size: 15px;
+}
+
+.phoneArPage textarea {
+  resize: vertical;
+  min-height: 64px;
 }
 
 .phoneArPage button.primary {
@@ -119,6 +126,29 @@
 .phoneArPage button.primary:hover {
   transform: translateY(-1px);
   box-shadow: 0 16px 35px rgba(255, 140, 66, 0.38);
+}
+
+.phoneArPage button.secondary,
+.phoneArPage a.secondary {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-align: center;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.phoneArPage .manualslib-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.phoneArPage .inline-link {
+  color: #8fb3ff;
+  text-decoration: underline;
+  font-weight: 600;
 }
 
 .phoneArPage .note {
