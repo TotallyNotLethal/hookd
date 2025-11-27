@@ -156,6 +156,19 @@ export default function Page() {
     () => lengthLeaders.filter((entry) => (entry.lengthScore ?? 0) > 0).slice(0, 3),
     [lengthLeaders],
   );
+  const orbitLinks = useMemo(
+    () => (
+      [
+        { href: '/feed', label: 'Feed', angle: -90, delay: 0 },
+        { href: '/groups', label: 'Crews', angle: -30, delay: 0.5 },
+        { href: '/tools', label: 'Tools', angle: 30, delay: 1.2 },
+        { href: '/feed?compose=1', label: 'Share', angle: 90, delay: 1.8 },
+        { href: '/logbook', label: 'Logbook', angle: 150, delay: 2.4 },
+        { href: '/map', label: 'Map', angle: 210, delay: 3 },
+      ] satisfies Array<{ href: string; label: string; angle: number; delay: number }>
+    ),
+    [],
+  );
   const isProModerator = Boolean(profile?.isPro);
   const blockedSet = useMemo(() => {
     const ids = new Set<string>();
@@ -495,6 +508,7 @@ export default function Page() {
         </div>
         <div className="launch-grid absolute inset-0 -z-[5]" />
         <div className="launch-beams" />
+        <div className="fishing-lines" />
 
         <div className="container relative z-10 grid min-h-[calc(100vh-var(--nav-height)-1rem)] items-center gap-10 py-10 lg:grid-cols-[1.05fr_0.95fr] lg:py-16">
           <div className="relative space-y-8">
@@ -507,7 +521,7 @@ export default function Page() {
                 Cast off into the Hook&apos;d galaxy.
               </h1>
               <p className="max-w-2xl text-lg text-white/85">
-                Ride the glowing launchpad to scout the map, log a catch, rally your crew, or drop a fresh pic—every key Hook&apos;d spot is a tap away.
+                Spin the neon helm, orbit the outer bait rings, and jump straight into the spots anglers hit most—map, logbook, crews, tools, feed, and sharing your latest catch.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3 md:gap-4">
@@ -575,87 +589,23 @@ export default function Page() {
                 <p className="text-sm text-white/70">Tap a sector to dive in.</p>
               </div>
 
-              <Link
-                href="/feed"
-                className="orb-node"
-                aria-label="Open the community feed"
-                style={{
-                  '--orbit-angle': '-90deg',
-                  '--orbit-radius': '42%',
-                  '--orbit-duration': '26s',
-                  '--orbit-delay': '0s',
-                } as CSSProperties}
-              >
-                <span className="orb-chip">Feed</span>
-              </Link>
-              <Link
-                href="/groups"
-                className="orb-node"
-                aria-label="Open groups"
-                style={{
-                  '--orbit-angle': '-30deg',
-                  '--orbit-radius': '42%',
-                  '--orbit-duration': '30s',
-                  '--orbit-delay': '-1.5s',
-                  '--orbit-direction': 'reverse',
-                } as CSSProperties}
-              >
-                <span className="orb-chip">Crews</span>
-              </Link>
-              <Link
-                href="/tools"
-                className="orb-node"
-                aria-label="Open tools"
-                style={{
-                  '--orbit-angle': '30deg',
-                  '--orbit-radius': '42%',
-                  '--orbit-duration': '32s',
-                  '--orbit-delay': '-0.8s',
-                } as CSSProperties}
-              >
-                <span className="orb-chip">Tools</span>
-              </Link>
-              <Link
-                href="/feed?compose=1"
-                className="orb-node"
-                aria-label="Share a catch"
-                style={{
-                  '--orbit-angle': '90deg',
-                  '--orbit-radius': '42%',
-                  '--orbit-duration': '28s',
-                  '--orbit-delay': '-2s',
-                  '--orbit-direction': 'reverse',
-                } as CSSProperties}
-              >
-                <span className="orb-chip">Share</span>
-              </Link>
-              <Link
-                href="/logbook"
-                className="orb-node"
-                aria-label="Open your logbook"
-                style={{
-                  '--orbit-angle': '150deg',
-                  '--orbit-radius': '42%',
-                  '--orbit-duration': '34s',
-                  '--orbit-delay': '-1.2s',
-                } as CSSProperties}
-              >
-                <span className="orb-chip">Logbook</span>
-              </Link>
-              <Link
-                href="/map"
-                className="orb-node"
-                aria-label="Open the fishing map"
-                style={{
-                  '--orbit-angle': '210deg',
-                  '--orbit-radius': '42%',
-                  '--orbit-duration': '30s',
-                  '--orbit-delay': '-0.4s',
-                  '--orbit-direction': 'reverse',
-                } as CSSProperties}
-              >
-                <span className="orb-chip">Map</span>
-              </Link>
+              <div className="orb-track" aria-label="Hook&apos;d launch destinations">
+                {orbitLinks.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="orb-node"
+                    aria-label={`Open ${link.label}`}
+                    style={{
+                      '--orbit-angle': `${link.angle}deg`,
+                      '--orbit-radius': '44%',
+                      '--orbit-bob-delay': `${link.delay}s`,
+                    } as CSSProperties}
+                  >
+                    <span className="orb-chip">{link.label}</span>
+                  </Link>
+                ))}
+              </div>
             </div>
 
             <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">

@@ -215,6 +215,15 @@ body {
   overflow: hidden;
 }
 
+.orb-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  animation: orbit-track 22s linear infinite;
+  transform-origin: center;
+  will-change: transform;
+}
+
 .orb-shell::before {
   mask-image: radial-gradient(circle at 50% 50%, black 60%, transparent 70%);
 }
@@ -255,6 +264,10 @@ body {
 .orb-shell:hover::before {
   animation-duration: 9s;
   filter: drop-shadow(0 0 24px rgba(56, 189, 248, 0.4));
+}
+
+.orb-shell:hover .orb-track {
+  animation-duration: 16s;
 }
 
 .orb-core {
@@ -300,24 +313,33 @@ body {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: rotate(var(--orbit-angle, 0deg)) translateX(var(--orbit-radius, 40%))
+  transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-radius, 40%), 0, 0)
     rotate(calc(-1 * var(--orbit-angle, 0deg)));
   transform-origin: center;
   z-index: 2;
   will-change: transform;
-  animation: orbit var(--orbit-duration, 28s) linear infinite;
-  animation-delay: var(--orbit-delay, 0s);
-  animation-direction: var(--orbit-direction, normal);
+  animation: orb-bob var(--orbit-bob-duration, 7s) ease-in-out infinite;
+  animation-delay: var(--orbit-bob-delay, 0s);
 }
 
-@keyframes orbit {
-  0% {
-    transform: rotate(var(--orbit-angle, 0deg)) translateX(var(--orbit-radius, 40%))
-      rotate(calc(-1 * var(--orbit-angle, 0deg)));
+@keyframes orbit-track {
+  from {
+    transform: rotate(0deg);
   }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes orb-bob {
+  0%,
   100% {
-    transform: rotate(calc(var(--orbit-angle, 0deg) + 360deg)) translateX(var(--orbit-radius, 40%))
-      rotate(calc(-1 * (var(--orbit-angle, 0deg) + 360deg)));
+    transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-radius, 40%), 0, 0)
+      rotate(calc(-1 * var(--orbit-angle, 0deg))) translate3d(0, 0, 0);
+  }
+  50% {
+    transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-radius, 40%), 0, 0)
+      rotate(calc(-1 * var(--orbit-angle, 0deg))) translate3d(0, -6px, 0);
   }
 }
 
@@ -409,9 +431,10 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .orb-track,
   .orb-node {
     animation: none;
-    transform: rotate(var(--orbit-angle, 0deg)) translateX(var(--orbit-radius, 40%))
+    transform: rotate(var(--orbit-angle, 0deg)) translate3d(var(--orbit-radius, 40%), 0, 0)
       rotate(calc(-1 * var(--orbit-angle, 0deg)));
   }
 }
@@ -471,6 +494,36 @@ body {
   filter: blur(40px);
   opacity: 0.7;
   animation: pulse 9s ease-in-out infinite;
+}
+
+.fishing-lines {
+  position: absolute;
+  inset: -10%;
+  background:
+    conic-gradient(from 0deg at 50% 50%, rgba(56, 189, 248, 0.15), transparent 120deg, rgba(125, 211, 252, 0.08)),
+    radial-gradient(circle at 60% 30%, rgba(56, 189, 248, 0.08), transparent 35%),
+    radial-gradient(circle at 40% 70%, rgba(14, 165, 233, 0.08), transparent 40%);
+  mix-blend-mode: screen;
+  opacity: 0.8;
+  pointer-events: none;
+  filter: blur(8px);
+  animation: sweep 18s linear infinite;
+  z-index: 0;
+}
+
+@keyframes sweep {
+  0% {
+    transform: rotate(0deg) scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: rotate(180deg) scale(1.04);
+    opacity: 1;
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+    opacity: 0.85;
+  }
 }
 
 @keyframes pulse {
