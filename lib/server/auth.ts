@@ -1,8 +1,6 @@
 import 'server-only';
 
-import { getAuth } from 'firebase-admin/auth';
-
-import { getAdminApp } from '../firebaseAdmin';
+import { getAdminAuth } from './firebaseAdminAuth';
 
 export type AuthenticatedUser = { uid: string };
 
@@ -45,9 +43,8 @@ export async function requireAuth(request: Request): Promise<AuthenticatedUser> 
   }
 
   try {
-    const app = getAdminApp();
-    const auth = getAuth(app);
-    const hasCredential = Boolean(app.options?.credential);
+    const auth = getAdminAuth();
+    const hasCredential = Boolean(auth.app.options?.credential);
     // Revocation checks require admin credentials. In local development the
     // Firebase admin SDK is often initialised without a service account, which
     // would cause verifyIdToken(..., true) to throw even for valid sessions.
