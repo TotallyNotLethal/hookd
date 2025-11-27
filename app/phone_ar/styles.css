@@ -1,4 +1,4 @@
-:root {
+.phoneArPage {
   color-scheme: light;
   --bg: #0b1021;
   --card: #11183a;
@@ -8,9 +8,11 @@
   --border: #273156;
 }
 
-* { box-sizing: border-box; }
+.phoneArPage * {
+  box-sizing: border-box;
+}
 
-body {
+.phoneArPage {
   margin: 0;
   font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background: radial-gradient(circle at 10% 20%, rgba(255, 140, 66, 0.08), transparent 35%),
@@ -20,7 +22,7 @@ body {
   min-height: 100vh;
 }
 
-.app-header {
+.phoneArPage .app-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -33,13 +35,13 @@ body {
   z-index: 10;
 }
 
-.branding {
+.phoneArPage .branding {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.logo {
+.phoneArPage .logo {
   width: 48px;
   height: 48px;
   display: grid;
@@ -50,13 +52,13 @@ body {
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
 }
 
-.tagline {
+.phoneArPage .tagline {
   margin: 4px 0 0 0;
   color: var(--muted);
   font-size: 14px;
 }
 
-.status {
+.phoneArPage .status {
   margin: 0;
   padding: 10px 12px;
   border-radius: 10px;
@@ -67,14 +69,14 @@ body {
   font-size: 14px;
 }
 
-.layout {
+.phoneArPage .layout {
   display: grid;
   grid-template-columns: minmax(280px, 360px) 1fr;
   gap: 20px;
   padding: 20px clamp(16px, 2vw, 40px);
 }
 
-.controls {
+.phoneArPage .controls {
   background: rgba(17, 24, 58, 0.7);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -85,17 +87,17 @@ body {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
 }
 
-.controls h2 {
+.phoneArPage .controls h2 {
   margin: 0 0 6px 0;
 }
 
-label {
+.phoneArPage label {
   font-weight: 600;
   font-size: 14px;
 }
 
-select,
-button {
+.phoneArPage select,
+.phoneArPage button {
   width: 100%;
   padding: 12px;
   border-radius: 10px;
@@ -105,7 +107,7 @@ button {
   font-size: 15px;
 }
 
-button.primary {
+.phoneArPage button.primary {
   background: linear-gradient(135deg, #ff8c42, #ff6b6b);
   border: none;
   font-weight: 700;
@@ -114,12 +116,12 @@ button.primary {
   transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
 
-button.primary:hover {
+.phoneArPage button.primary:hover {
   transform: translateY(-1px);
   box-shadow: 0 16px 35px rgba(255, 140, 66, 0.38);
 }
 
-.note {
+.phoneArPage .note {
   background: rgba(255, 255, 255, 0.04);
   border: 1px dashed var(--border);
   border-radius: 12px;
@@ -128,7 +130,7 @@ button.primary:hover {
   font-size: 14px;
 }
 
-.callout {
+.phoneArPage .callout {
   background: rgba(255, 140, 66, 0.08);
   border: 1px solid rgba(255, 140, 66, 0.3);
   border-radius: 12px;
@@ -138,7 +140,7 @@ button.primary:hover {
   min-height: 60px;
 }
 
-.viewer {
+.phoneArPage .viewer {
   background: rgba(17, 24, 58, 0.7);
   border: 1px solid var(--border);
   border-radius: 16px;
@@ -149,7 +151,7 @@ button.primary:hover {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
 }
 
-.ar-container {
+.phoneArPage .ar-container {
   position: relative;
   width: 100%;
   min-height: 420px;
@@ -159,19 +161,19 @@ button.primary:hover {
   border: 1px solid var(--border);
 }
 
-.camera-fallback video {
+.phoneArPage .camera-fallback video {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.camera-fallback {
+.phoneArPage .camera-fallback {
   position: relative;
   width: 100%;
   height: 100%;
 }
 
-.overlay-label {
+.phoneArPage .overlay-label {
   position: absolute;
   bottom: 16px;
   left: 50%;
@@ -184,11 +186,11 @@ button.primary:hover {
   box-shadow: 0 10px 30px rgba(255, 140, 66, 0.35);
 }
 
-.instructions {
+.phoneArPage .instructions {
   padding: 0 clamp(16px, 2vw, 40px) 40px;
 }
 
-.instructions ol {
+.phoneArPage .instructions ol {
   background: rgba(17, 24, 58, 0.7);
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -197,16 +199,16 @@ button.primary:hover {
   line-height: 1.5;
 }
 
-.hidden {
+.phoneArPage .hidden {
   display: none;
 }
 
 @media (max-width: 900px) {
-  .layout {
+  .phoneArPage .layout {
     grid-template-columns: 1fr;
   }
 
-  .viewer {
+  .phoneArPage .viewer {
     min-height: 380px;
   }
 }

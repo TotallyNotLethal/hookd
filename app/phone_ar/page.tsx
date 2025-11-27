@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-//import "../styles.css";
+import "./styles.css";
 
 type HighlightPosition = { x: number; y: number; z: number };
 
@@ -300,7 +300,7 @@ export default function Page() {
   }, []);
 
   return (
-    <div>
+    <div className="phoneArPage">
       <header className="app-header">
         <div className="branding">
           <div className="logo">📱🔧</div>
@@ -311,7 +311,9 @@ export default function Page() {
             </p>
           </div>
         </div>
-        <p className="status">{status}</p>
+        <p id="status" className="status" aria-live="polite">
+          {status}
+        </p>
       </header>
 
       <main className="layout">
