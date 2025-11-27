@@ -504,10 +504,10 @@ export default function Page() {
             </div>
             <div className="space-y-4">
               <h1 className="text-4xl font-semibold leading-tight sm:text-5xl md:text-6xl">
-                One glowing launchpad to rule every Hook&apos;d adventure.
+                Cast off into the Hook&apos;d galaxy.
               </h1>
               <p className="max-w-2xl text-lg text-white/85">
-                Ride the orb, feel the glow, and jump straight into the feed, map, or logbook from a single immersive view built for the app.
+                Ride the glowing launchpad to scout the map, log a catch, rally your crew, or drop a fresh pic—every key Hook&apos;d spot is a tap away.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3 md:gap-4">
@@ -567,6 +567,7 @@ export default function Page() {
 
           <div className="relative">
             <div className="absolute -inset-24 -z-10 bg-[radial-gradient(circle_at_50%_40%,rgba(56,189,248,0.3),transparent_45%),radial-gradient(circle_at_30%_10%,rgba(14,165,233,0.2),transparent_40%)] blur-3xl" />
+            <div className="angler-bubbles" aria-hidden />
             <div className="orb-shell mx-auto shadow-[0_0_140px_rgba(56,189,248,0.25)]">
               <div className="orb-core">
                 <span className="text-sm uppercase tracking-[0.3em] text-brand-100/80">Hook&apos;d</span>
@@ -584,7 +585,7 @@ export default function Page() {
               </Link>
               <Link
                 href="/map"
-                className="orb-node top-[33%] -left-7"
+                className="orb-node top-[30%] left-[18%]"
                 aria-label="Open the fishing map"
                 style={{ '--float-delay': '0.6s' } as CSSProperties}
               >
@@ -592,7 +593,7 @@ export default function Page() {
               </Link>
               <Link
                 href="/logbook"
-                className="orb-node bottom-[34%] -left-6"
+                className="orb-node bottom-[30%] left-[18%]"
                 aria-label="Open your logbook"
                 style={{ '--float-delay': '1.2s' } as CSSProperties}
               >
@@ -608,7 +609,7 @@ export default function Page() {
               </Link>
               <Link
                 href="/groups"
-                className="orb-node top-[33%] -right-7"
+                className="orb-node top-[30%] right-[18%]"
                 aria-label="Open groups"
                 style={{ '--float-delay': '1s' } as CSSProperties}
               >
@@ -616,7 +617,7 @@ export default function Page() {
               </Link>
               <Link
                 href="/tools"
-                className="orb-node bottom-[32%] -right-6"
+                className="orb-node bottom-[30%] right-[18%]"
                 aria-label="Open tools"
                 style={{ '--float-delay': '1.6s' } as CSSProperties}
               >

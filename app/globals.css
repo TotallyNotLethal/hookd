@@ -215,6 +215,10 @@ body {
   overflow: hidden;
 }
 
+.orb-shell::before {
+  mask-image: radial-gradient(circle at 50% 50%, black 60%, transparent 70%);
+}
+
 .orb-shell::before,
 .orb-shell::after {
   content: "";
@@ -300,6 +304,48 @@ body {
   z-index: 2;
   animation: float 7.5s ease-in-out infinite;
   animation-delay: var(--float-delay, 0s);
+}
+
+.angler-bubbles {
+  position: absolute;
+  inset: -5rem;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(125, 211, 252, 0.18), transparent 35%),
+    radial-gradient(circle at 70% 10%, rgba(14, 165, 233, 0.12), transparent 40%),
+    radial-gradient(circle at 85% 70%, rgba(56, 189, 248, 0.08), transparent 45%);
+  filter: blur(18px);
+  opacity: 0.75;
+  pointer-events: none;
+  animation: bubble-drift 16s ease-in-out infinite alternate;
+  mix-blend-mode: screen;
+  z-index: 0;
+}
+
+.angler-bubbles::after {
+  content: "";
+  position: absolute;
+  inset: 12%;
+  background:
+    radial-gradient(ellipse at 40% 40%, rgba(255, 255, 255, 0.15), transparent 50%),
+    radial-gradient(circle at 70% 65%, rgba(56, 189, 248, 0.22), transparent 55%);
+  opacity: 0.75;
+  transform: rotate(-8deg);
+  animation: bubble-drift 12s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes bubble-drift {
+  0% {
+    transform: translate3d(-6px, -8px, 0) scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translate3d(6px, 4px, 0) scale(1.04);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate3d(10px, 12px, 0) scale(1.06);
+    opacity: 0.7;
+  }
 }
 
 .orb-node::after {
