@@ -124,6 +124,27 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
     [getRedirectStorage, onClose, resetAuthHandling, router],
   );
 
+  const isNativePlatform = useCallback(() => {
+    try {
+      const ua = navigator.userAgent || '';
+      const capacitorUAHint = /Capacitor|Cordova|PhoneGap|wv\)/i.test(ua);
+      return (Capacitor?.isNativePlatform?.() ?? false) || capacitorUAHint;
+    } catch (err) {
+      console.warn('[Auth] Unable to detect native platform:', err);
+      return false;
+    }
+  }, []);
+
+  const isAndroidWebView = useCallback(() => {
+    try {
+      const ua = navigator.userAgent || '';
+      return /; wv|\bVersion\/\d+\.\d+ Chrome\/\d+ Mobile Safari\/\d+$/i.test(ua);
+    } catch (err) {
+      console.warn('[Auth] Unable to detect Android WebView:', err);
+      return false;
+    }
+  }, []);
+
   useEffect(() => {
     if (!open) {
       return;
@@ -140,8 +161,11 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
       try {
         const ua = navigator.userAgent || '';
         const isChromeMobile = /Chrome/i.test(ua) && /Mobi|Android/i.test(ua);
-        if (isChromeMobile) {
-          console.log('[Auth] Detected Chrome mobile – forcing indexedDBLocalPersistence.');
+        const webViewDetected = isAndroidWebView();
+        if (isChromeMobile || webViewDetected) {
+          console.log(
+            '[Auth] Detected Chrome mobile/WebView – forcing indexedDBLocalPersistence.',
+          );
           persistenceToUse = indexedDBLocalPersistence;
         }
       } catch (err) {
@@ -229,7 +253,7 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
         unsubscribeAuth();
       }
     };
-  }, [getRedirectStorage, handleAuthSuccess, open, resetAuthHandling]);
+  }, [getRedirectStorage, handleAuthSuccess, isAndroidWebView, open, resetAuthHandling]);
 
   const isMobileOrStandalone = useCallback(() => {
     if (typeof window === 'undefined') return false;
@@ -244,17 +268,6 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
 
   const isProcessingAuth = loading || !!authUser;
 
-  const isNativePlatform = useCallback(() => {
-    try {
-      const ua = navigator.userAgent || '';
-      const capacitorUAHint = /Capacitor|Cordova|PhoneGap|wv\)/i.test(ua);
-      return (Capacitor?.isNativePlatform?.() ?? false) || capacitorUAHint;
-    } catch (err) {
-      console.warn('[Auth] Unable to detect native platform:', err);
-      return false;
-    }
-  }, []);
-
   const handleClose = useCallback(() => {
     if (!isProcessingAuth) {
       onClose();
@@ -266,7 +279,7 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
     setLoading(true);
     console.log('[Auth] Google sign-in clicked — starting flow.');
 
-    const nativeBuild = isNativePlatform();
+    const nativeBuild = isNativePlatform() || isAndroidWebView();
     const redirectStorage = getRedirectStorage();
     const redirectStorageAvailable = !!redirectStorage;
     if (!redirectStorageAvailable) {
@@ -356,6 +369,7 @@ export default function LoginModal({ open, onClose }: LoginModalProps) {
   }, [
     getRedirectStorage,
     handleAuthSuccess,
+    isAndroidWebView,
     isMobileOrStandalone,
     isNativePlatform,
     resetAuthHandling,
