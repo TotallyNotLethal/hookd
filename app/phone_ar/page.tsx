@@ -5,26 +5,47 @@ import "./styles.css";
 
 type HighlightPosition = { x: number; y: number; z: number };
 
+type BoundingBox = {
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+};
+
+type ReferenceImage = {
+  src: string;
+  width?: number;
+  height?: number;
+  alt?: string;
+  page?: string;
+};
+
 type ManualPart = {
   id: string;
   label: string;
   note: string;
   highlightPosition: HighlightPosition;
+  labelOffset?: number;
+  boundingBox?: BoundingBox;
+  referenceImage?: ReferenceImage;
 };
 
 type ManualDocument = {
   id: string;
   title: string;
   summary: string;
-  modelUrl: string;
+  modelUrl?: string;
   parts: ManualPart[];
   manualslibUrl: string;
+  referenceImage?: ReferenceImage;
 };
 
 type ScrapedManualPart = {
   label: string;
   note: string;
   page?: string;
+  boundingBox?: BoundingBox;
+  image?: ReferenceImage;
 };
 
 type ManualslibImportResponse = {
@@ -32,48 +53,27 @@ type ManualslibImportResponse = {
   summary: string;
   modelUrl?: string;
   parts: ScrapedManualPart[];
+  referenceImages?: ReferenceImage[];
 };
 
-const DEFAULT_MODEL_URL =
-  "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/DamagedHelmet/glTF/DamagedHelmet.gltf";
-
-const defaultParts: ManualPart[] = [
-  {
-    id: "intake",
-    label: "Air intake filter",
-    note: "Inspect for clogging and replace if pressure drops >10%.",
-    highlightPosition: { x: 0, y: 0.25, z: -0.15 },
-  },
-  {
-    id: "pcb",
-    label: "Main PCB",
-    note: "Check for loose connectors before powering up.",
-    highlightPosition: { x: 0.12, y: 0.04, z: -0.08 },
-  },
-  {
-    id: "valve",
-    label: "Pressure relief valve",
-    note: "Verify safety seal orientation; do not overtighten.",
-    highlightPosition: { x: -0.15, y: 0.15, z: 0.05 },
-  },
-];
+const MANUAL_PLANE_WIDTH = 0.7;
+const FALLBACK_ASPECT_RATIO = 1.1;
 
 const baseManualDocuments: ManualDocument[] = [
   {
-    id: "bosch-dishwasher",
-    title: "Bosch SilencePlus Dishwasher",
-    summary: "Original Bosch SilencePlus installation and safety guide from Manualslib.",
-    manualslibUrl: "https://www.manualslib.com/manual/827171/Bosch-Silenceplus.html",
-    modelUrl: DEFAULT_MODEL_URL,
-    parts: defaultParts,
-  },
-  {
-    id: "iphone-13",
-    title: "Apple iPhone 13 User Guide",
-    summary: "Manualslib reference for the iPhone 13 quick start and safety sections.",
-    manualslibUrl: "https://www.manualslib.com/manual/2151148/Apple-Iphone-13.html",
-    modelUrl: "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/master/2.0/VC/glTF/VC.gltf",
-    parts: defaultParts,
+    id: "manualslib-placeholder",
+    title: "Manualslib AR import",
+    summary: "Paste a Manualslib URL below to load real page imagery and part highlights.",
+    manualslibUrl: "https://www.manualslib.com",
+    parts: [
+      {
+        id: "placeholder-anchor",
+        label: "Waiting for Manualslib import",
+        note: "Add a Manualslib link to replace this placeholder with real parts and page alignment.",
+        highlightPosition: { x: 0, y: 0.12, z: -0.25 },
+        labelOffset: 0.08,
+      },
+    ],
   },
 ];
 
@@ -84,10 +84,10 @@ const slugify = (value: string, index: number) =>
     .replace(/^-+|-+$/g, "")
     .replace(/-{2,}/g, "-") || `section-${index}`;
 
-const generateHighlightPosition = (index: number, total: number): HighlightPosition => {
+const circularFallbackPosition = (index: number, total: number): HighlightPosition => {
   const angle = (index / Math.max(total, 1)) * Math.PI * 2;
   const radius = 0.22;
-  const height = 0.05 + (index % 3) * 0.08;
+  const height = 0.08 + (index % 2) * 0.06;
   return {
     x: radius * Math.cos(angle),
     y: height,
@@ -95,7 +95,59 @@ const generateHighlightPosition = (index: number, total: number): HighlightPosit
   };
 };
 
-const mapScrapedPartsToManualParts = (parts: ScrapedManualPart[]): ManualPart[] => {
+const derivePlaneSize = (image?: ReferenceImage) => {
+  const aspect = image?.width && image?.height ? image.width / image.height : FALLBACK_ASPECT_RATIO;
+  const width = MANUAL_PLANE_WIDTH;
+  const height = width / aspect;
+  return { width, height };
+};
+
+const positionFromBoundingBox = (
+  boundingBox: BoundingBox | undefined,
+  image: ReferenceImage | undefined,
+  planeSize: { width: number; height: number }
+): { highlightPosition: HighlightPosition; labelOffset: number } | null => {
+  if (!boundingBox || !image?.width || !image?.height) return null;
+
+  const centerX = boundingBox.x + (boundingBox.width ?? 0) / 2;
+  const centerY = boundingBox.y + (boundingBox.height ?? 0) / 2;
+
+  const normalizedX = centerX / image.width - 0.5;
+  const normalizedY = 0.5 - centerY / image.height;
+
+  const highlightPosition: HighlightPosition = {
+    x: normalizedX * planeSize.width,
+    y: normalizedY * planeSize.height,
+    z: 0.01,
+  };
+
+  const heightRatio = image.height ? (boundingBox.height ?? 0) / image.height : 0.1;
+  const labelOffset = Math.max(0.05, planeSize.height * heightRatio + 0.04);
+
+  return { highlightPosition, labelOffset };
+};
+
+const mapScrapedPartsToManualParts = (
+  parts: ScrapedManualPart[],
+  referenceImage?: ReferenceImage
+): ManualPart[] => {
+  const normalizeBoundingBox = (box?: BoundingBox) => {
+    if (!box) return undefined;
+    const x = Number(box.x);
+    const y = Number(box.y);
+    if (Number.isNaN(x) || Number.isNaN(y)) return undefined;
+
+    const width = box.width !== undefined ? Number(box.width) : undefined;
+    const height = box.height !== undefined ? Number(box.height) : undefined;
+
+    return {
+      x,
+      y,
+      width: Number.isNaN(width ?? NaN) ? undefined : width,
+      height: Number.isNaN(height ?? NaN) ? undefined : height,
+    } satisfies BoundingBox;
+  };
+
   const normalized = parts.length
     ? parts
     : [
@@ -105,12 +157,23 @@ const mapScrapedPartsToManualParts = (parts: ScrapedManualPart[]): ManualPart[] 
         },
       ];
 
-  return normalized.map((part, index) => ({
-    id: slugify(part.label || `section-${index + 1}`, index),
-    label: part.label || `Section ${index + 1}`,
-    note: part.note || "Section imported from Manualslib.",
-    highlightPosition: generateHighlightPosition(index, normalized.length),
-  }));
+  const planeSize = derivePlaneSize(referenceImage);
+
+  return normalized.map((part, index) => {
+    const id = slugify(part.label || `section-${index + 1}`, index);
+    const boundingBox = normalizeBoundingBox(part.boundingBox);
+    const placement = positionFromBoundingBox(boundingBox, part.image || referenceImage, planeSize);
+
+    return {
+      id,
+      label: part.label || `Section ${index + 1}`,
+      note: part.note || "Section imported from Manualslib.",
+      highlightPosition: placement?.highlightPosition || circularFallbackPosition(index, normalized.length),
+      labelOffset: placement?.labelOffset,
+      boundingBox,
+      referenceImage: part.image || referenceImage,
+    };
+  });
 };
 
 export default function Page() {
@@ -121,8 +184,8 @@ export default function Page() {
   const [manualslibTitle, setManualslibTitle] = useState("");
   const [manualslibSummary, setManualslibSummary] = useState("");
   const [manuals, setManuals] = useState<ManualDocument[]>(baseManualDocuments);
-  const [selectedManualId, setSelectedManualId] = useState(baseManualDocuments[0].id);
-  const [selectedPartId, setSelectedPartId] = useState(baseManualDocuments[0].parts[0].id);
+  const [selectedManualId, setSelectedManualId] = useState(baseManualDocuments[0]?.id ?? "");
+  const [selectedPartId, setSelectedPartId] = useState(baseManualDocuments[0]?.parts[0]?.id ?? "");
   const [status, setStatus] = useState("Waiting to start AR…");
 
   const arContainerRef = useRef<HTMLDivElement | null>(null);
@@ -146,10 +209,10 @@ export default function Page() {
   const streamRef = useRef<MediaStream | null>(null);
   const arSessionStartedRef = useRef(false);
 
-  const selectedManual = useMemo(
-    () => manuals.find((manual) => manual.id === selectedManualId) ?? manuals[0],
-    [manuals, selectedManualId]
-  );
+  const selectedManual = useMemo<ManualDocument>(() => {
+    const manual = manuals.find((entry) => entry.id === selectedManualId) ?? manuals[0];
+    return manual ?? baseManualDocuments[0];
+  }, [manuals, selectedManualId]);
 
   const filteredManuals = useMemo(() => {
     if (!manualQuery.trim()) return manuals;
@@ -200,14 +263,16 @@ export default function Page() {
         throw new Error(message);
       }
 
-      const parsedParts = mapScrapedPartsToManualParts(parsed.parts);
+      const referenceImage = parsed.referenceImages?.[0] || parsed.parts.find((part) => part.image)?.image;
+      const parsedParts = mapScrapedPartsToManualParts(parsed.parts, referenceImage);
       const newManual: ManualDocument = {
         id: `manualslib-${Date.now()}`,
         title: manualslibTitle.trim() || parsed.title,
         summary:
           manualslibSummary.trim() || parsed.summary || "Linked from Manualslib. Use the AR controls to position the highlight.",
         manualslibUrl: manualslibUrl.trim(),
-        modelUrl: parsed.modelUrl || DEFAULT_MODEL_URL,
+        modelUrl: parsed.modelUrl,
+        referenceImage,
         parts: parsedParts,
       };
 
@@ -227,12 +292,15 @@ export default function Page() {
   useEffect(() => {
     if (!filteredManuals.find((manual) => manual.id === selectedManualId)) {
       const fallbackManual = filteredManuals[0] ?? manuals[0];
-      setSelectedManualId(fallbackManual.id);
-      setSelectedPartId(fallbackManual.parts[0].id);
+      if (fallbackManual) {
+        setSelectedManualId(fallbackManual.id);
+        setSelectedPartId(fallbackManual.parts[0]?.id ?? "");
+      }
     }
   }, [filteredManuals, manuals, selectedManualId]);
 
   useEffect(() => {
+    if (!selectedManual) return;
     const manualPartIds = selectedManual.parts.map((part) => part.id);
     if (!manualPartIds.includes(selectedPartId)) {
       setSelectedPartId(selectedManual.parts[0]?.id ?? "");
@@ -240,6 +308,7 @@ export default function Page() {
   }, [selectedManual, selectedPartId]);
 
   useEffect(() => {
+    if (!selectedManual) return;
     const part = selectedManual.parts.find((p) => p.id === selectedPartId) ?? selectedManual.parts[0];
     if (!part) return;
 
@@ -254,11 +323,8 @@ export default function Page() {
       highlightRef.current.position.set(part.highlightPosition.x, part.highlightPosition.y, part.highlightPosition.z);
     }
     if (labelObjectRef.current && part.highlightPosition) {
-      labelObjectRef.current.position.set(
-        part.highlightPosition.x,
-        part.highlightPosition.y + 0.08,
-        part.highlightPosition.z
-      );
+      const offset = part.labelOffset ?? 0.08;
+      labelObjectRef.current.position.set(part.highlightPosition.x, part.highlightPosition.y + offset, part.highlightPosition.z);
     }
   }, [selectedManual, selectedPartId]);
 
@@ -274,46 +340,128 @@ export default function Page() {
   }, []);
 
   const loadManualModel = async () => {
-    if (!arContainerRef.current) return;
+    if (!arContainerRef.current || !selectedManual) return;
 
-    const [{ default: THREE }, { GLTFLoader }] = await Promise.all([
-      import("three"),
-      import("three/examples/jsm/loaders/GLTFLoader.js"),
-    ]);
+    const [{ default: THREE }] = await Promise.all([import("three")]);
+    const referenceImage = selectedManual.referenceImage || selectedManual.parts.find((part) => part.referenceImage)?.referenceImage;
+    const planeSize = derivePlaneSize(referenceImage);
 
-    const loader = new GLTFLoader();
+    if (!anchorGroupRef.current) {
+      anchorGroupRef.current = new THREE.Group();
+      anchorGroupRef.current.matrixAutoUpdate = false;
+      anchorGroupRef.current.visible = false;
+      sceneRef.current.add(anchorGroupRef.current);
+    }
+
+    if (modelRef.current) {
+      anchorGroupRef.current.remove(modelRef.current);
+      modelRef.current = null;
+    }
+
     setStatus(`Loading ${selectedManual.title}…`);
 
-    loader.load(
-      selectedManual.modelUrl,
-      (gltf) => {
-        if (!anchorGroupRef.current) {
-          anchorGroupRef.current = new THREE.Group();
-          anchorGroupRef.current.matrixAutoUpdate = false;
-          anchorGroupRef.current.visible = false;
-          sceneRef.current.add(anchorGroupRef.current);
-        }
-
-        if (modelRef.current) {
-          anchorGroupRef.current.remove(modelRef.current);
-        }
-        modelRef.current = gltf.scene;
-        modelRef.current.scale.set(0.8, 0.8, 0.8);
-        modelRef.current.position.set(0, -0.35, -1);
-        anchorGroupRef.current.add(modelRef.current);
-        setStatus("AR model placed. Move your phone to inspect the highlight.");
-
-        const firstPart = selectedManual.parts[0];
-        if (firstPart) {
-          createHighlightSphere(THREE, firstPart);
-        }
-      },
-      undefined,
-      (error) => {
-        console.error("Error loading model", error);
-        setStatus("Could not load 3D model. Check your network connection.");
+    const loadModelUrl = async () => {
+      if (!selectedManual?.modelUrl) {
+        setStatus("No 3D asset provided; consider using a Manualslib page image instead.");
+        return;
       }
-    );
+
+      const { GLTFLoader } = await import("three/examples/jsm/loaders/GLTFLoader.js");
+      const loader = new GLTFLoader();
+
+      loader.load(
+        selectedManual.modelUrl,
+        (gltf) => {
+          if (modelRef.current) {
+            anchorGroupRef.current?.remove(modelRef.current);
+          }
+          modelRef.current = gltf.scene;
+          modelRef.current.scale.set(0.8, 0.8, 0.8);
+          modelRef.current.position.set(0, -0.35, -1);
+          anchorGroupRef.current?.add(modelRef.current);
+          setStatus("3D model placed. Move your phone to inspect the highlight.");
+
+          const firstPart = selectedManual.parts[0];
+          if (firstPart) {
+            createHighlightSphere(THREE, firstPart);
+          }
+        },
+        undefined,
+        (error) => {
+          console.error("Error loading model", error);
+          setStatus("Could not load the provided model; try another Manualslib link.");
+        }
+      );
+    };
+
+    if (referenceImage?.src) {
+      const loader = new THREE.TextureLoader();
+      loader.load(
+        referenceImage.src,
+        (texture) => {
+          const aspect =
+            referenceImage.width && referenceImage.height
+              ? referenceImage.width / referenceImage.height
+              : texture.image?.width && texture.image?.height
+                ? texture.image.width / texture.image.height
+                : planeSize.width / planeSize.height;
+
+          const width = MANUAL_PLANE_WIDTH;
+          const height = width / aspect;
+          const geometry = new THREE.PlaneGeometry(width, height);
+          const material = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide });
+          modelRef.current = new THREE.Mesh(geometry, material);
+          modelRef.current.position.set(0, 0, -0.6);
+          anchorGroupRef.current?.add(modelRef.current);
+
+          const resolvedImage: ReferenceImage | undefined = referenceImage
+            ? {
+                ...referenceImage,
+                width: referenceImage.width ?? (texture.image?.width as number | undefined),
+                height: referenceImage.height ?? (texture.image?.height as number | undefined),
+              }
+            : undefined;
+
+          const needsDimensionUpdate = Boolean(referenceImage && (!referenceImage.width || !referenceImage.height));
+          if (needsDimensionUpdate && resolvedImage) {
+            setManuals((prevManuals) =>
+              prevManuals.map((manual) => {
+                if (manual.id !== selectedManual.id) return manual;
+                const recalculatedParts = manual.parts.map((part) => {
+                  const placement = positionFromBoundingBox(
+                    part.boundingBox,
+                    part.referenceImage || resolvedImage,
+                    { width, height }
+                  );
+                  if (!placement) return part;
+                  return {
+                    ...part,
+                    highlightPosition: placement.highlightPosition,
+                    labelOffset: placement.labelOffset,
+                    referenceImage: part.referenceImage || resolvedImage,
+                  };
+                });
+                return { ...manual, referenceImage: resolvedImage, parts: recalculatedParts };
+              })
+            );
+          }
+          setStatus("Manual page anchored. Align your phone to match the highlighted part.");
+
+          const firstPart = selectedManual.parts[0];
+          if (firstPart) {
+            createHighlightSphere(THREE, firstPart);
+          }
+        },
+        undefined,
+        async (error) => {
+          console.error("Manual image load failed", error);
+          await loadModelUrl();
+        }
+      );
+      return;
+    }
+
+    await loadModelUrl();
   };
 
   const createHighlightSphere = (THREE: any, part: ManualPart) => {
@@ -335,14 +483,17 @@ export default function Page() {
         labelObjectRef.current.removeFromParent();
       }
       labelObjectRef.current = new css2dHelpersRef.current.CSS2DObject(overlayLabelRef.current);
-      labelObjectRef.current.position.set(
-        part.highlightPosition.x,
-        part.highlightPosition.y + 0.08,
-        part.highlightPosition.z
-      );
+      const offset = part.labelOffset ?? 0.08;
+      labelObjectRef.current.position.set(part.highlightPosition.x, part.highlightPosition.y + offset, part.highlightPosition.z);
       anchorGroupRef.current.add(labelObjectRef.current);
     }
   };
+
+  useEffect(() => {
+    if (arSessionStartedRef.current) {
+      loadManualModel();
+    }
+  }, [selectedManualId]);
 
   const startArRenderLoop = () => {
     if (!rendererRef.current) return;
@@ -521,16 +672,13 @@ export default function Page() {
     if (!cameraReady) return;
 
     if (arSessionStartedRef.current) {
-      const part = selectedManual.parts.find((p) => p.id === selectedPartId);
+      const part = selectedManual?.parts.find((p) => p.id === selectedPartId);
       if (part && highlightRef.current) {
         highlightRef.current.position.set(part.highlightPosition.x, part.highlightPosition.y, part.highlightPosition.z);
       }
       if (part && labelObjectRef.current) {
-        labelObjectRef.current.position.set(
-          part.highlightPosition.x,
-          part.highlightPosition.y + 0.08,
-          part.highlightPosition.z
-        );
+        const offset = part.labelOffset ?? 0.08;
+        labelObjectRef.current.position.set(part.highlightPosition.x, part.highlightPosition.y + offset, part.highlightPosition.z);
       }
       return;
     }
