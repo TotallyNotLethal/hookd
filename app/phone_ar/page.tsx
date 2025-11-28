@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "./styles.css";
 
 type HighlightPosition = { x: number; y: number; z: number };
@@ -190,6 +190,7 @@ export default function Page() {
 
   const arContainerRef = useRef<HTMLDivElement | null>(null);
   const overlayLabelRef = useRef<HTMLDivElement | null>(null);
+  const overlayImageRef = useRef<HTMLImageElement | null>(null);
   const partNotesRef = useRef<HTMLDivElement | null>(null);
   const cameraFallbackRef = useRef<HTMLDivElement | null>(null);
   const cameraPreviewRef = useRef<HTMLVideoElement | null>(null);
@@ -214,6 +215,11 @@ export default function Page() {
     const manual = manuals.find((entry) => entry.id === selectedManualId) ?? manuals[0];
     return manual ?? baseManualDocuments[0];
   }, [manuals, selectedManualId]);
+
+  const selectedPart = useMemo<ManualPart | undefined>(() => {
+    if (!selectedManual) return undefined;
+    return selectedManual.parts.find((p) => p.id === selectedPartId) ?? selectedManual.parts[0];
+  }, [selectedManual, selectedPartId]);
 
   const filteredManuals = useMemo(() => {
     if (!manualQuery.trim()) return manuals;
@@ -309,25 +315,43 @@ export default function Page() {
   }, [selectedManual, selectedPartId]);
 
   useEffect(() => {
-    if (!selectedManual) return;
-    const part = selectedManual.parts.find((p) => p.id === selectedPartId) ?? selectedManual.parts[0];
-    if (!part) return;
+    if (!selectedPart) return;
 
     if (partNotesRef.current) {
-      partNotesRef.current.textContent = part.note;
+      partNotesRef.current.textContent = selectedPart.note;
     }
     if (overlayLabelRef.current) {
-      overlayLabelRef.current.textContent = part.label;
+      overlayLabelRef.current.textContent = selectedPart.label;
+    }
+    if (overlayImageRef.current) {
+      const image = selectedPart.referenceImage || selectedManual?.referenceImage;
+      if (image?.src) {
+        overlayImageRef.current.src = image.src;
+        overlayImageRef.current.alt = image.alt || selectedPart.label;
+        overlayImageRef.current.classList.remove("hidden");
+      } else {
+        overlayImageRef.current.src = "";
+        overlayImageRef.current.alt = "";
+        overlayImageRef.current.classList.add("hidden");
+      }
     }
 
-    if (highlightRef.current && part.highlightPosition) {
-      highlightRef.current.position.set(part.highlightPosition.x, part.highlightPosition.y, part.highlightPosition.z);
+    if (highlightRef.current && selectedPart.highlightPosition) {
+      highlightRef.current.position.set(
+        selectedPart.highlightPosition.x,
+        selectedPart.highlightPosition.y,
+        selectedPart.highlightPosition.z
+      );
     }
-    if (labelObjectRef.current && part.highlightPosition) {
-      const offset = part.labelOffset ?? 0.08;
-      labelObjectRef.current.position.set(part.highlightPosition.x, part.highlightPosition.y + offset, part.highlightPosition.z);
+    if (labelObjectRef.current && selectedPart.highlightPosition) {
+      const offset = selectedPart.labelOffset ?? 0.08;
+      labelObjectRef.current.position.set(
+        selectedPart.highlightPosition.x,
+        selectedPart.highlightPosition.y + offset,
+        selectedPart.highlightPosition.z
+      );
     }
-  }, [selectedManual, selectedPartId]);
+  }, [selectedManual, selectedPart]);
 
   useEffect(() => {
     return () => {
@@ -340,11 +364,14 @@ export default function Page() {
     };
   }, []);
 
-  const loadManualModel = async () => {
+  const loadManualModel = useCallback(async () => {
     if (!arContainerRef.current || !selectedManual) return;
 
     const [{ default: THREE }] = await Promise.all([import("three")]);
-    const referenceImage = selectedManual.referenceImage || selectedManual.parts.find((part) => part.referenceImage)?.referenceImage;
+    const referenceImage =
+      selectedPart?.referenceImage ||
+      selectedManual.referenceImage ||
+      selectedManual.parts.find((part) => part.referenceImage)?.referenceImage;
     const planeSize = derivePlaneSize(referenceImage);
 
     if (!anchorGroupRef.current) {
@@ -463,7 +490,7 @@ export default function Page() {
     }
 
     await loadModelUrl();
-  };
+  }, [selectedManual, selectedPart, setManuals, setStatus]);
 
   const createHighlightSphere = (THREE: any, part: ManualPart) => {
     if (!anchorGroupRef.current) return;
@@ -494,7 +521,13 @@ export default function Page() {
     if (arSessionStartedRef.current || fallbackArActiveRef.current) {
       loadManualModel();
     }
-  }, [selectedManualId]);
+  }, [loadManualModel, selectedManualId]);
+
+  useEffect(() => {
+    if (arSessionStartedRef.current || fallbackArActiveRef.current) {
+      loadManualModel();
+    }
+  }, [loadManualModel, selectedPart]);
 
   const startArRenderLoop = () => {
     if (!rendererRef.current) return;
@@ -934,6 +967,7 @@ export default function Page() {
           <div id="arContainer" className="ar-container" ref={arContainerRef}>
             <div id="cameraFallback" className="camera-fallback hidden" ref={cameraFallbackRef}>
               <video id="cameraPreview" playsInline autoPlay muted ref={cameraPreviewRef} />
+              <img id="overlayImage" className="overlay-image hidden" alt="" ref={overlayImageRef} />
               <div id="overlayLabel" className="overlay-label" ref={overlayLabelRef} />
             </div>
           </div>
