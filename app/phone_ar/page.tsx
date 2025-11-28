@@ -136,7 +136,7 @@ export default function Page() {
     if (modelReady || modelRef.current) return true;
     setStatus("Loading lightweight detection model…");
     try {
-      if (tf.backend() !== "webgpu") {
+      if (tf.getBackend() !== "webgpu") {
         try {
           await tf.setBackend("webgpu");
           await tf.ready();
@@ -145,7 +145,7 @@ export default function Page() {
         }
       }
 
-      if (tf.backend() !== "webgpu" && tf.backend() !== "webgl") {
+      if (tf.getBackend() !== "webgpu" && tf.getBackend() !== "webgl") {
         await tf.setBackend("webgl");
         await tf.ready();
       }
@@ -156,7 +156,7 @@ export default function Page() {
       dummy.dispose();
       setModelReady(true);
       setStatus(
-        `${tf.backend()} backend ready. Start the camera to recognize objects with a stronger model.`
+        `${tf.getBackend()} backend ready. Start the camera to recognize objects with a stronger model.`
       );
       return true;
     } catch (error) {
