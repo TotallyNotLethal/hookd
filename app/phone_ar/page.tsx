@@ -5,7 +5,7 @@ import "./styles.css";
 import * as tf from "@tensorflow/tfjs";
 import * as cocoSsd from "@tensorflow-models/coco-ssd";
 
-type Detection = cocoSsd.DetectedObject & { id: string };
+type Detection = cocoSsd.DetectedObject & { id: string; life: number; misses: number };
 
 type CustomLabelMap = Record<string, string>;
 
@@ -42,6 +42,10 @@ const getSpeechRecognition = (): SpeechRecognitionConstructor | null => {
 const detectionColors = ["#ff8c42", "#8fb3ff", "#4ade80", "#f472b6", "#facc15"];
 const SMOOTHING = 0.45;
 const FRAME_INTERVAL_MS = 70; // ~14 FPS for smoother canvas updates without overwhelming the GPU
+const MAX_LIFE = 4;
+const STRONG_IOU = 0.55;
+const HYSTERESIS_IOU = 0.4;
+const SCORE_HYSTERESIS = 0.1;
 
 export default function Page() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -82,23 +86,56 @@ export default function Page() {
   };
 
   const assignDetectionIds = (previous: Detection[], predictions: cocoSsd.DetectedObject[]) => {
-    const updated: Detection[] = predictions.map((item) => {
-      const match = previous.find(
-        (prior) => prior.class === item.class && iou(prior.bbox, item.bbox) > 0.35
-      );
+    const matchedIds = new Set<string>();
 
-      const smoothedBox = match
-        ? item.bbox.map((coord, index) => match.bbox[index] + SMOOTHING * (coord - match.bbox[index]))
+    const updated: Detection[] = predictions.map((item) => {
+      let bestMatch: Detection | null = null;
+      let bestIoU = 0;
+
+      previous.forEach((prior) => {
+        if (prior.class !== item.class) return;
+
+        const overlap = iou(prior.bbox, item.bbox);
+        const strongMatch = overlap >= STRONG_IOU;
+        const scoreStable = item.score >= prior.score - SCORE_HYSTERESIS;
+        const hysteresisMatch = overlap >= HYSTERESIS_IOU && scoreStable;
+
+        if ((strongMatch || hysteresisMatch) && overlap > bestIoU) {
+          bestIoU = overlap;
+          bestMatch = prior;
+        }
+      });
+
+      const smoothedBox = bestMatch
+        ? item.bbox.map(
+            (coord, index) => bestMatch!.bbox[index] + SMOOTHING * (coord - bestMatch!.bbox[index])
+          )
         : item.bbox;
+
+      if (bestMatch) {
+        matchedIds.add(bestMatch.id);
+      }
 
       return {
         ...item,
-        id: match?.id || crypto.randomUUID(),
+        id: bestMatch?.id || crypto.randomUUID(),
         bbox: smoothedBox as [number, number, number, number],
+        life: MAX_LIFE,
+        misses: 0,
       };
     });
-    detectionHistoryRef.current = updated;
-    return updated;
+
+    const carriedForward: Detection[] = previous
+      .filter((prior) => !matchedIds.has(prior.id) && prior.life > 1)
+      .map((prior) => ({
+        ...prior,
+        life: prior.life - 1,
+        misses: prior.misses + 1,
+      }));
+
+    const nextDetections = [...updated, ...carriedForward];
+    detectionHistoryRef.current = nextDetections;
+    return nextDetections;
   };
 
   const stopStream = () => {
@@ -186,19 +223,26 @@ export default function Page() {
       const [x, y, w, h] = item.bbox;
       const isSelected = item.id === selectedId;
       const color = detectionColors[index % detectionColors.length];
+      const fadeFactor = item.misses > 0 ? Math.max(0.25, item.life / MAX_LIFE) : 1;
+      const boxAlpha = isSelected ? 1 : 0.35 + 0.65 * fadeFactor;
 
+      ctx.save();
+      ctx.globalAlpha = boxAlpha;
       ctx.strokeStyle = isSelected ? "#22d3ee" : color;
       ctx.lineWidth = isSelected ? 5 : 3;
-      ctx.fillStyle = `${color}20`;
+      ctx.fillStyle = color;
       ctx.beginPath();
       ctx.rect(x, y, w, h);
       ctx.fill();
       ctx.stroke();
+      ctx.restore();
 
       const label = customLabels[item.class] || item.class;
       const confidence = Math.round(item.score * 100);
       const labelText = `${label} (${confidence}%)`;
 
+      ctx.save();
+      ctx.globalAlpha = boxAlpha;
       ctx.fillStyle = isSelected ? "#0f172a" : "#0b1021";
       ctx.strokeStyle = isSelected ? "#22d3ee" : color;
       ctx.lineWidth = 2;
@@ -212,6 +256,7 @@ export default function Page() {
       ctx.strokeRect(textX, textY - 20, textWidth, 24);
       ctx.fillStyle = "#e8ecff";
       ctx.fillText(labelText, textX + 6, textY);
+      ctx.restore();
     });
   };
 
