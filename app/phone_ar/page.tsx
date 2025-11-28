@@ -208,6 +208,7 @@ export default function Page() {
   const labelObjectRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const arSessionStartedRef = useRef(false);
+  const fallbackArActiveRef = useRef(false);
 
   const selectedManual = useMemo<ManualDocument>(() => {
     const manual = manuals.find((entry) => entry.id === selectedManualId) ?? manuals[0];
@@ -490,7 +491,7 @@ export default function Page() {
   };
 
   useEffect(() => {
-    if (arSessionStartedRef.current) {
+    if (arSessionStartedRef.current || fallbackArActiveRef.current) {
       loadManualModel();
     }
   }, [selectedManualId]);
@@ -549,6 +550,30 @@ export default function Page() {
         anchorGroup.matrix.decompose(anchorGroup.position, anchorGroup.quaternion, anchorGroup.scale);
         anchorGroup.visible = true;
       }
+
+      rendererRef.current.render(sceneRef.current, cameraRef.current);
+      labelRendererRef.current?.render(sceneRef.current, cameraRef.current);
+    });
+  };
+
+  const startFallbackRenderLoop = () => {
+    if (!rendererRef.current || !sceneRef.current || !cameraRef.current) return;
+
+    rendererRef.current.setAnimationLoop(() => {
+      if (!sceneRef.current || !cameraRef.current) return;
+
+      if (anchorGroupRef.current) {
+        anchorGroupRef.current.matrixAutoUpdate = true;
+        anchorGroupRef.current.visible = Boolean(
+          modelRef.current || highlightRef.current || labelObjectRef.current
+        );
+        anchorGroupRef.current.position.set(0, 0, -0.65);
+        anchorGroupRef.current.quaternion.identity();
+        anchorGroupRef.current.scale.set(1, 1, 1);
+      }
+
+      cameraRef.current.position.set(0, 0, 0);
+      cameraRef.current.lookAt(0, 0, -1);
 
       rendererRef.current.render(sceneRef.current, cameraRef.current);
       labelRendererRef.current?.render(sceneRef.current, cameraRef.current);
@@ -684,8 +709,13 @@ export default function Page() {
     }
 
     if (!(navigator as any).xr) {
-      setStatus("WebXR not available. Using camera preview.");
+      setStatus("WebXR not available. Starting camera overlay mode.");
+      fallbackArActiveRef.current = true;
+      await initThree();
+      await loadManualModel();
+      startFallbackRenderLoop();
       startCameraFallback();
+      setStatus("Camera overlay AR active. Align the label with your view.");
       return;
     }
 
