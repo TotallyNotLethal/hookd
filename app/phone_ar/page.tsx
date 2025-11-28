@@ -5,7 +5,12 @@ import "./styles.css";
 import * as tf from "@tensorflow/tfjs";
 import * as cocoSsd from "@tensorflow-models/coco-ssd";
 
-type Detection = cocoSsd.DetectedObject & { id: string; life: number; misses: number };
+type Detection = cocoSsd.DetectedObject & {
+  id: string;
+  life: number;
+  misses: number;
+  lastSeen: number;
+};
 
 type CustomLabelMap = Record<string, string>;
 
@@ -46,6 +51,8 @@ const MAX_LIFE = 4;
 const STRONG_IOU = 0.55;
 const HYSTERESIS_IOU = 0.4;
 const SCORE_HYSTERESIS = 0.1;
+const EMPTY_RESULT_GRACE_MS = 350;
+const DETECTION_STALE_MS = 800;
 
 export default function Page() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -56,6 +63,7 @@ export default function Page() {
   const modelRef = useRef<cocoSsd.ObjectDetection | null>(null);
   const isProcessingRef = useRef(false);
   const lastDetectionTsRef = useRef(0);
+  const lastNonEmptyDetectionTsRef = useRef(0);
 
   const [status, setStatus] = useState("Load the model to begin object recognition.");
   const [modelReady, setModelReady] = useState(false);
@@ -73,6 +81,9 @@ export default function Page() {
 
   const detectionHistoryRef = useRef<Detection[]>([]);
 
+  const filterFreshDetections = (items: Detection[], timestamp: number) =>
+    items.filter((item) => timestamp - item.lastSeen <= DETECTION_STALE_MS);
+
   const iou = (a: number[], b: number[]) => {
     const [ax, ay, aw, ah] = a;
     const [bx, by, bw, bh] = b;
@@ -85,7 +96,11 @@ export default function Page() {
     return union === 0 ? 0 : intersection / union;
   };
 
-  const assignDetectionIds = (previous: Detection[], predictions: cocoSsd.DetectedObject[]) => {
+  const assignDetectionIds = (
+    previous: Detection[],
+    predictions: cocoSsd.DetectedObject[],
+    timestamp: number
+  ) => {
     const matchedIds = new Set<string>();
 
     const updated: Detection[] = predictions.map((item) => {
@@ -122,6 +137,7 @@ export default function Page() {
         bbox: smoothedBox as [number, number, number, number],
         life: MAX_LIFE,
         misses: 0,
+        lastSeen: timestamp,
       };
     });
 
@@ -133,7 +149,9 @@ export default function Page() {
         misses: prior.misses + 1,
       }));
 
-    const nextDetections = [...updated, ...carriedForward];
+    const nextDetections = [...updated, ...carriedForward].filter(
+      (item) => timestamp - item.lastSeen <= DETECTION_STALE_MS
+    );
     detectionHistoryRef.current = nextDetections;
     return nextDetections;
   };
@@ -203,6 +221,14 @@ export default function Page() {
     }
   };
 
+  const clearCanvas = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
   const drawDetections = (items: Detection[]) => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
@@ -260,21 +286,52 @@ export default function Page() {
     });
   };
 
+  const renderCachedDetections = (timestamp: number) => {
+    const fresh = filterFreshDetections(detectionHistoryRef.current, timestamp);
+    if (fresh.length === 0) {
+      clearCanvas();
+      setDetections([]);
+      return;
+    }
+
+    setDetections(fresh);
+    drawDetections(fresh);
+  };
+
   const detectionLoop = async (timestamp: number) => {
     if (!modelRef.current || !videoRef.current) return;
     if (isProcessingRef.current || timestamp - lastDetectionTsRef.current < FRAME_INTERVAL_MS) {
+      renderCachedDetections(timestamp);
       rafRef.current = requestAnimationFrame(detectionLoop);
       return;
     }
     isProcessingRef.current = true;
     try {
       const predictions = await modelRef.current.detect(videoRef.current);
-      const enriched = assignDetectionIds(detectionHistoryRef.current, predictions);
-      setDetections(enriched);
-      if (!selectedId && enriched[0]) {
-        setSelectedId(enriched[0].id);
+      const enriched = assignDetectionIds(detectionHistoryRef.current, predictions, timestamp);
+      const fresh = filterFreshDetections(enriched, timestamp);
+
+      const hasFreshDetections = fresh.length > 0;
+      const withinGraceWindow = timestamp - lastNonEmptyDetectionTsRef.current < EMPTY_RESULT_GRACE_MS;
+      const shouldReuseCached = !hasFreshDetections && withinGraceWindow;
+      const toRender = shouldReuseCached
+        ? filterFreshDetections(detectionHistoryRef.current, timestamp)
+        : fresh;
+
+      if (toRender.length > 0) {
+        setDetections(toRender);
+        if (!selectedId && toRender[0]) {
+          setSelectedId(toRender[0].id);
+        }
+        drawDetections(toRender);
+        if (hasFreshDetections) {
+          lastNonEmptyDetectionTsRef.current = timestamp;
+        }
+      } else {
+        clearCanvas();
+        setDetections([]);
       }
-      drawDetections(enriched);
+
       lastDetectionTsRef.current = timestamp;
     } catch (error) {
       console.error("Detection loop failed", error);
@@ -295,6 +352,7 @@ export default function Page() {
     detectionHistoryRef.current = [];
     isProcessingRef.current = false;
     lastDetectionTsRef.current = 0;
+    lastNonEmptyDetectionTsRef.current = 0;
     setSelectedId(null);
     setDetectionActive(true);
     setStatus("Camera on. Scanning for objects…");
