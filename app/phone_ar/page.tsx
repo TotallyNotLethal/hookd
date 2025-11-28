@@ -215,10 +215,9 @@ export default function Page() {
     });
   };
 
-  const detectionLoop = async () => {
+  const detectionLoop = async (timestamp: number) => {
     if (!modelRef.current || !videoRef.current) return;
-    const now = performance.now();
-    if (isProcessingRef.current || now - lastDetectionTsRef.current < FRAME_INTERVAL_MS) {
+    if (isProcessingRef.current || timestamp - lastDetectionTsRef.current < FRAME_INTERVAL_MS) {
       rafRef.current = requestAnimationFrame(detectionLoop);
       return;
     }
@@ -231,7 +230,7 @@ export default function Page() {
         setSelectedId(enriched[0].id);
       }
       drawDetections(enriched);
-      lastDetectionTsRef.current = now;
+      lastDetectionTsRef.current = timestamp;
     } catch (error) {
       console.error("Detection loop failed", error);
       setStatus("Detection stopped due to an error. Try restarting.");
