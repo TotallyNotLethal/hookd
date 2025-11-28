@@ -9,6 +9,36 @@ type Detection = cocoSsd.DetectedObject & { id: string };
 
 type CustomLabelMap = Record<string, string>;
 
+type SpeechRecognitionEvent = Event & {
+  results: ArrayLike<{ 0: { transcript: string } }>;
+};
+
+type SpeechRecognitionErrorEvent = Event & {
+  error: string;
+};
+
+type SpeechRecognitionInstance = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
+const getSpeechRecognition = (): SpeechRecognitionConstructor | null => {
+  if (typeof window === "undefined") return null;
+  return (
+    (window as any).SpeechRecognition ||
+    (window as any).webkitSpeechRecognition ||
+    null
+  );
+};
+
 const detectionColors = ["#ff8c42", "#8fb3ff", "#4ade80", "#f472b6", "#facc15"];
 
 export default function Page() {
@@ -16,7 +46,7 @@ export default function Page() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const modelRef = useRef<cocoSsd.ObjectDetection | null>(null);
 
   const [status, setStatus] = useState("Load the model to begin object recognition.");
@@ -221,13 +251,13 @@ export default function Page() {
       return;
     }
 
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition = getSpeechRecognition();
     if (!SpeechRecognition) {
       setStatus("Speech recognition not supported in this browser.");
       return;
     }
 
-    const recognizer: SpeechRecognition = new SpeechRecognition();
+    const recognizer: SpeechRecognitionInstance = new SpeechRecognition();
     recognitionRef.current = recognizer;
     recognizer.lang = "en-US";
     recognizer.continuous = false;
