@@ -15,6 +15,8 @@
     "@capacitor/cli": "^7.4.4",
     "@capacitor/core": "^7.4.4",
     "@xenova/transformers": "^2.15.0",
+    "@tensorflow-models/coco-ssd": "^2.2.3",
+    "@tensorflow/tfjs": "^4.22.0",
     "cheerio": "^1.1.2",
     "clsx": "2.1.1",
     "exifr": "^7.1.3",

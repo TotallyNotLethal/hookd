@@ -67,39 +67,42 @@
   color: var(--text);
   font-weight: 600;
   font-size: 14px;
+  max-width: 420px;
 }
 
 .phoneArPage .layout {
   display: grid;
-  grid-template-columns: minmax(280px, 360px) 1fr;
+  grid-template-columns: 2fr 1fr;
   gap: 20px;
   padding: 20px clamp(16px, 2vw, 40px);
 }
 
+.phoneArPage .viewer,
 .phoneArPage .controls {
   background: rgba(17, 24, 58, 0.7);
   border: 1px solid var(--border);
   border-radius: 16px;
   padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
 }
 
-.phoneArPage .controls h2 {
+.phoneArPage .viewer {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.phoneArPage .controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.phoneArPage h2 {
   margin: 0 0 6px 0;
 }
 
-.phoneArPage label {
-  font-weight: 600;
-  font-size: 14px;
-}
-
-.phoneArPage select,
-.phoneArPage button,
-.phoneArPage input,
-.phoneArPage textarea {
+.phoneArPage button {
   width: 100%;
   padding: 12px;
   border-radius: 10px;
@@ -107,18 +110,13 @@
   background: rgba(11, 16, 33, 0.8);
   color: var(--text);
   font-size: 15px;
-}
-
-.phoneArPage textarea {
-  resize: vertical;
-  min-height: 64px;
+  cursor: pointer;
 }
 
 .phoneArPage button.primary {
   background: linear-gradient(135deg, #ff8c42, #ff6b6b);
   border: none;
   font-weight: 700;
-  cursor: pointer;
   box-shadow: 0 10px 25px rgba(255, 140, 66, 0.3);
   transition: transform 0.1s ease, box-shadow 0.1s ease;
 }
@@ -128,57 +126,20 @@
   box-shadow: 0 16px 35px rgba(255, 140, 66, 0.38);
 }
 
-.phoneArPage button.secondary,
-.phoneArPage a.secondary {
+.phoneArPage button.secondary {
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--border);
-  color: var(--text);
-  text-align: center;
-  font-weight: 600;
-  text-decoration: none;
-  cursor: pointer;
-}
-
-.phoneArPage .manualslib-row {
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
-}
-
-.phoneArPage .inline-link {
-  color: #8fb3ff;
-  text-decoration: underline;
   font-weight: 600;
 }
 
-.phoneArPage .note {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px dashed var(--border);
-  border-radius: 12px;
-  padding: 10px 12px;
-  color: var(--muted);
-  font-size: 14px;
+.phoneArPage button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
-.phoneArPage .callout {
-  background: rgba(255, 140, 66, 0.08);
-  border: 1px solid rgba(255, 140, 66, 0.3);
-  border-radius: 12px;
-  padding: 12px;
-  color: #ffd7b8;
-  font-weight: 600;
-  min-height: 60px;
-}
-
-.phoneArPage .viewer {
-  background: rgba(17, 24, 58, 0.7);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 12px;
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+.phoneArPage .button-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .phoneArPage .ar-container {
@@ -191,41 +152,97 @@
   border: 1px solid var(--border);
 }
 
-.phoneArPage .camera-fallback {
-  position: relative;
-  width: 100%;
-  max-height: 100%;
-  aspect-ratio: var(--camera-aspect, 16/9);
-}
-
-.phoneArPage .camera-fallback video {
+.phoneArPage .camera-feed,
+.phoneArPage .overlay {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
 }
 
-.phoneArPage .camera-fallback .overlay-image {
+.phoneArPage .overlay {
+  pointer-events: auto;
+}
+
+.phoneArPage .placeholder {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  max-width: 28%;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  text-align: center;
+  color: var(--muted);
+  background: linear-gradient(180deg, rgba(11, 16, 33, 0.8), rgba(11, 16, 33, 0.2));
+}
+
+.phoneArPage .callout {
+  background: rgba(255, 140, 66, 0.08);
+  border: 1px solid rgba(255, 140, 66, 0.3);
   border-radius: 12px;
-  border: 2px solid rgba(255, 140, 66, 0.6);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
-  background: rgba(11, 16, 33, 0.8);
+  padding: 12px;
+  color: #ffd7b8;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.phoneArPage .overlay-label {
-  position: absolute;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(255, 140, 66, 0.9);
-  padding: 10px 14px;
-  border-radius: 999px;
-  color: #1b0f06;
-  font-weight: 800;
-  box-shadow: 0 10px 30px rgba(255, 140, 66, 0.35);
+.phoneArPage .label-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.phoneArPage .text-labeler label {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.phoneArPage .input-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 8px;
+}
+
+.phoneArPage input[type="text"] {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(11, 16, 33, 0.8);
+  color: var(--text);
+}
+
+.phoneArPage .note {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.phoneArPage .detection-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.phoneArPage .detection-list li button {
+  text-align: left;
+  background: rgba(11, 16, 33, 0.6);
+  border: 1px solid transparent;
+}
+
+.phoneArPage .detection-list li.active button {
+  border-color: var(--accent);
+  background: rgba(255, 140, 66, 0.12);
 }
 
 .phoneArPage .instructions {
@@ -241,10 +258,6 @@
   line-height: 1.5;
 }
 
-.phoneArPage .hidden {
-  display: none;
-}
-
 @media (max-width: 900px) {
   .phoneArPage .layout {
     grid-template-columns: 1fr;
@@ -252,5 +265,15 @@
 
   .phoneArPage .viewer {
     min-height: 380px;
+  }
+
+  .phoneArPage .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .phoneArPage .status {
+    max-width: 100%;
   }
 }
