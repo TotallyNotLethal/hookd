@@ -151,8 +151,8 @@ export default function Page() {
       }
 
       modelRef.current = await cocoSsd.load({ base: "mobilenet_v2" });
-      const dummy = tf.zeros([1, 300, 300, 3]);
-      await modelRef.current.model.executeAsync(dummy);
+      const dummy = tf.zeros<tf.Rank.R3>([300, 300, 3]);
+      await modelRef.current.detect(dummy);
       dummy.dispose();
       setModelReady(true);
       setStatus(
