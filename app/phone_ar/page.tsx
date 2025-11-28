@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./styles.css";
-import "@tensorflow/tfjs";
+import * as tf from "@tensorflow/tfjs";
 import * as cocoSsd from "@tensorflow-models/coco-ssd";
 
 type Detection = cocoSsd.DetectedObject & { id: string };
@@ -40,6 +40,8 @@ const getSpeechRecognition = (): SpeechRecognitionConstructor | null => {
 };
 
 const detectionColors = ["#ff8c42", "#8fb3ff", "#4ade80", "#f472b6", "#facc15"];
+const SMOOTHING = 0.45;
+const FRAME_INTERVAL_MS = 70; // ~14 FPS for smoother canvas updates without overwhelming the GPU
 
 export default function Page() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -48,6 +50,8 @@ export default function Page() {
   const rafRef = useRef<number | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const modelRef = useRef<cocoSsd.ObjectDetection | null>(null);
+  const isProcessingRef = useRef(false);
+  const lastDetectionTsRef = useRef(0);
 
   const [status, setStatus] = useState("Load the model to begin object recognition.");
   const [modelReady, setModelReady] = useState(false);
@@ -80,11 +84,17 @@ export default function Page() {
   const assignDetectionIds = (previous: Detection[], predictions: cocoSsd.DetectedObject[]) => {
     const updated: Detection[] = predictions.map((item) => {
       const match = previous.find(
-        (prior) => prior.class === item.class && iou(prior.bbox, item.bbox) > 0.4
+        (prior) => prior.class === item.class && iou(prior.bbox, item.bbox) > 0.35
       );
+
+      const smoothedBox = match
+        ? item.bbox.map((coord, index) => match.bbox[index] + SMOOTHING * (coord - match.bbox[index]))
+        : item.bbox;
+
       return {
         ...item,
         id: match?.id || crypto.randomUUID(),
+        bbox: smoothedBox as [number, number, number, number],
       };
     });
     detectionHistoryRef.current = updated;
@@ -107,7 +117,7 @@ export default function Page() {
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: { facingMode: "environment", width: { ideal: 960 }, height: { ideal: 540 } },
         audio: false,
       });
       streamRef.current = stream;
@@ -126,9 +136,28 @@ export default function Page() {
     if (modelReady || modelRef.current) return true;
     setStatus("Loading lightweight detection model…");
     try {
-      modelRef.current = await cocoSsd.load({ base: "lite_mobilenet_v2" });
+      if (tf.getBackend() !== "webgpu") {
+        try {
+          await tf.setBackend("webgpu");
+          await tf.ready();
+        } catch (error) {
+          console.warn("WebGPU backend unavailable, falling back to WebGL", error);
+        }
+      }
+
+      if (tf.getBackend() !== "webgpu" && tf.getBackend() !== "webgl") {
+        await tf.setBackend("webgl");
+        await tf.ready();
+      }
+
+      modelRef.current = await cocoSsd.load({ base: "mobilenet_v2" });
+      const dummy = tf.zeros<tf.Rank.R3>([300, 300, 3]);
+      await modelRef.current.detect(dummy);
+      dummy.dispose();
       setModelReady(true);
-      setStatus("Model ready. Start the camera to recognize objects.");
+      setStatus(
+        `${tf.getBackend()} backend ready. Start the camera to recognize objects with a stronger model.`
+      );
       return true;
     } catch (error) {
       console.error("Model load failed", error);
@@ -186,8 +215,13 @@ export default function Page() {
     });
   };
 
-  const detectionLoop = async () => {
+  const detectionLoop = async (timestamp: number) => {
     if (!modelRef.current || !videoRef.current) return;
+    if (isProcessingRef.current || timestamp - lastDetectionTsRef.current < FRAME_INTERVAL_MS) {
+      rafRef.current = requestAnimationFrame(detectionLoop);
+      return;
+    }
+    isProcessingRef.current = true;
     try {
       const predictions = await modelRef.current.detect(videoRef.current);
       const enriched = assignDetectionIds(detectionHistoryRef.current, predictions);
@@ -196,12 +230,15 @@ export default function Page() {
         setSelectedId(enriched[0].id);
       }
       drawDetections(enriched);
+      lastDetectionTsRef.current = timestamp;
     } catch (error) {
       console.error("Detection loop failed", error);
       setStatus("Detection stopped due to an error. Try restarting.");
       setDetectionActive(false);
+      isProcessingRef.current = false;
       return;
     }
+    isProcessingRef.current = false;
     rafRef.current = requestAnimationFrame(detectionLoop);
   };
 
@@ -211,6 +248,8 @@ export default function Page() {
     const cameraStarted = await startCamera();
     if (!cameraStarted) return;
     detectionHistoryRef.current = [];
+    isProcessingRef.current = false;
+    lastDetectionTsRef.current = 0;
     setSelectedId(null);
     setDetectionActive(true);
     setStatus("Camera on. Scanning for objects…");
@@ -375,7 +414,12 @@ export default function Page() {
                   </button>
                 </div>
               </div>
-              <button className="primary" type="button" onClick={startLabelListening} disabled={!detections.length || listening}>
+              <button
+                className="primary"
+                type="button"
+                onClick={startLabelListening}
+                disabled={!detections.length || listening}
+              >
                 {listening ? "Listening…" : "Record label"}
               </button>
             </div>
