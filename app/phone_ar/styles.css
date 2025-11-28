@@ -204,6 +204,17 @@
   object-fit: contain;
 }
 
+.phoneArPage .camera-fallback .overlay-image {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  max-width: 28%;
+  border-radius: 12px;
+  border: 2px solid rgba(255, 140, 66, 0.6);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  background: rgba(11, 16, 33, 0.8);
+}
+
 .phoneArPage .overlay-label {
   position: absolute;
   bottom: 16px;
