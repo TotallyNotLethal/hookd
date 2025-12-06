@@ -29,7 +29,6 @@ export async function POST(request: Request) {
 
     const safeRedirectPath = redirectPath?.startsWith('/') ? redirectPath : '/app';
     const loginUrl = new URL('/api/mobile-auth', request.url);
-    loginUrl.searchParams.set('session', sessionCookie);
     loginUrl.searchParams.set('redirect', safeRedirectPath);
 
     const response = NextResponse.json({

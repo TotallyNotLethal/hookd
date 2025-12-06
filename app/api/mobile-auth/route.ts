@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 
 import { getAdminAuth } from '@/lib/server/firebaseAdminAuth';
 
@@ -11,8 +12,10 @@ export async function GET(request: Request) {
   const token = searchParams.get('token');
   const sessionParam = searchParams.get('session');
   const redirect = searchParams.get('redirect');
+  const cookieStore = cookies();
+  const cookieSession = cookieStore.get('session')?.value;
 
-  if (!token && !sessionParam) {
+  if (!token && !sessionParam && !cookieSession) {
     return NextResponse.json({ error: 'Missing token or session parameter.' }, { status: 400 });
   }
 
@@ -22,14 +25,18 @@ export async function GET(request: Request) {
 
     const decoded = sessionParam
       ? await auth.verifySessionCookie(sessionParam, hasCredential)
-      : await auth.verifyIdToken(token!, hasCredential);
+      : cookieSession
+        ? await auth.verifySessionCookie(cookieSession, hasCredential)
+        : await auth.verifyIdToken(token!, hasCredential);
 
     if (!decoded?.uid) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     }
 
     const sessionCookie =
-      sessionParam ?? (await auth.createSessionCookie(token!, { expiresIn: TWO_WEEKS_IN_MS }));
+      sessionParam ??
+      cookieSession ??
+      (await auth.createSessionCookie(token!, { expiresIn: TWO_WEEKS_IN_MS }));
 
     const redirectPath = redirect?.startsWith('/') ? redirect : '/app';
     const response = NextResponse.redirect(new URL(redirectPath, request.url));
