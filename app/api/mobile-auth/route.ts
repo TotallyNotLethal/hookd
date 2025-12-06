@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   const token = searchParams.get('token');
   const sessionParam = searchParams.get('session');
   const redirect = searchParams.get('redirect');
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   const cookieSession = cookieStore.get('session')?.value;
 
   if (!token && !sessionParam && !cookieSession) {
