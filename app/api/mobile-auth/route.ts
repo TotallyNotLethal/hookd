@@ -9,21 +9,27 @@ const TWO_WEEKS_IN_MS = 1000 * 60 * 60 * 24 * 14;
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const token = searchParams.get('token');
+  const sessionParam = searchParams.get('session');
   const redirect = searchParams.get('redirect');
 
-  if (!token) {
-    return NextResponse.json({ error: 'Missing token parameter.' }, { status: 400 });
+  if (!token && !sessionParam) {
+    return NextResponse.json({ error: 'Missing token or session parameter.' }, { status: 400 });
   }
 
   try {
     const auth = getAdminAuth();
-    const decoded = await auth.verifyIdToken(token);
+    const hasCredential = Boolean(auth.app.options?.credential);
+
+    const decoded = sessionParam
+      ? await auth.verifySessionCookie(sessionParam, hasCredential)
+      : await auth.verifyIdToken(token!, hasCredential);
 
     if (!decoded?.uid) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     }
 
-    const sessionCookie = await auth.createSessionCookie(token, { expiresIn: TWO_WEEKS_IN_MS });
+    const sessionCookie =
+      sessionParam ?? (await auth.createSessionCookie(token!, { expiresIn: TWO_WEEKS_IN_MS }));
 
     const redirectPath = redirect?.startsWith('/') ? redirect : '/app';
     const response = NextResponse.redirect(new URL(redirectPath, request.url));

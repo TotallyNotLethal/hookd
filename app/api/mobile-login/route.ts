@@ -18,7 +18,8 @@ export async function POST(request: Request) {
     }
 
     const auth = getAdminAuth();
-    const decoded = await auth.verifyIdToken(idToken);
+    const hasCredential = Boolean(auth.app.options?.credential);
+    const decoded = await auth.verifyIdToken(idToken, hasCredential);
 
     if (!decoded?.uid) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
@@ -28,7 +29,7 @@ export async function POST(request: Request) {
 
     const safeRedirectPath = redirectPath?.startsWith('/') ? redirectPath : '/app';
     const loginUrl = new URL('/api/mobile-auth', request.url);
-    loginUrl.searchParams.set('token', idToken);
+    loginUrl.searchParams.set('session', sessionCookie);
     loginUrl.searchParams.set('redirect', safeRedirectPath);
 
     const response = NextResponse.json({
