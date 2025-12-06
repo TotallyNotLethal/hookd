@@ -1,6 +1,4 @@
 import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-
 import { getAdminAuth } from '@/lib/server/firebaseAdminAuth';
 
 export const runtime = 'nodejs';
@@ -12,8 +10,13 @@ export async function GET(request: Request) {
   const token = searchParams.get('token');
   const sessionParam = searchParams.get('session');
   const redirect = searchParams.get('redirect');
-  const cookieStore = await cookies();
-  const cookieSession = cookieStore.get('session')?.value;
+  const cookieHeader = request.headers.get('cookie') ?? '';
+  const cookieSession = cookieHeader
+    .split(';')
+    .map((chunk) => chunk.trim())
+    .find((chunk) => chunk.startsWith('session='))
+    ?.slice('session='.length)
+    ?.trim();
 
   if (!token && !sessionParam && !cookieSession) {
     return NextResponse.json({ error: 'Missing token or session parameter.' }, { status: 400 });
