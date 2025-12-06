@@ -9,6 +9,7 @@ const TWO_WEEKS_IN_MS = 1000 * 60 * 60 * 24 * 14;
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const token = searchParams.get('token');
+  const redirect = searchParams.get('redirect');
 
   if (!token) {
     return NextResponse.json({ error: 'Missing token parameter.' }, { status: 400 });
@@ -24,7 +25,8 @@ export async function GET(request: Request) {
 
     const sessionCookie = await auth.createSessionCookie(token, { expiresIn: TWO_WEEKS_IN_MS });
 
-    const response = NextResponse.redirect(new URL('/', request.url));
+    const redirectPath = redirect?.startsWith('/') ? redirect : '/app';
+    const response = NextResponse.redirect(new URL(redirectPath, request.url));
     response.cookies.set('session', sessionCookie, {
       httpOnly: true,
       secure: true,
