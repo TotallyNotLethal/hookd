@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-
 import { getAdminAuth } from '@/lib/server/firebaseAdminAuth';
 
 export const runtime = 'nodejs';
@@ -9,22 +8,41 @@ const TWO_WEEKS_IN_MS = 1000 * 60 * 60 * 24 * 14;
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const token = searchParams.get('token');
+  const sessionParam = searchParams.get('session');
+  const redirect = searchParams.get('redirect');
+  const cookieHeader = request.headers.get('cookie') ?? '';
+  const cookieSession = cookieHeader
+    .split(';')
+    .map((chunk) => chunk.trim())
+    .find((chunk) => chunk.startsWith('session='))
+    ?.slice('session='.length)
+    ?.trim();
 
-  if (!token) {
-    return NextResponse.json({ error: 'Missing token parameter.' }, { status: 400 });
+  if (!token && !sessionParam && !cookieSession) {
+    return NextResponse.json({ error: 'Missing token or session parameter.' }, { status: 400 });
   }
 
   try {
     const auth = getAdminAuth();
-    const decoded = await auth.verifyIdToken(token);
+    const hasCredential = Boolean(auth.app.options?.credential);
+
+    const decoded = sessionParam
+      ? await auth.verifySessionCookie(sessionParam, hasCredential)
+      : cookieSession
+        ? await auth.verifySessionCookie(cookieSession, hasCredential)
+        : await auth.verifyIdToken(token!, hasCredential);
 
     if (!decoded?.uid) {
       return NextResponse.json({ error: 'Unauthorized.' }, { status: 401 });
     }
 
-    const sessionCookie = await auth.createSessionCookie(token, { expiresIn: TWO_WEEKS_IN_MS });
+    const sessionCookie =
+      sessionParam ??
+      cookieSession ??
+      (await auth.createSessionCookie(token!, { expiresIn: TWO_WEEKS_IN_MS }));
 
-    const response = NextResponse.redirect(new URL('/', request.url));
+    const redirectPath = redirect?.startsWith('/') ? redirect : '/app';
+    const response = NextResponse.redirect(new URL(redirectPath, request.url));
     response.cookies.set('session', sessionCookie, {
       httpOnly: true,
       secure: true,
