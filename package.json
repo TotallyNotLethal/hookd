@@ -26,7 +26,7 @@
     "heic2any": "^0.0.4",
     "leaflet": "^1.9.4",
     "lucide-react": "0.460.0",
-    "next": "15.0.3",
+    "next": "15.0.7",
     "onnxruntime-web": "^1.23.2",
     "openai": "^6.9.1",
     "openmeteo": "^1.2.1",
