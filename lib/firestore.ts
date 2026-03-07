@@ -40,7 +40,7 @@ const PROFILE_ASSET_PATH: Record<ProfileAssetType, (uid: string) => string> = {
 
 export async function uploadProfileAsset(uid: string, file: File, type: ProfileAssetType) {
   const storageRef = ref(storage, PROFILE_ASSET_PATH[type](uid));
-  await uploadBytes(storageRef, file, { contentType: file.type });
+  await uploadBytes(storageRef, file, { contentType: resolveUploadContentType(file) });
   const url = await getDownloadURL(storageRef);
   return url;
 }
@@ -57,8 +57,34 @@ export const TEAM_LOGO_MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 
 const TEAM_ASSET_PATH = (teamId: string) => `team-logos/${teamId}`;
 
+const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  heic: 'image/heic',
+  heif: 'image/heif',
+};
+
+function resolveUploadContentType(file: File): string {
+  const normalizedType = typeof file.type === 'string' ? file.type.trim().toLowerCase() : '';
+  if (normalizedType.startsWith('image/')) {
+    return normalizedType;
+  }
+
+  const extension = file.name.split('.').pop()?.trim().toLowerCase() ?? '';
+  if (extension && IMAGE_MIME_BY_EXTENSION[extension]) {
+    return IMAGE_MIME_BY_EXTENSION[extension];
+  }
+
+  return 'image/jpeg';
+}
+
 export async function uploadTeamAsset(teamId: string, file: File) {
-  if (!TEAM_LOGO_ALLOWED_TYPES.has(file.type)) {
+  const contentType = resolveUploadContentType(file);
+
+  if (!TEAM_LOGO_ALLOWED_TYPES.has(contentType)) {
     throw new Error("Please choose a PNG, JPG, GIF, or WebP image for the team logo.");
   }
 
@@ -67,7 +93,7 @@ export async function uploadTeamAsset(teamId: string, file: File) {
   }
 
   const storageRef = ref(storage, TEAM_ASSET_PATH(teamId));
-  await uploadBytes(storageRef, file, { contentType: file.type });
+  await uploadBytes(storageRef, file, { contentType });
   const url = await getDownloadURL(storageRef);
   return url;
 }
@@ -2854,7 +2880,7 @@ export async function createCatch(input: CatchInput) {
   for (let index = 0; index < uploadFiles.length; index += 1) {
     const fileRef = ref(storage, `catches/${input.uid}/${catchId}-${index}`);
     const file = uploadFiles[index]!;
-    const metadata = file.type ? { contentType: file.type } : undefined;
+    const metadata = { contentType: resolveUploadContentType(file) };
     await uploadBytes(fileRef, file, metadata);
     const url = await getDownloadURL(fileRef);
     imageUrls.push(url);
@@ -2868,7 +2894,7 @@ export async function createCatch(input: CatchInput) {
 
   if (input.originalFile) {
     const originalRef = ref(storage, `catches/${input.uid}/${catchId}-original`);
-    const metadata = input.originalFile.type ? { contentType: input.originalFile.type } : undefined;
+    const metadata = { contentType: resolveUploadContentType(input.originalFile) };
     await uploadBytes(originalRef, input.originalFile, metadata);
     originalImagePath = originalRef.fullPath;
     originalImageUrl = await getDownloadURL(originalRef);
@@ -4940,4 +4966,3 @@ export function subscribeToTournamentLeaderboardByLength(
     cacheArraySubset(cacheKey, entries, limitCount);
   });
 }
-
