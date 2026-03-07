@@ -9,10 +9,11 @@ import {
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
+import { FIREBASE_STORAGE_BUCKET } from './firebaseConfig';
 
 let adminApp: App | null = null;
 
-const STORAGE_BUCKET = 'hookd-b7ae6.firebasestorage.app';
+const STORAGE_BUCKET = FIREBASE_STORAGE_BUCKET;
 
 function initializeAdminApp() {
   if (adminApp) {
