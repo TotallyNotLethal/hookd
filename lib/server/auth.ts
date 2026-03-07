@@ -4,6 +4,18 @@ import { getAdminAuth } from './firebaseAdminAuth';
 
 export type AuthenticatedUser = { uid: string };
 
+export function extractSessionCookie(cookieHeader: string | null): string | null {
+  if (!cookieHeader) return null;
+  return (
+    cookieHeader
+      .split(';')
+      .map((chunk) => chunk.trim())
+      .find((chunk) => chunk.startsWith('session='))
+      ?.slice('session='.length)
+      .trim() ?? null
+  );
+}
+
 let testAuthOverride:
   | ((request: Request) => Promise<AuthenticatedUser | null> | AuthenticatedUser | null)
   | null = null;
@@ -29,14 +41,10 @@ export async function requireAuth(request: Request): Promise<AuthenticatedUser> 
   }
 
   const header = request.headers.get('authorization') ?? request.headers.get('Authorization');
-  if (!header || !header.toLowerCase().startsWith('bearer ')) {
-    const error = new Error('Missing authorization token.');
-    (error as Error & { code?: string }).code = 'unauthorized';
-    throw error;
-  }
+  const token = header?.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : null;
+  const sessionCookie = extractSessionCookie(request.headers.get('cookie'));
 
-  const token = header.slice(7).trim();
-  if (!token) {
+  if (!token && !sessionCookie) {
     const error = new Error('Missing authorization token.');
     (error as Error & { code?: string }).code = 'unauthorized';
     throw error;
@@ -50,7 +58,9 @@ export async function requireAuth(request: Request): Promise<AuthenticatedUser> 
     // would cause verifyIdToken(..., true) to throw even for valid sessions.
     // Skip the revocation check when no credential is configured so that
     // authenticated users can still call the API in that environment.
-    const decoded = await auth.verifyIdToken(token, hasCredential);
+    const decoded = token
+      ? await auth.verifyIdToken(token, hasCredential)
+      : await auth.verifySessionCookie(sessionCookie!, hasCredential);
     if (!decoded?.uid) {
       throw new Error('Token missing uid');
     }
