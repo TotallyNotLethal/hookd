@@ -58,6 +58,11 @@ export function ensureAuthPersistence(): Promise<void> {
 export async function waitForAuthenticatedUser(): Promise<User | null> {
   await ensureAuthPersistence();
 
+  if (typeof auth.authStateReady === 'function') {
+    await auth.authStateReady();
+    return auth.currentUser;
+  }
+
   if (auth.currentUser) {
     return auth.currentUser;
   }

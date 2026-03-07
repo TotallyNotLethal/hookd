@@ -2870,7 +2870,13 @@ export async function sendTeamChatMessage(teamId: string, data: {
 /** ---------- Catches ---------- */
 export async function createCatch(input: CatchInput) {
   const authUser = typeof window !== 'undefined' ? await waitForAuthenticatedUser() : null;
-  if (typeof window !== 'undefined' && authUser && auth.currentUser?.uid !== input.uid) {
+  if (typeof window !== 'undefined' && !authUser) {
+    throw new Error('You must be signed in to upload catches.');
+  }
+
+  const ownerUid = authUser?.uid ?? input.uid;
+
+  if (typeof window !== 'undefined' && auth.currentUser?.uid !== ownerUid) {
     throw new Error('Your session changed. Please try uploading again.');
   }
 
@@ -2888,7 +2894,7 @@ export async function createCatch(input: CatchInput) {
   const imageUrls: string[] = [];
 
   for (let index = 0; index < uploadFiles.length; index += 1) {
-    const fileRef = ref(storage, `catches/${input.uid}/${catchId}-${index}`);
+    const fileRef = ref(storage, `catches/${ownerUid}/${catchId}-${index}`);
     const file = uploadFiles[index]!;
     const metadata = { contentType: resolveUploadContentType(file) };
     await uploadBytes(fileRef, file, metadata);
@@ -2903,7 +2909,7 @@ export async function createCatch(input: CatchInput) {
   const originalExif = input.originalExif ? { ...input.originalExif } : null;
 
   if (input.originalFile) {
-    const originalRef = ref(storage, `catches/${input.uid}/${catchId}-original`);
+    const originalRef = ref(storage, `catches/${ownerUid}/${catchId}-original`);
     const metadata = { contentType: resolveUploadContentType(input.originalFile) };
     await uploadBytes(originalRef, input.originalFile, metadata);
     originalImagePath = originalRef.fullPath;
@@ -2964,8 +2970,8 @@ export async function createCatch(input: CatchInput) {
 
   // ✅ Save Firestore document with image URL
   await setDoc(cRef, {
-    uid: input.uid,
-    userId: input.uid,
+    uid: ownerUid,
+    userId: ownerUid,
     displayName: input.displayName,
     userPhoto: input.userPhoto || null,
     species: input.species,
@@ -3006,7 +3012,7 @@ export async function createCatch(input: CatchInput) {
       input.capturedAt ?? (normalizedCaptureTimestamp ? new Date(normalizedCaptureTimestamp.toMillis()) : null);
 
     await updateUserTackleStatsForCatch({
-      uid: input.uid,
+      uid: ownerUid,
       catchId: cRef.id,
       tackle,
       species: input.species,
@@ -3028,7 +3034,7 @@ export async function createCatch(input: CatchInput) {
       });
   }
 
-  const posterSnap = await getDoc(doc(db, 'users', input.uid));
+  const posterSnap = await getDoc(doc(db, 'users', ownerUid));
   const posterData = posterSnap.exists() ? (posterSnap.data() as Partial<HookdUser>) : null;
 
   const rawFollowers = Array.isArray(posterData?.followers) ? posterData?.followers : [];
@@ -3036,7 +3042,7 @@ export async function createCatch(input: CatchInput) {
   for (const followerUid of rawFollowers) {
     if (typeof followerUid !== 'string') continue;
     const trimmed = followerUid.trim();
-    if (!trimmed || trimmed === input.uid) continue;
+    if (!trimmed || trimmed === ownerUid) continue;
     followerUids.push(trimmed);
     if (followerUids.length >= MAX_FOLLOWER_NOTIFICATIONS_PER_CATCH) {
       break;
@@ -3077,12 +3083,12 @@ export async function createCatch(input: CatchInput) {
 
     const notificationPayloads = followerUids.map((recipientUid) => ({
       recipientUid,
-      actorUid: input.uid,
+      actorUid: ownerUid,
       actorDisplayName: actorDisplayName ?? null,
       actorUsername: actorUsername ?? null,
       actorPhotoURL: actorPhotoURL ?? null,
       verb: 'followed_catch' as const,
-      resource: { type: 'catch', catchId: cRef.id, ownerUid: input.uid } as const,
+      resource: { type: 'catch', catchId: cRef.id, ownerUid } as const,
       metadata: { ...baseMetadata },
     } satisfies Parameters<typeof createNotification>[0]));
 
