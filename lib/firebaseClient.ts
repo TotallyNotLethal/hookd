@@ -1,6 +1,14 @@
 'use client';
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import {
+  browserLocalPersistence,
+  getAuth,
+  GoogleAuthProvider,
+  indexedDBLocalPersistence,
+  onAuthStateChanged,
+  setPersistence,
+  type User,
+} from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 
@@ -25,6 +33,42 @@ export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 export const db = getFirestore(app);
 
+let authPersistencePromise: Promise<void> | null = null;
+
+export function ensureAuthPersistence(): Promise<void> {
+  if (typeof window === 'undefined') {
+    return Promise.resolve();
+  }
+
+  if (!authPersistencePromise) {
+    authPersistencePromise = (async () => {
+      try {
+        await setPersistence(auth, indexedDBLocalPersistence);
+      } catch (error) {
+        console.warn('[Auth] indexedDBLocalPersistence unavailable, falling back.', error);
+        await setPersistence(auth, browserLocalPersistence);
+      }
+    })();
+  }
+
+  return authPersistencePromise;
+}
+
+export async function waitForAuthenticatedUser(): Promise<User | null> {
+  await ensureAuthPersistence();
+
+  if (auth.currentUser) {
+    return auth.currentUser;
+  }
+
+  return new Promise((resolve) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      unsubscribe();
+      resolve(user);
+    });
+  });
+}
+
 // --- Guard storage behind a browser check
 let _storage: FirebaseStorage | null = null;
 export const getStorageSafe = (): FirebaseStorage | null => {
@@ -39,6 +83,10 @@ export const getStorageSafe = (): FirebaseStorage | null => {
 export const storage = typeof window !== 'undefined'
   ? getStorage(app, 'gs://hookd-b7ae6.firebasestorage.app')
   : null;
+
+if (typeof window !== 'undefined') {
+  void ensureAuthPersistence();
+}
 
 // --- Export app for utilities
 export { app };
