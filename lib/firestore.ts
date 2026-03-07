@@ -1,6 +1,7 @@
 'use client';
 import { FirebaseError } from "firebase/app";
 import { app, auth, db, waitForAuthenticatedUser } from "./firebaseClient";
+import { FIREBASE_STORAGE_BUCKET } from './firebaseConfig';
 import { validateAndNormalizeUsername } from "./username";
 import { getCachedValue, primeCachedValue, setCachedValue } from "./localCache";
 import {
@@ -24,7 +25,7 @@ import { calculateNextReminderDate, normalizeLeadDays } from "./licenseReminders
 import { getRegionKey as getRegulationRegionKey, getSpeciesKey as getRegulationSpeciesKey, listRegions, listSpecies } from "./regulationsStore";
 
 // ✅ Define storage first
-const storage = getStorage(app, "gs://hookd-b7ae6.firebasestorage.app");
+const storage = getStorage(app, `gs://${FIREBASE_STORAGE_BUCKET}`);
 
 // 🔥 Now you can safely log it
 if (storage) {
@@ -2871,6 +2872,10 @@ export async function createCatch(input: CatchInput) {
   const authUser = typeof window !== 'undefined' ? await waitForAuthenticatedUser() : null;
   if (typeof window !== 'undefined' && authUser && auth.currentUser?.uid !== input.uid) {
     throw new Error('Your session changed. Please try uploading again.');
+  }
+
+  if (authUser) {
+    await authUser.getIdToken();
   }
 
   const uploadFiles = input.files && input.files.length > 0 ? input.files : [input.file];
