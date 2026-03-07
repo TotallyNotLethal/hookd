@@ -166,21 +166,42 @@ export default function LogbookContent({ showIntroduction = true }: { showIntrod
     setPlannerForecast(null);
   }, []);
 
+  const fetchWithAuth = useCallback(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!user) {
+        throw new Error('Please sign in to continue.');
+      }
+
+      const makeRequest = async (forceRefresh: boolean) => {
+        const token = await user.getIdToken(forceRefresh);
+        return fetch(input, {
+          ...init,
+          headers: {
+            ...(init?.headers ?? {}),
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      };
+
+      let response = await makeRequest(false);
+      if (response.status === 401) {
+        response = await makeRequest(true);
+      }
+      return response;
+    },
+    [user],
+  );
+
   const fetchEntries = useCallback(async () => {
     if (!user) return;
     setEntriesLoading(true);
     setEntriesError(null);
     try {
-      const token = await user.getIdToken();
       const params = new URLSearchParams();
       if (selectedVisibility !== 'all') {
         params.set('visibility', selectedVisibility);
       }
-      const response = await fetch(`/api/catches${params.toString() ? `?${params.toString()}` : ''}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const response = await fetchWithAuth(`/api/catches${params.toString() ? `?${params.toString()}` : ''}`);
       if (!response.ok) {
         throw new Error(`Failed to load catches (${response.status})`);
       }
@@ -191,7 +212,7 @@ export default function LogbookContent({ showIntroduction = true }: { showIntrod
     } finally {
       setEntriesLoading(false);
     }
-  }, [selectedVisibility, user]);
+  }, [fetchWithAuth, selectedVisibility, user]);
 
   useEffect(() => {
     if (user) {
@@ -207,7 +228,7 @@ export default function LogbookContent({ showIntroduction = true }: { showIntrod
     const run = async () => {
       const result = await syncQueuedCatches({
         userId: user.uid,
-        getAuthToken: () => user.getIdToken(),
+        getAuthToken: (forceRefresh) => user.getIdToken(forceRefresh),
       });
       if (!cancelled && result.synced > 0) {
         await fetchEntries();
@@ -257,12 +278,8 @@ export default function LogbookContent({ showIntroduction = true }: { showIntrod
         if (!confirm) return;
       }
       try {
-        const token = await user.getIdToken();
-        const response = await fetch(`/api/catches/${id}`, {
+        const response = await fetchWithAuth(`/api/catches/${id}`, {
           method: 'DELETE',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
         });
         if (!response.ok && response.status !== 204) {
           throw new Error(`Delete failed (${response.status})`);
@@ -275,7 +292,7 @@ export default function LogbookContent({ showIntroduction = true }: { showIntrod
         setEntriesError(error instanceof Error ? error.message : 'Unable to delete catch.');
       }
     },
-    [editingId, fetchEntries, offline.online, resetForm, user],
+    [editingId, fetchEntries, fetchWithAuth, offline.online, resetForm, user],
   );
 
   const handleSubmit = useCallback(
@@ -377,13 +394,11 @@ export default function LogbookContent({ showIntroduction = true }: { showIntrod
       }
 
       try {
-        const token = await user.getIdToken();
         const attemptNetwork = offline.online
-          ? await fetch(editingId ? `/api/catches/${editingId}` : '/api/catches', {
+          ? await fetchWithAuth(editingId ? `/api/catches/${editingId}` : '/api/catches', {
               method: editingId ? 'PATCH' : 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
               },
               body: JSON.stringify(payload),
             })
@@ -431,7 +446,7 @@ export default function LogbookContent({ showIntroduction = true }: { showIntrod
         setSubmitting(false);
       }
     },
-    [editingId, entries, fetchEntries, form, offline.online, plannerForecast, resetForm, user],
+    [editingId, entries, fetchEntries, fetchWithAuth, form, offline.online, plannerForecast, resetForm, user],
   );
 
   return (
