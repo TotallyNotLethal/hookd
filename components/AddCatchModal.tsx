@@ -6,7 +6,7 @@ import L from 'leaflet';
 import type { LeafletEvent } from 'leaflet';
 import { parse } from 'exifr';
 import { useAuthState } from 'react-firebase-hooks/auth';
-import { auth } from '@/lib/firebaseClient';
+import { auth, waitForAuthenticatedUser } from '@/lib/firebaseClient';
 import {
   HookdUser,
   Tournament,
@@ -1482,7 +1482,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!user) return alert('Sign in first!');
+    const activeUser = user ?? (await waitForAuthenticatedUser());
+    if (!activeUser) return alert('Sign in first!');
     const filesForCatch = currentCatchUploads.map((upload) => upload.file);
     if (!filesForCatch.length) {
       alert('Select at least one photo for this catch.');
@@ -1611,9 +1612,9 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         ? new Date(Math.floor(capturedAtDate.getTime() / (60 * 60 * 1000)) * 60 * 60 * 1000)
         : null;
       createdCatchId = await createCatch({
-        uid: user.uid,
-        displayName: profile?.displayName || user.displayName || 'Angler',
-        userPhoto: profile?.photoURL || user.photoURL || undefined,
+        uid: activeUser.uid,
+        displayName: profile?.displayName || activeUser.displayName || 'Angler',
+        userPhoto: profile?.photoURL || activeUser.photoURL || undefined,
         species: trimmedSpecies,
         weight: formattedWeight,
         location: finalLocation,
@@ -1646,8 +1647,8 @@ export default function AddCatchModal({ onClose }: AddCatchModalProps) {
         const formData = new FormData();
         formData.append('tournamentId', tournament.id);
         formData.append('catchId', createdCatchId);
-        formData.append('userId', user.uid);
-        formData.append('userDisplayName', profile?.displayName || user.displayName || 'Angler');
+        formData.append('userId', activeUser.uid);
+        formData.append('userDisplayName', profile?.displayName || activeUser.displayName || 'Angler');
         formData.append('tournamentTitle', tournament.title);
         formData.append('measurementMode', tournament.measurement.mode);
         formData.append('weightUnit', measurementWeightUnit);

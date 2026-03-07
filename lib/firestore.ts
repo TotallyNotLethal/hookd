@@ -1,6 +1,6 @@
 'use client';
 import { FirebaseError } from "firebase/app";
-import { app, db } from "./firebaseClient";
+import { app, auth, db, waitForAuthenticatedUser } from "./firebaseClient";
 import { validateAndNormalizeUsername } from "./username";
 import { getCachedValue, primeCachedValue, setCachedValue } from "./localCache";
 import {
@@ -2868,6 +2868,11 @@ export async function sendTeamChatMessage(teamId: string, data: {
 
 /** ---------- Catches ---------- */
 export async function createCatch(input: CatchInput) {
+  const authUser = typeof window !== 'undefined' ? await waitForAuthenticatedUser() : null;
+  if (typeof window !== 'undefined' && authUser && auth.currentUser?.uid !== input.uid) {
+    throw new Error('Your session changed. Please try uploading again.');
+  }
+
   const uploadFiles = input.files && input.files.length > 0 ? input.files : [input.file];
   if (!uploadFiles.length) {
     throw new Error('No photos provided for catch upload.');
