@@ -335,7 +335,7 @@ export type CatchSyncResult = {
 
 export async function syncQueuedCatches(options: {
   userId: string;
-  getAuthToken: () => Promise<string>;
+  getAuthToken: (forceRefresh?: boolean) => Promise<string>;
 }): Promise<CatchSyncResult> {
   const entries = await getStoreEntries<CatchQueueItem>(CATCH_STORE);
   const userEntries = entries.filter((entry) => entry.userId === options.userId);
@@ -371,7 +371,7 @@ export async function syncQueuedCatches(options: {
       }
 
       const url = entry.method === 'POST' ? `${API_BASE}/api/catches` : `${API_BASE}/api/catches/${entry.catchId}`;
-      const response = await fetch(url, {
+      let response = await fetch(url, {
         method: entry.method,
         headers: {
           'Content-Type': 'application/json',
@@ -379,6 +379,18 @@ export async function syncQueuedCatches(options: {
         },
         body: JSON.stringify(payload),
       });
+
+      if (response.status === 401) {
+        const refreshedToken = await options.getAuthToken(true);
+        response = await fetch(url, {
+          method: entry.method,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${refreshedToken}`,
+          },
+          body: JSON.stringify(payload),
+        });
+      }
 
       if (!response.ok) {
         throw new Error(`Sync failed with status ${response.status}`);
