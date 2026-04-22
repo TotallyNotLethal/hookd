@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 
@@ -15,7 +18,14 @@ export const runtime = "nodejs";
 
 const CARD_WIDTH = 1500;
 const CARD_HEIGHT = 900;
-const CARD_FONT_STACK = "Helvetica, Arial, sans-serif";
+const CARD_FONT_STACK = "PoliceCardSans, sans-serif";
+
+const CARD_FONT_REGULAR_BASE64 = fs
+  .readFileSync(path.join(process.cwd(), "assets/fonts/DejaVuSans.ttf"))
+  .toString("base64");
+const CARD_FONT_BOLD_BASE64 = fs
+  .readFileSync(path.join(process.cwd(), "assets/fonts/DejaVuSans-Bold.ttf"))
+  .toString("base64");
 
 function escapeSvgText(value: string): string {
   return value
@@ -79,6 +89,23 @@ function buildCardSvg(data: PoliceCardData): string {
 
   return `
     <svg width="${CARD_WIDTH}" height="${CARD_HEIGHT}" viewBox="0 0 ${CARD_WIDTH} ${CARD_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <style><![CDATA[
+          @font-face {
+            font-family: "PoliceCardSans";
+            src: url("data:font/ttf;base64,${CARD_FONT_REGULAR_BASE64}") format("truetype");
+            font-weight: 400;
+            font-style: normal;
+          }
+
+          @font-face {
+            font-family: "PoliceCardSans";
+            src: url("data:font/ttf;base64,${CARD_FONT_BOLD_BASE64}") format("truetype");
+            font-weight: 700;
+            font-style: normal;
+          }
+        ]]></style>
+      </defs>
       <rect width="100%" height="100%" fill="#f8fafc" />
       <rect x="20" y="20" width="1460" height="860" fill="none" stroke="#0f2f6b" stroke-width="8" rx="24"/>
       <rect x="38" y="38" width="1424" height="824" fill="none" stroke="#12357a" stroke-width="3" rx="18"/>
