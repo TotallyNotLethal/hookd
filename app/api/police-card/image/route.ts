@@ -21,7 +21,7 @@ const CARD_HEIGHT = 900;
 const TITLE_LEFT = 110;
 const REGULAR_FONT_PATH = path.join(process.cwd(), "assets/fonts/DejaVuSans.ttf");
 const BOLD_FONT_PATH = path.join(process.cwd(), "assets/fonts/DejaVuSans-Bold.ttf");
-const CONTENT_LEFT = 370;
+const CONTENT_LEFT = 430;
 const CARD_TEXT_COLOR = "#111827";
 
 type LoadedFont = opentype.Font;
