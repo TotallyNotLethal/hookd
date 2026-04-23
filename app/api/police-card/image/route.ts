@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import sharp, { OverlayOptions } from "sharp";
+import { readFile } from "fs/promises";
+import path from "path";
+import opentype from "opentype.js";
+import sharp from "sharp";
 
 import {
   formatPhoneAsText,
@@ -16,7 +19,15 @@ export const runtime = "nodejs";
 const CARD_WIDTH = 1500;
 const CARD_HEIGHT = 900;
 const TITLE_LEFT = 110;
-const TITLE_WIDTH = 1280;
+const REGULAR_FONT_PATH = path.join(process.cwd(), "assets/fonts/DejaVuSans.ttf");
+const BOLD_FONT_PATH = path.join(process.cwd(), "assets/fonts/DejaVuSans-Bold.ttf");
+const CONTENT_LEFT = 430;
+const CARD_TEXT_COLOR = "#111827";
+
+type LoadedFont = opentype.Font;
+
+let cachedRegularFont: LoadedFont | null = null;
+let cachedBoldFont: LoadedFont | null = null;
 
 function wrapText(value: string, maxLength = 54): string[] {
   const words = value.split(" ");
@@ -46,54 +57,86 @@ function enforceEnglishAscii(value: string): string {
 
 function buildCardBackgroundSvg(): string {
   return `
-    <svg width="${CARD_WIDTH}" height="${CARD_HEIGHT}" viewBox="0 0 ${CARD_WIDTH} ${CARD_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
-      <rect width="100%" height="100%" fill="#f8fafc" />
-      <rect x="20" y="20" width="1460" height="860" fill="none" stroke="#0f2f6b" stroke-width="8" rx="24"/>
-      <rect x="38" y="38" width="1424" height="824" fill="none" stroke="#12357a" stroke-width="3" rx="18"/>
-      <line x1="110" y1="195" x2="1390" y2="195" stroke="#0f2f6b" stroke-width="3" />
-      ${policeCardFieldOrder
-        .map((field, index) => {
-          const y = 260 + index * 95;
-          const rowHeight = field === "address" ? 125 : 85;
-          return `<line x1="100" y1="${y + rowHeight - 15}" x2="1400" y2="${y + rowHeight - 15}" stroke="#0f2f6b" stroke-opacity="0.45" stroke-width="2" />`;
-        })
-        .join("\n")}
-    </svg>
+    <rect width="100%" height="100%" fill="#f8fafc" />
+    <rect x="20" y="20" width="1460" height="860" fill="none" stroke="#0f2f6b" stroke-width="8" rx="24"/>
+    <rect x="38" y="38" width="1424" height="824" fill="none" stroke="#12357a" stroke-width="3" rx="18"/>
+    <line x1="110" y1="195" x2="1390" y2="195" stroke="#0f2f6b" stroke-width="3" />
+    ${policeCardFieldOrder
+      .map((field, index) => {
+        const y = 260 + index * 95;
+        const rowHeight = field === "address" ? 125 : 85;
+        return `<line x1="100" y1="${y + rowHeight - 15}" x2="1400" y2="${y + rowHeight - 15}" stroke="#0f2f6b" stroke-opacity="0.45" stroke-width="2" />`;
+      })
+      .join("\n")}
   `;
 }
 
-function createTextOverlay(text: string, font: string, left: number, top: number, width?: number): OverlayOptions {
+async function loadFont(fontPath: string): Promise<LoadedFont> {
+  const fontBuffer = await readFile(fontPath);
+  const arrayBuffer = fontBuffer.buffer.slice(fontBuffer.byteOffset, fontBuffer.byteOffset + fontBuffer.byteLength);
+  return opentype.parse(arrayBuffer);
+}
+
+async function getFonts() {
+  if (!cachedRegularFont) {
+    cachedRegularFont = await loadFont(REGULAR_FONT_PATH);
+  }
+
+  if (!cachedBoldFont) {
+    cachedBoldFont = await loadFont(BOLD_FONT_PATH);
+  }
+
   return {
-    input: {
-      text: {
-        text,
-        font,
-        rgba: true,
-        dpi: 300,
-        ...(width ? { width } : {}),
-      },
-    },
-    left,
-    top,
+    regularFont: cachedRegularFont,
+    boldFont: cachedBoldFont,
   };
 }
 
-function buildTextOverlays(data: PoliceCardData): OverlayOptions[] {
-  const overlays: OverlayOptions[] = [
-    createTextOverlay("POLICE INFORMATION CARD", "Arial Bold 72", TITLE_LEFT, 90, TITLE_WIDTH),
-  ];
-
-  for (const [index, field] of policeCardFieldOrder.entries()) {
-    const y = 260 + index * 95;
-    const textY = y - 30;
-
-    overlays.push(createTextOverlay(`${policeCardLabels[field]}:`, "Arial Bold 36", 110, textY));
-
-    const wrappedValue = wrapText(data[field]).join("\n");
-    overlays.push(createTextOverlay(wrappedValue, "Arial 34", 370, textY, 970));
+function renderTextPath(text: string, font: LoadedFont, x: number, y: number, size: number): string {
+  const normalizedText = text.trim();
+  if (!normalizedText) {
+    return "";
   }
 
-  return overlays;
+  const pathData = font.getPath(normalizedText, x, y, size).toPathData(2);
+  return `<path fill="${CARD_TEXT_COLOR}" d="${pathData}" />`;
+}
+
+function renderMultilineText(lines: string[], font: LoadedFont, x: number, y: number, size: number, lineHeight: number): string {
+  return lines
+    .map((line, lineIndex) => {
+      const baselineY = y + size + lineIndex * lineHeight;
+      return renderTextPath(line, font, x, baselineY, size);
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function buildCardSvg(data: PoliceCardData, regularFont: LoadedFont, boldFont: LoadedFont): string {
+  const titlePath = renderTextPath("POLICE INFORMATION CARD", boldFont, TITLE_LEFT, 150, 72);
+
+  const fieldRows = policeCardFieldOrder
+    .map((field, index) => {
+      const y = 260 + index * 95;
+      const textY = y - 8;
+      const labelPath = renderTextPath(`${policeCardLabels[field]}:`, boldFont, 110, textY + 36, 36);
+      const wrappedValueLines = wrapText(data[field]).map((line) => line.trim()).filter(Boolean);
+      const valuePath = renderMultilineText(wrappedValueLines, regularFont, CONTENT_LEFT, textY, 34, 38);
+
+      return `
+        ${labelPath}
+        ${valuePath}
+      `;
+    })
+    .join("\n");
+
+  return `
+    <svg width="${CARD_WIDTH}" height="${CARD_HEIGHT}" viewBox="0 0 ${CARD_WIDTH} ${CARD_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
+      ${buildCardBackgroundSvg()}
+      ${titlePath}
+      ${fieldRows}
+    </svg>
+  `;
 }
 
 export async function GET(request: NextRequest) {
@@ -118,8 +161,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const baseCardBuffer = await sharp(Buffer.from(buildCardBackgroundSvg())).png().toBuffer();
-    const pngBuffer = await sharp(baseCardBuffer).composite(buildTextOverlays(data)).png({ compressionLevel: 9 }).toBuffer();
+    const { regularFont, boldFont } = await getFonts();
+    const cardSvg = buildCardSvg(data, regularFont, boldFont);
+    const pngBuffer = await sharp(Buffer.from(cardSvg)).png({ compressionLevel: 9 }).toBuffer();
 
     return new NextResponse(pngBuffer, {
       status: 200,
