@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import path from "path";
+import opentype from "opentype.js";
 import sharp from "sharp";
 
 import {
@@ -18,13 +19,15 @@ export const runtime = "nodejs";
 const CARD_WIDTH = 1500;
 const CARD_HEIGHT = 900;
 const TITLE_LEFT = 110;
-const TITLE_WIDTH = 1280;
 const REGULAR_FONT_PATH = path.join(process.cwd(), "assets/fonts/DejaVuSans.ttf");
 const BOLD_FONT_PATH = path.join(process.cwd(), "assets/fonts/DejaVuSans-Bold.ttf");
 const CONTENT_LEFT = 370;
+const CARD_TEXT_COLOR = "#111827";
 
-let cachedRegularFontBase64: string | null = null;
-let cachedBoldFontBase64: string | null = null;
+type LoadedFont = opentype.Font;
+
+let cachedRegularFont: LoadedFont | null = null;
+let cachedBoldFont: LoadedFont | null = null;
 
 function wrapText(value: string, maxLength = 54): string[] {
   const words = value.split(" ");
@@ -68,91 +71,69 @@ function buildCardBackgroundSvg(): string {
   `;
 }
 
-function escapeXml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+async function loadFont(fontPath: string): Promise<LoadedFont> {
+  const fontBuffer = await readFile(fontPath);
+  const arrayBuffer = fontBuffer.buffer.slice(fontBuffer.byteOffset, fontBuffer.byteOffset + fontBuffer.byteLength);
+  return opentype.parse(arrayBuffer);
 }
 
-async function getFontsAsBase64() {
-  if (!cachedRegularFontBase64) {
-    const regularFontBuffer = await readFile(REGULAR_FONT_PATH);
-    cachedRegularFontBase64 = regularFontBuffer.toString("base64");
+async function getFonts() {
+  if (!cachedRegularFont) {
+    cachedRegularFont = await loadFont(REGULAR_FONT_PATH);
   }
 
-  if (!cachedBoldFontBase64) {
-    const boldFontBuffer = await readFile(BOLD_FONT_PATH);
-    cachedBoldFontBase64 = boldFontBuffer.toString("base64");
+  if (!cachedBoldFont) {
+    cachedBoldFont = await loadFont(BOLD_FONT_PATH);
   }
 
   return {
-    regularFontBase64: cachedRegularFontBase64,
-    boldFontBase64: cachedBoldFontBase64,
+    regularFont: cachedRegularFont,
+    boldFont: cachedBoldFont,
   };
 }
 
-function renderMultilineText(lines: string[], x: number, y: number, lineHeight: number, className: string): string {
+function renderTextPath(text: string, font: LoadedFont, x: number, y: number, size: number): string {
+  const normalizedText = text.trim();
+  if (!normalizedText) {
+    return "";
+  }
+
+  const pathData = font.getPath(normalizedText, x, y, size).toPathData(2);
+  return `<path fill="${CARD_TEXT_COLOR}" d="${pathData}" />`;
+}
+
+function renderMultilineText(lines: string[], font: LoadedFont, x: number, y: number, size: number, lineHeight: number): string {
   return lines
     .map((line, lineIndex) => {
-      const escapedLine = escapeXml(line);
-      const currentY = y + lineIndex * lineHeight;
-      return `<text class="${className}" x="${x}" y="${currentY}">${escapedLine}</text>`;
+      const baselineY = y + size + lineIndex * lineHeight;
+      return renderTextPath(line, font, x, baselineY, size);
     })
+    .filter(Boolean)
     .join("\n");
 }
 
-function buildCardSvg(data: PoliceCardData, regularFontBase64: string, boldFontBase64: string): string {
+function buildCardSvg(data: PoliceCardData, regularFont: LoadedFont, boldFont: LoadedFont): string {
+  const titlePath = renderTextPath("POLICE INFORMATION CARD", boldFont, TITLE_LEFT, 150, 72);
+
   const fieldRows = policeCardFieldOrder
     .map((field, index) => {
       const y = 260 + index * 95;
-      const textY = y;
-      const label = escapeXml(`${policeCardLabels[field]}:`);
+      const textY = y - 8;
+      const labelPath = renderTextPath(`${policeCardLabels[field]}:`, boldFont, 110, textY + 36, 36);
       const wrappedValueLines = wrapText(data[field]).map((line) => line.trim()).filter(Boolean);
-      const valueText = renderMultilineText(wrappedValueLines, CONTENT_LEFT, textY, 38, "value");
+      const valuePath = renderMultilineText(wrappedValueLines, regularFont, CONTENT_LEFT, textY, 34, 38);
 
       return `
-        <text class="label" x="110" y="${textY}">${label}</text>
-        ${valueText}
+        ${labelPath}
+        ${valuePath}
       `;
     })
     .join("\n");
 
   return `
     <svg width="${CARD_WIDTH}" height="${CARD_HEIGHT}" viewBox="0 0 ${CARD_WIDTH} ${CARD_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <style>
-          @font-face {
-            font-family: "PoliceCardRegular";
-            src: url("data:font/ttf;base64,${regularFontBase64}") format("truetype");
-          }
-          @font-face {
-            font-family: "PoliceCardBold";
-            src: url("data:font/ttf;base64,${boldFontBase64}") format("truetype");
-          }
-          text {
-            fill: #111827;
-            dominant-baseline: hanging;
-            text-rendering: geometricPrecision;
-          }
-          .title {
-            font-family: "PoliceCardBold", "DejaVu Sans", sans-serif;
-            font-size: 72px;
-          }
-          .label {
-            font-family: "PoliceCardBold", "DejaVu Sans", sans-serif;
-            font-size: 36px;
-          }
-          .value {
-            font-family: "PoliceCardRegular", "DejaVu Sans", sans-serif;
-            font-size: 34px;
-          }
-        </style>
-      </defs>
       ${buildCardBackgroundSvg()}
-      <text class="title" x="${TITLE_LEFT}" y="90" textLength="${TITLE_WIDTH}" lengthAdjust="spacingAndGlyphs">POLICE INFORMATION CARD</text>
+      ${titlePath}
       ${fieldRows}
     </svg>
   `;
@@ -180,8 +161,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { regularFontBase64, boldFontBase64 } = await getFontsAsBase64();
-    const cardSvg = buildCardSvg(data, regularFontBase64, boldFontBase64);
+    const { regularFont, boldFont } = await getFonts();
+    const cardSvg = buildCardSvg(data, regularFont, boldFont);
     const pngBuffer = await sharp(Buffer.from(cardSvg)).png({ compressionLevel: 9 }).toBuffer();
 
     return new NextResponse(pngBuffer, {
