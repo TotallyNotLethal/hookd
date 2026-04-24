@@ -61,9 +61,9 @@ function buildCardBackgroundSvg(): string {
       const iconY = y - 48;
 
       return `
-        <polygon points="86,${iconY} 180,${iconY} 197,${iconY + 28} 180,${iconY + 56} 86,${iconY + 56}" fill="#07295f" />
+        <polygon points="66,${iconY} 252,${iconY} 280,${iconY + 28} 252,${iconY + 56} 66,${iconY + 56}" fill="#07295f" />
         <circle cx="116" cy="${iconY + 28}" r="12" fill="#f8fbff" />
-        <line x1="355" y1="${y}" x2="${rightEdge}" y2="${y}" stroke="#5e6b81" stroke-opacity="0.55" stroke-width="3" />
+        <line x1="430" y1="${y}" x2="${rightEdge}" y2="${y}" stroke="#5e6b81" stroke-opacity="0.55" stroke-width="3" />
       `;
     })
     .join("\n");
@@ -93,7 +93,8 @@ function buildCardBackgroundSvg(): string {
     <line x1="355" y1="246" x2="1708" y2="246" stroke="#d6deed" stroke-width="2" opacity="0.8"/>
 
     <rect x="76" y="68" width="186" height="186" fill="#072258" stroke="#d6deed" stroke-width="4" rx="30"/>
-    <polygon points="168,102 183,132 216,137 192,160 197,193 168,178 139,193 144,160 120,137 153,132" fill="#e9edf6"/>
+    <path d="M169 102 L216 122 L216 170 C216 200 194 225 169 234 C144 225 122 200 122 170 L122 122 Z" fill="#e9edf6"/>
+    <polygon points="169,132 179,152 202,155 185,172 189,194 169,183 149,194 153,172 136,155 159,152" fill="#0d2f6a"/>
 
     <text x="915" y="295" text-anchor="middle" fill="#dbe4f2" font-size="44" font-family="Arial" letter-spacing="18">* * * OHIO * * *</text>
 
@@ -153,9 +154,9 @@ function buildCardSvg(data: PoliceCardData, regularFont: LoadedFont, boldFont: L
   const fieldRows = policeCardFieldOrder
     .map((field, index) => {
       const y = 415 + index * 110;
-      const labelPath = renderTextPath(`${policeCardLabels[field]}:`, boldFont, 205, y - 18, 55);
+      const labelPath = renderTextPath(`${policeCardLabels[field]}:`, boldFont, 145, y - 18, 43);
       const wrappedValueLines = wrapText(data[field]).map((line) => line.trim()).filter(Boolean);
-      const valuePath = renderMultilineText(wrappedValueLines, regularFont, 365, y - 62, 45, 50);
+      const valuePath = renderMultilineText(wrappedValueLines, regularFont, 440, y - 62, 45, 50);
 
       return `
         ${labelPath}
