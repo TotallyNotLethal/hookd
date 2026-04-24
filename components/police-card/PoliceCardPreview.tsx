@@ -34,7 +34,7 @@ export default function PoliceCardPreview({ data }: PoliceCardPreviewProps) {
             </div>
             <div className="flex-1">
               <div className="mb-3 border-t border-slate-200/60" />
-              <h2 className="text-xl font-bold uppercase tracking-[0.12em] text-slate-50 sm:text-5xl sm:tracking-[0.15em]">
+              <h2 className="text-xl font-bold uppercase tracking-[0.1em] text-slate-50 sm:text-4xl sm:tracking-[0.13em]">
                 Police Information Card
               </h2>
               <div className="mt-3 border-t border-slate-200/60" />

@@ -147,7 +147,7 @@ function renderMultilineText(lines: string[], font: LoadedFont, x: number, y: nu
 }
 
 function buildCardSvg(data: PoliceCardData, regularFont: LoadedFont, boldFont: LoadedFont): string {
-  const titlePath = renderTextPath("POLICE INFORMATION CARD", boldFont, 350, 196, 88, "#eef3fb");
+  const titlePath = renderTextPath("POLICE INFORMATION CARD", boldFont, 300, 196, 82, "#eef3fb");
   const ohioRowPath = renderTextPath("★ ★ OHIO ★ ★", regularFont, 730, 298, 34, "#dbe4f2");
 
   const fieldRows = policeCardFieldOrder
