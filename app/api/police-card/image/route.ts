@@ -96,8 +96,6 @@ function buildCardBackgroundSvg(): string {
     <path d="M169 102 L216 122 L216 170 C216 200 194 225 169 234 C144 225 122 200 122 170 L122 122 Z" fill="#e9edf6"/>
     <polygon points="169,132 179,152 202,155 185,172 189,194 169,183 149,194 153,172 136,155 159,152" fill="#0d2f6a"/>
 
-    <text x="915" y="295" text-anchor="middle" fill="#dbe4f2" font-size="44" font-family="Arial" letter-spacing="18">* * * OHIO * * *</text>
-
     <rect x="1112" y="410" width="560" height="520" fill="url(#watermark)"/>
 
     ${rows}
@@ -150,13 +148,14 @@ function renderMultilineText(lines: string[], font: LoadedFont, x: number, y: nu
 
 function buildCardSvg(data: PoliceCardData, regularFont: LoadedFont, boldFont: LoadedFont): string {
   const titlePath = renderTextPath("POLICE INFORMATION CARD", boldFont, 350, 180, 92, "#eef3fb");
+  const ohioRowPath = renderTextPath("* * OHIO * *", regularFont, 735, 298, 34, "#dbe4f2");
 
   const fieldRows = policeCardFieldOrder
     .map((field, index) => {
       const y = 415 + index * 110;
-      const labelPath = renderTextPath(`${policeCardLabels[field]}:`, boldFont, 145, y - 18, 43);
+      const labelPath = renderTextPath(`${policeCardLabels[field]}:`, boldFont, 145, y - 18, 32, "#f6f9ff");
       const wrappedValueLines = wrapText(data[field]).map((line) => line.trim()).filter(Boolean);
-      const valuePath = renderMultilineText(wrappedValueLines, regularFont, 440, y - 62, 45, 50);
+      const valuePath = renderMultilineText(wrappedValueLines, regularFont, 455, y - 62, 43, 48);
 
       return `
         ${labelPath}
@@ -169,6 +168,7 @@ function buildCardSvg(data: PoliceCardData, regularFont: LoadedFont, boldFont: L
     <svg width="${CARD_WIDTH}" height="${CARD_HEIGHT}" viewBox="0 0 ${CARD_WIDTH} ${CARD_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
       ${buildCardBackgroundSvg()}
       ${titlePath}
+      ${ohioRowPath}
       ${fieldRows}
     </svg>
   `;
