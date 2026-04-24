@@ -147,13 +147,14 @@ function renderMultilineText(lines: string[], font: LoadedFont, x: number, y: nu
 }
 
 function buildCardSvg(data: PoliceCardData, regularFont: LoadedFont, boldFont: LoadedFont): string {
-  const titlePath = renderTextPath("POLICE INFORMATION CARD", boldFont, 350, 192, 90, "#eef3fb");
+  const titlePath = renderTextPath("POLICE INFORMATION CARD", boldFont, 350, 196, 88, "#eef3fb");
   const ohioRowPath = renderTextPath("★ ★ OHIO ★ ★", regularFont, 730, 298, 34, "#dbe4f2");
 
   const fieldRows = policeCardFieldOrder
     .map((field, index) => {
       const y = 415 + index * 110;
-      const labelPath = renderTextPath(`${policeCardLabels[field]}:`, boldFont, 145, y - 18, 28, "#f6f9ff");
+      const labelSize = field === "caseNumber" ? 24 : 28;
+      const labelPath = renderTextPath(`${policeCardLabels[field]}:`, boldFont, 145, y - 18, labelSize, "#f6f9ff");
       const wrappedValueLines = wrapText(data[field]).map((line) => line.trim()).filter(Boolean);
       const valuePath = renderMultilineText(wrappedValueLines, regularFont, 540, y - 62, 43, 48);
 
