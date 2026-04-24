@@ -61,9 +61,9 @@ function buildCardBackgroundSvg(): string {
       const iconY = y - 48;
 
       return `
-        <polygon points="66,${iconY} 252,${iconY} 280,${iconY + 28} 252,${iconY + 56} 66,${iconY + 56}" fill="#07295f" />
+        <polygon points="66,${iconY} 330,${iconY} 360,${iconY + 28} 330,${iconY + 56} 66,${iconY + 56}" fill="#07295f" />
         <circle cx="116" cy="${iconY + 28}" r="12" fill="#f8fbff" />
-        <line x1="430" y1="${y}" x2="${rightEdge}" y2="${y}" stroke="#5e6b81" stroke-opacity="0.55" stroke-width="3" />
+        <line x1="520" y1="${y}" x2="${rightEdge}" y2="${y}" stroke="#5e6b81" stroke-opacity="0.55" stroke-width="3" />
       `;
     })
     .join("\n");
@@ -147,15 +147,15 @@ function renderMultilineText(lines: string[], font: LoadedFont, x: number, y: nu
 }
 
 function buildCardSvg(data: PoliceCardData, regularFont: LoadedFont, boldFont: LoadedFont): string {
-  const titlePath = renderTextPath("POLICE INFORMATION CARD", boldFont, 350, 180, 92, "#eef3fb");
-  const ohioRowPath = renderTextPath("* * OHIO * *", regularFont, 735, 298, 34, "#dbe4f2");
+  const titlePath = renderTextPath("POLICE INFORMATION CARD", boldFont, 350, 192, 90, "#eef3fb");
+  const ohioRowPath = renderTextPath("★ ★ OHIO ★ ★", regularFont, 730, 298, 34, "#dbe4f2");
 
   const fieldRows = policeCardFieldOrder
     .map((field, index) => {
       const y = 415 + index * 110;
-      const labelPath = renderTextPath(`${policeCardLabels[field]}:`, boldFont, 145, y - 18, 32, "#f6f9ff");
+      const labelPath = renderTextPath(`${policeCardLabels[field]}:`, boldFont, 145, y - 18, 28, "#f6f9ff");
       const wrappedValueLines = wrapText(data[field]).map((line) => line.trim()).filter(Boolean);
-      const valuePath = renderMultilineText(wrappedValueLines, regularFont, 455, y - 62, 43, 48);
+      const valuePath = renderMultilineText(wrappedValueLines, regularFont, 540, y - 62, 43, 48);
 
       return `
         ${labelPath}

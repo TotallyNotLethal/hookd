@@ -58,11 +58,11 @@ export default function PoliceCardPreview({ data }: PoliceCardPreviewProps) {
               return (
                 <div key={field} className="grid grid-cols-[auto_1fr] items-center gap-3 sm:gap-5">
                   <div
-                    className="flex h-10 w-[152px] items-center gap-2 bg-[#07295f] px-3 text-white sm:h-12 sm:w-[186px]"
+                    className="flex h-10 w-[182px] items-center gap-2 bg-[#07295f] px-3 text-white sm:h-12 sm:w-[222px]"
                     style={{ clipPath: "polygon(0 0, 88% 0, 100% 50%, 88% 100%, 0 100%)" }}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.13em] sm:text-base">{policeCardLabels[field]}</span>
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.13em] sm:text-sm">{policeCardLabels[field]}</span>
                   </div>
 
                   <div className="flex min-h-10 items-end border-b-2 border-slate-400/70 pb-1 text-[#092152] sm:min-h-12">
