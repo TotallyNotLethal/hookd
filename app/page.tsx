@@ -24,7 +24,15 @@ import type {
   Tournament,
   TournamentLeaderboardEntry,
 } from "@/lib/firestore";
-import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useAuthState } from "react-firebase-hooks/auth";
 
 const TrendingExplorer = dynamic(() => import("@/components/TrendingExplorer"), {
@@ -147,6 +155,20 @@ export default function Page() {
   const topLengthLeaders = useMemo(
     () => lengthLeaders.filter((entry) => (entry.lengthScore ?? 0) > 0).slice(0, 3),
     [lengthLeaders],
+  );
+  const orbitDurationSeconds = 26;
+  const orbitLinks = useMemo(
+    () => (
+      [
+        { href: '/feed', label: 'Feed', angle: -90, delay: 0 },
+        { href: '/groups', label: 'Crews', angle: -30, delay: 0.5 },
+        { href: '/tools', label: 'Tools', angle: 30, delay: 1.2 },
+        { href: '/feed?compose=1', label: 'Share', angle: 90, delay: 1.8 },
+        { href: '/logbook', label: 'Logbook', angle: 150, delay: 2.4 },
+        { href: '/map', label: 'Map', angle: 210, delay: 3 },
+      ] satisfies Array<{ href: string; label: string; angle: number; delay: number }>
+    ),
+    [],
   );
   const isProModerator = Boolean(profile?.isPro);
   const blockedSet = useMemo(() => {
@@ -475,55 +497,121 @@ export default function Page() {
       ) : null}
 
       {/* --- HERO SECTION --- */}
-      <section className="relative pt-nav">
+      <section className="launch-stage relative overflow-hidden pt-nav pb-12">
         <div className="absolute inset-0 -z-10">
           <Image
             src="/sample/catches/bass1.jpg"
             alt="Angler proudly holding a largemouth bass at sunset"
             fill
-            className="object-cover opacity-30 brightness-110"
+            className="object-cover opacity-25 brightness-110"
           />
-          <div className="absolute inset-0 bg-gradient-to-b from-[rgba(8,26,45,0.6)] via-[rgba(11,19,33,0.8)] to-[var(--bg)]" />
+          <div className="absolute inset-0 bg-gradient-to-b from-[#061429]/60 via-[#040d1b]/90 to-[#030914]" />
         </div>
+        <div className="launch-grid absolute inset-0 -z-[5]" />
+        <div className="launch-beams" />
+        <div className="fishing-lines" />
 
-        <div className="container grid lg:grid-cols-2 gap-10 items-center py-16">
-          <div className="space-y-6">
-            <h1 className="text-4xl md:text-6xl font-semibold leading-tight">
-              Join the <span className="text-brand-300">Hook&apos;d</span> community
-            </h1>
-            <p className="text-white/90 text-lg max-w-xl">
-              Share your catches, discover new spots, and level up your fishing game with real-time reports and leaderboards.
-            </p>
-            <div className="flex flex-wrap items-center gap-4">
+        <div className="container relative z-10 grid min-h-[calc(100vh-var(--nav-height)-1rem)] items-center gap-10 py-10 lg:grid-cols-[1.05fr_0.95fr] lg:py-16">
+          <div className="relative space-y-8">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-brand-100 shadow-soft shadow-brand-500/20">
+              <span className="inline-block h-2 w-2 rounded-full bg-brand-300 shadow-[0_0_0_10px_rgba(56,189,248,0.25)]" />
+              Hook&apos;d launch console
+            </div>
+            <div className="space-y-4">
+              <h1 className="text-4xl font-semibold leading-tight sm:text-5xl md:text-6xl">
+                Cast off into the Hook&apos;d galaxy.
+              </h1>
+              <p className="max-w-2xl text-lg text-white/85">
+                Spin the neon helm, orbit the outer bait rings, and jump straight into the spots anglers hit most—map, logbook, crews, tools, feed, and sharing your latest catch.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 md:gap-4">
               <Link
                 href="/feed"
                 className="btn-primary px-6 py-3 text-base md:text-lg shadow-glow focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
               >
-                Explore Feed
+                Launch Feed
               </Link>
               <Link
                 href="/map"
-                className="px-6 py-3 text-base md:text-lg rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                className="rounded-xl border border-white/20 bg-white/10 px-6 py-3 text-base md:text-lg transition hover:border-brand-300/40 hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
               >
-                View Fishing Map
+                Scout the Map
               </Link>
               {user ? (
                 <Link
                   href="/feed?compose=1"
-                  className="px-6 py-3 text-base md:text-lg rounded-xl border border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
+                  className="rounded-xl border border-brand-300/50 bg-brand-300/10 px-6 py-3 text-base md:text-lg font-semibold text-brand-100 transition hover:border-brand-200 hover:bg-brand-200/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300"
                 >
-                  Share a Catch
+                  Drop a Catch
                 </Link>
               ) : (
-                <LoginButton className="px-6 py-3 text-base md:text-lg rounded-xl border border-white/20 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">
+                <LoginButton className="rounded-xl border border-white/20 px-6 py-3 text-base md:text-lg transition hover:border-brand-300/40 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-300">
                   Sign In
                 </LoginButton>
               )}
             </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="launch-cta-card relative overflow-hidden rounded-2xl p-4">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(56,189,248,0.12),transparent_35%),radial-gradient(circle_at_70%_80%,rgba(14,165,233,0.08),transparent_40%)]" />
+                <div className="relative flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-300/10 text-brand-100 ring-1 ring-brand-300/40">
+                    🧭
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-white/50">Quick jump</p>
+                    <p className="text-white">Map, logbook, tournaments, and tools at your fingertips.</p>
+                  </div>
+                </div>
+              </div>
+              <div className="launch-cta-card relative overflow-hidden rounded-2xl p-4">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_40%,rgba(56,189,248,0.1),transparent_35%),radial-gradient(circle_at_80%_20%,rgba(14,165,233,0.07),transparent_40%)]" />
+                <div className="relative flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-400/15 text-brand-100 ring-1 ring-brand-300/40">
+                    ⚡
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-white/50">Live vibe</p>
+                    <p className="text-white">Instant access to conditions, trending species, and challenges.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <div className="glass rounded-3xl p-6 border-white/10">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="relative">
+            <div className="absolute -inset-20 -z-10 bg-[radial-gradient(circle_at_50%_40%,rgba(56,189,248,0.2),transparent_45%),radial-gradient(circle_at_30%_10%,rgba(14,165,233,0.16),transparent_40%)] blur-2xl" />
+            <div className="orb-shell mx-auto shadow-[0_0_140px_rgba(56,189,248,0.25)]">
+              <div className="orb-core">
+                <span className="text-sm uppercase tracking-[0.3em] text-brand-100/80">Hook&apos;d</span>
+                <p className="text-2xl font-semibold">Launchpad</p>
+                <p className="text-sm text-white/70">Tap a sector to dive in.</p>
+              </div>
+
+              <div className="orb-track" aria-label="Hook&apos;d launch destinations">
+                {orbitLinks.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="orb-node"
+                    aria-label={`Open ${link.label}`}
+                    style={{
+                      '--orbit-angle': `${link.angle}deg`,
+                      '--orbit-distance': 'clamp(11rem, 48vw, 18rem)',
+                      '--orbit-bob-delay': `${link.delay}s`,
+                      '--orbit-duration': `${orbitDurationSeconds}s`,
+                    } as CSSProperties}
+                  >
+                    <span className="orb-chip-shell">
+                      <span className="orb-chip">{link.label}</span>
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
               {locationPermissionError ? (
                 <div className="sm:col-span-2 rounded-2xl border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
                   {locationPermissionError}
@@ -562,26 +650,42 @@ export default function Page() {
                 </div>
               )}
               <div className="card p-4">
-                <h3 className="font-medium mb-2">Trending Lakes</h3>
-                <ul className="text-sm text-white/70 space-y-2">
-                  <li>Sippo Lake</li>
-                  <li>Nimisila Reservoir</li>
-                  <li>Tuscarawas River</li>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-medium">Trending lakes</h3>
+                  <span className="rounded-full bg-white/5 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-white/60">Live</span>
+                </div>
+                <ul className="mt-2 space-y-2 text-sm text-white/70">
+                  <li>Sippo Lake · Ohio</li>
+                  <li>Nimisila Reservoir · Ohio</li>
+                  <li>Tuscarawas River · Ohio</li>
                 </ul>
               </div>
               <div className="card p-4">
-                <h3 className="font-medium mb-2">Top Species</h3>
-                <ul className="text-sm text-white/70 space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-medium">Top species</h3>
+                  <span className="rounded-full bg-brand-300/10 px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-brand-100">Rising</span>
+                </div>
+                <ul className="mt-2 space-y-2 text-sm text-white/70">
                   <li>Largemouth Bass</li>
                   <li>Northern Pike</li>
                   <li>Bowfin</li>
                 </ul>
               </div>
               <div className="card p-4 sm:col-span-2">
-                <h3 className="font-medium mb-2">This Week&apos;s Challenge</h3>
-                <p className="text-white/80 text-sm">
-                  Catch a bass over 3lb using paddle tails. Share with
-                  <span className="text-brand-300 font-semibold"> #HookdChallenge</span>.
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.2em] text-white/50">Weekly challenge</p>
+                    <h3 className="text-lg font-semibold text-white">#HookdChallenge</h3>
+                  </div>
+                  <Link
+                    href="/feed?compose=1"
+                    className="rounded-full border border-brand-200/50 px-4 py-2 text-sm text-brand-100 hover:bg-brand-300/10"
+                  >
+                    Submit a catch
+                  </Link>
+                </div>
+                <p className="mt-2 text-white/80 text-sm">
+                  Catch a bass over 3lb using paddle tails and share it to the feed with the tag above.
                 </p>
               </div>
             </div>
